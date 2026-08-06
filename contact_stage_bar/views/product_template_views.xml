@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+        <record id="view_product_template_form_custom" model="ir.ui.view">
+            <field name="name">product.template.form.custom</field>
+            <field name="model">product.template</field>
+            <field name="inherit_id" ref="product.product_template_form_view"/>
+            <field name="arch" type="xml">
+                <!-- <xpath expr="//button[@name='action_update_quantity_on_hand']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>  -->
+                <!-- <xpath expr="//button[@name='action_update_quantity_on_hand']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>  -->
+                <xpath expr="//button[@name='action_open_label_layout']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath> 
+                <xpath expr="//header" position="inside">
+                    <button name="action_fetch_certificate_data"
+                                    type="object"
+                                    string="Fetch Certificate Data"
+                                    class="btn-primary"
+                                    invisible="sdk_is_code_enabled"/>
+                                    </xpath>
+                <xpath expr="//label[@for='name']" position="before">
+                    <h1>
+                        <!-- <button name="action_fetch_certificate_data"
+                                    type="object"
+                                    string="Fetch Certificate Data"
+                                    class="btn-primary"
+                                    invisible="sdk_is_code_enabled"/> -->
+                        <label for="certificate" string="Certificate Number"/>
+                        <field name="certificate"/>
+                            
+                        <!-- <label for="lgd_stock_number" string="LGD Stock Number"/>
+                        <field name="lgd_stock_number" string="LGD Stock Number"/> -->
+                        
+                    </h1>
+                </xpath>
+                <xpath expr="//group[@name='group_general']" position="inside">
+                    <field name="labs"/>
+                    <field name="lgd_stock_number"/>
+                    <field name="stock_number"/>
+                    <field name="certificate_type" groups="!contact_stage_bar.group_lgd_procurement"/>
+                    <field name="website_product_id" readonly="1"/>
+                    <field name="url_link" readonly="1" widget="url"/>
+                    <field name="shapes"/>
+                    <field name="weight_carat"/>
+                    <field name="clarity"/>
+                    <field name="color"/>
+                    <field name="luster"/>
+                    <field name="shade"/>
+                    <field name="fluorescence_color"/>
+                    <field name="fluorescence_intensity"/>
+                </xpath>
+
+                <xpath expr="//field[@name='l10n_in_hsn_code']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='l10n_in_hsn_code']" position="after">
+                    <field name="measurements"/>
+                    <field name="length"/>
+                    <field name="width"/>
+                    <field name="depth"/>
+                    <field name="eye_clean"/>
+                    <field name="polish"/>
+                    <field name="cut"/>
+                    <field name="symmetry"/>
+                    <field name="treatments"/>
+                    <field name="video_360" readonly="1" widget="url"/>
+                    <field name="image_augmont" readonly="1" widget="url"/>
+                    <field name="country_id"/>
+                    <!-- <field name="final_price"/> -->
+                    <!-- <field name="final_price_margin"/> -->
+                    <!-- <field name="price_per_carat"/> -->
+                    <field name="order_specific"/>
+                    <field name="item_notes" widget="text" placeholder="Enter general order notes..." style="height:80px; white-space:normal;"/>
+                    <field name="customer_reference_note" widget="text" placeholder="Enter Custom Reference notes..." style="height:40px; white-space:normal;"/>
+                    <field name="default_qc_requirements"/>
+                </xpath>
+
+                <!-- <xpath expr="//label[@for='list_price']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+
+                <xpath expr="//div[@name='list_price_uom']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+                
+                <xpath expr="//field[@name='list_price']" position="attributes">
+                    <attribute name="string">Final Price Per Carat</attribute>
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+
+                <xpath expr="//div[@name='list_price_uom']" position="after">
+                    <field name="final_price_margin" string="Final Price" groups="!contact_stage_bar.group_lgd_sales"/>
+                    <field name="price_per_carat" string="Vendor Price Per Carat" groups="!contact_stage_bar.group_lgd_sales"/>
+                    <field name="final_price" string="Vendor Final Price" groups="!contact_stage_bar.group_lgd_sales"/>
+                </xpath> -->
+
+                <xpath expr="//label[@for='list_price']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+
+                <xpath expr="//div[@name='list_price_uom']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='list_price']" position="attributes">
+                    <attribute name="string">Final Price Per Carat</attribute>
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+
+                <xpath expr="//div[@name='list_price_uom']" position="after">
+                    <field name="final_price_margin" string="Final Price" groups="!contact_stage_bar.group_lgd_procurement"/>
+                    <field name="price_per_carat" string="Vendor Price Per Carat" groups="!contact_stage_bar.group_lgd_sales"/>
+                    <field name="final_price" string="Vendor Final Price" groups="!contact_stage_bar.group_lgd_sales"/>
+                </xpath>   
+
+                <xpath expr="//field[@name='taxes_id']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='tax_string']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='standard_price']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+
+                <xpath expr="//page[@name='purchase']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+
+                <!-- <xpath expr="//field[@name='seller_ids']/list" position="inside">
+                    <field name="vendor_final_price"/>
+                    <field name="vendor_per_carat_price"/>
+                </xpath> -->
+                <!-- <xpath expr="//field[@name='barcode']" position="attributes">
+                    <attribute name="invisible">True</attribute>
+                </xpath> -->
+                <!-- <xpath expr="//field[@name='default_code']" position="attributes">
+                    <attribute name="invisible">True</attribute>
+                </xpath>
+                <xpath expr="//field[@name='l10n_in_hsn_code']" position="attributes">
+                    <attribute name="invisible">True</attribute>
+                </xpath> -->
+                 <!-- <xpath expr="//field[@name='list_price']" position="attributes">
+                    <attribute name="groups">stock.group_stock_manager,stock.group_stock_user</attribute>
+                </xpath>
+                <xpath expr="//field[@name='standard_price']" position="attributes">
+                    <attribute name="groups">stock.group_stock_manager,stock.group_stock_user</attribute>
+                </xpath>
+                <xpath expr="//field[@name='standard_price']" position="attributes">
+                    <attribute name="groups">stock.group_stock_manager,stock.group_stock_user</attribute>
+                </xpath> -->
+                <!-- <xpath expr="//header" position="inside">
+                    <button name="action_combine_sdk_fields"
+                            string="Generate Diamond Name"
+                            type="object"
+                            class="btn-primary"
+                            invisible=""/>
+                </xpath> -->
+                <!-- <xpath expr="//div[@class='oe_title']/label" position="before">
+                     <label for="barcode" string="Barcode/IGI Certificate"/>
+                    <h1>
+                            <div class="d-flex">
+                                <field class="text-break" name="barcode" options="{'line_breaks': False}" widget="text" placeholder="123456789"/>
+                                <button name="action_fetch_igi_data"
+                                    string="Generate Diamond Details"
+                                    type="object"
+                                    class="btn-primary"/>
+                            </div>
+                        </h1>
+                </xpath> -->
+            </field>
+        </record>
+
+        <record id="view_supplierinfo_tree_inherit" model="ir.ui.view">
+            <field name="name">product.supplierinfo.list.inherit</field>
+            <field name="model">product.supplierinfo</field>
+            <field name="inherit_id" ref="purchase.product_supplierinfo_tree_view2"/>
+            <field name="arch" type="xml">
+                <xpath expr="//list" position="inside">
+                    <field name="vendor_final_price"/>
+                    <field name="vendor_per_carat_price"/>
+                </xpath>
+                <!-- Hide the Price column for LGD Procurement users.  -->
+                <xpath expr="//field[@name='price']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Product quick-edit popup (opened via the "i" internal link icon
+             on Order Lines > Product). Hides the "Sales" notebook page for
+             LGD Procurement users, as they only need the Purchase-side
+             (vendor) info. -->
+        <record id="view_product_template_only_form_hide_procurement" model="ir.ui.view">
+            <field name="name">product.template.only.form.hide.procurement</field>
+            <field name="model">product.template</field>
+            <field name="inherit_id" ref="product.product_template_only_form_view"/>
+            <field name="arch" type="xml">
+                <xpath expr="//page[@name='sales']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <!-- Hide the "Purchase" notebook page for LGD Procurement -->
+                <xpath expr="//page[@name='purchase']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <!-- hide the Sales/Purchase checkboxes near the product
+                     name, the "Product Type" radio (Goods/Service/Combo),
+                     and "Cost" for LGD Procurement. -->
+                <xpath expr="//field[@name='sale_ok']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='purchase_ok']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='type']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='standard_price']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='is_storable']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="view_product_normal_form_hide_procurement" model="ir.ui.view">
+            <field name="name">product.normal.form.hide.procurement</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="product.product_normal_form_view"/>
+            <field name="arch" type="xml">
+                <xpath expr="//button[@name='action_fetch_certificate_data']" position="replace"/>
+
+                <xpath expr="//page[@name='sales']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <!-- hide the "Purchase" notebook page for LGD Procurement -->
+                <xpath expr="//page[@name='purchase']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <!-- hide the Sales/Purchase checkboxes near the product
+                     name, the "Product Type" radio (Goods/Service/Combo),
+                     and "Cost" for LGD Procurement. -->
+                <xpath expr="//field[@name='sale_ok']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='purchase_ok']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='type']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='standard_price']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <xpath expr="//field[@name='is_storable']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <!-- Hide Certificate Type for LGD Procurement users -->
+                <xpath expr="//field[@name='certificate_type']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+                <!-- Rename Barcode to Certificate Number for all users -->
+                <xpath expr="//field[@name='barcode']" position="attributes">
+                    <attribute name="string">Certificate Number</attribute>
+                </xpath>
+            </field>
+        </record>
+
+
+        <!-- <record id="product_form_view_hide_procurement_buttons" model="ir.ui.view">
+            <field name="name">product.form.hide.procurement.buttons</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="stock.product_form_view_procurement_button"/>
+            <field name="arch" type="xml">
+                <xpath expr="//button[@name='action_update_quantity_on_hand']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+
+                <xpath expr="//button[@name='472']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+            </field>
+        </record> -->
+
+    </data>
+</odoo>

@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Milestone Tree View -->
+    <record id="view_goal_milestone_tree" model="ir.ui.view">
+        <field name="name">goal.milestone.list</field>
+        <field name="model">goal.milestone</field>
+        <field name="arch" type="xml">
+            <list string="Milestones"
+                  decoration-danger="is_overdue and state not in ('completed', 'cancelled')"
+                  decoration-success="state == 'completed'"
+                  decoration-muted="state == 'cancelled'">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="goal_id"/>
+                <field name="employee_id"/>
+                <field name="manager_id"/>
+                <field name="goal_type_id"/>
+                <field name="start_date"/>
+                <field name="end_date"/>
+                <field name="target_date"/>
+                <field name="completion_date"/>
+                <field name="progress" widget="progressbar"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'pending'"
+                       decoration-warning="state == 'in_progress'"
+                       decoration-success="state == 'completed'"
+                       decoration-muted="state == 'cancelled'"/>
+                <field name="is_overdue" column_invisible="1"/>
+                <field name="attachment_count"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Milestone Form View -->
+    <record id="view_goal_milestone_form" model="ir.ui.view">
+        <field name="name">goal.milestone.form</field>
+        <field name="model">goal.milestone</field>
+        <field name="arch" type="xml">
+            <form string="Milestone">
+                <header>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pending,in_progress,completed"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_attachments"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-paperclip">
+                            <field name="attachment_count" widget="statbutton" string="Attachments"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Overdue" bg_color="text-bg-danger"
+                            invisible="not is_overdue or state in ('completed', 'cancelled')"/>
+                    <widget name="web_ribbon" title="Completed" bg_color="text-bg-success"
+                            invisible="state != 'completed'"/>
+                    <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-secondary"
+                            invisible="state != 'cancelled'"/>
+
+                    <group>
+                        <group>
+                            <field name="name" placeholder="Milestone Name"/>
+                            <field name="goal_id" required="1"/>
+                            <field name="employee_id"/>
+                            <field name="manager_id"/>
+                            <field name="goal_type_id"/>
+                        </group>
+                        <group>
+                            <field name="target_date"/>
+                            <field name="completion_date" readonly="state != 'completed'"/>
+                            <field name="sequence"/>
+                            <field name="progress" widget="progressbar"/>
+                            <field name="is_overdue" invisible="1"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Weekly Tracking" name="weekly_tracking">
+                            <group>
+                                <group>
+                                    <field name="start_date"/>
+                                </group>
+                                <group>
+                                    <field name="end_date"/>
+                                </group>
+                            </group>
+                            <group>
+                                <button name="action_generate_weekly_tracking"
+                                        string="Generate Weekly Tracking from Daily Progress"
+                                        type="object"
+                                        class="btn-primary"
+                                        icon="fa-refresh"/>
+                            </group>
+                            <field name="weekly_tracking_ids">
+                                <list>
+                                    <field name="week_number"/>
+                                    <field name="week_start_date"/>
+                                    <field name="week_end_date"/>
+                                    <field name="weekly_progress" widget="progressbar"/>
+                                    <field name="total_hours_spent"/>
+                                    <field name="daily_count"/>
+                                    <field name="status" widget="badge"/>
+                                </list>
+                            </field>
+                            <group>
+                                <field name="weekly_tracking_count" string="Total Weekly Updates"/>
+                            </group>
+                        </page>
+
+                        <page string="Dependencies" name="dependencies">
+                            <group>
+                                <group string="Depends On">
+                                    <field name="dependency_ids"
+                                           nolabel="1"
+                                           domain="[('goal_id', '=', goal_id), ('id', '!=', id)]">
+                                        <list>
+                                            <field name="name"/>
+                                            <field name="state" widget="badge"/>
+                                            <field name="target_date"/>
+                                        </list>
+                                    </field>
+                                </group>
+                                <group string="Blocks">
+                                    <field name="dependent_milestone_ids"
+                                           nolabel="1">
+                                        <list>
+                                            <field name="name"/>
+                                            <field name="state" widget="badge"/>
+                                            <field name="target_date"/>
+                                        </list>
+                                    </field>
+                                </group>
+                            </group>
+                        </page>
+
+                        <page string="Approval" name="approval"
+                              invisible="not requires_approval">
+                            <group>
+                                <field name="requires_approval"/>
+                                <field name="approved_by_id" readonly="1"/>
+                                <field name="approved_date" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Milestone Kanban View -->
+    <record id="view_goal_milestone_kanban" model="ir.ui.view">
+        <field name="name">goal.milestone.kanban</field>
+        <field name="model">goal.milestone</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state"
+                    class="o_kanban_small_column"
+                    quick_create="false">
+                <field name="name"/>
+                <field name="goal_id"/>
+                <field name="employee_id"/>
+                <field name="manager_id"/>
+                <field name="target_date"/>
+                <field name="completion_date"/>
+                <field name="progress"/>
+                <field name="state"/>
+                <field name="is_overdue"/>
+                <field name="attachment_count"/>
+                <field name="requires_approval"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="name"/>
+                                    </strong>
+                                </div>
+                                <div class="o_kanban_record_top_right">
+                                    <field name="state" widget="label"
+                                           options="{'classes': {'pending': 'info', 'in_progress': 'warning', 'completed': 'success', 'cancelled': 'secondary'}}"/>
+                                </div>
+                            </div>
+
+                            <div class="o_kanban_record_body">
+                                <field name="goal_id"/>
+                                <div>
+                                    <i class="fa fa-user" title="Employee"/>
+                                    <field name="employee_id"/>
+                                </div>
+                                <div t-if="record.is_overdue.raw_value and record.state.raw_value not in ['completed', 'cancelled']"
+                                     class="text-danger">
+                                    <i class="fa fa-exclamation-triangle"/> Overdue
+                                </div>
+                                <div t-if="record.requires_approval.raw_value">
+                                    <i class="fa fa-check-circle"/> Requires Approval
+                                </div>
+                            </div>
+
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left">
+                                    <field name="progress" widget="progressbar"/>
+                                </div>
+                                <div class="oe_kanban_bottom_right">
+                                    <i class="fa fa-paperclip" title="Attachments"
+                                       t-if="record.attachment_count.raw_value > 0"/>
+                                    <field name="attachment_count"
+                                           t-if="record.attachment_count.raw_value > 0"/>
+                                    <span title="Target Date">
+                                        <i class="fa fa-calendar"/>
+                                        <field name="target_date"/>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Milestone Search View -->
+    <record id="view_goal_milestone_search" model="ir.ui.view">
+        <field name="name">goal.milestone.search</field>
+        <field name="model">goal.milestone</field>
+        <field name="arch" type="xml">
+            <search string="Search Milestones">
+                <field name="name" string="Milestone"
+                       filter_domain="[('name', 'ilike', self)]"/>
+                <field name="goal_id"/>
+                <field name="employee_id"/>
+                <field name="manager_id"/>
+                <field name="goal_type_id"/>
+
+                <!-- <filter string="My Milestones" name="my_milestones"
+                        domain="[('employee_id', '=', uid)]"/>
+                <filter string="My Team's Milestones" name="my_team_milestones"
+                        domain="[('manager_id', '=', uid)]"/> -->
+
+                <separator/>
+
+                <filter string="Pending" name="pending"
+                        domain="[('state', '=', 'pending')]"/>
+                <filter string="In Progress" name="in_progress"
+                        domain="[('state', '=', 'in_progress')]"/>
+                <filter string="Completed" name="completed"
+                        domain="[('state', '=', 'completed')]"/>
+                <filter string="Cancelled" name="cancelled"
+                        domain="[('state', '=', 'cancelled')]"/>
+
+                <separator/>
+
+                <filter string="Overdue" name="overdue"
+                        domain="[('is_overdue', '=', True), ('state', 'not in', ('completed', 'cancelled'))]"/>
+                <filter string="Due This Week" name="due_this_week"
+                        domain="[('target_date', '&gt;=', context_today()), ('target_date', '&lt;=', (context_today() + relativedelta(weeks=1)))]"/>
+                <filter string="Due This Month" name="due_this_month"
+                        domain="[('target_date', '&gt;=', (context_today() - relativedelta(day=1))), ('target_date', '&lt;=', (context_today() + relativedelta(day=31)))]"/>
+
+                <separator/>
+
+                <filter string="Requires Approval" name="requires_approval"
+                        domain="[('requires_approval', '=', True)]"/>
+                <filter string="Has Dependencies" name="has_dependencies"
+                        domain="[('dependency_ids', '!=', False)]"/>
+                <filter string="Blocks Other Milestones" name="blocks_others"
+                        domain="[('dependent_milestone_ids', '!=', False)]"/>
+
+                <group expand="0" string="Group By">
+                    <filter string="Goal" name="group_goal"
+                            context="{'group_by': 'goal_id'}"/>
+                    <filter string="Employee" name="group_employee"
+                            context="{'group_by': 'employee_id'}"/>
+                    <filter string="Manager" name="group_manager"
+                            context="{'group_by': 'manager_id'}"/>
+                    <filter string="Goal Type" name="group_goal_type"
+                            context="{'group_by': 'goal_type_id'}"/>
+                    <filter string="State" name="group_state"
+                            context="{'group_by': 'state'}"/>
+                    <filter string="Target Date" name="group_target_date"
+                            context="{'group_by': 'target_date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Monthly Milestone Action -->
+    <record id="action_goal_milestone" model="ir.actions.act_window">
+        <field name="name">Monthly Milestones</field>
+        <field name="res_model">goal.milestone</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="search_view_id" ref="view_goal_milestone_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first monthly milestone
+            </p>
+            <p>
+                Monthly milestones help break down goals into smaller, manageable tasks with specific deadlines and deliverables.
+            </p>
+        </field>
+    </record>
+
+
+</odoo>

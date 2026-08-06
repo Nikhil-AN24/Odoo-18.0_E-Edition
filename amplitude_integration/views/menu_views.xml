@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem id="menu_amplitude_root"
+              name="Amplitude"
+              sequence="95"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_amplitude_config"
+              name="Configuration"
+              parent="menu_amplitude_root"
+              action="action_amplitude_config"
+              sequence="10"
+              groups="base.group_system"/>
+
+</odoo>

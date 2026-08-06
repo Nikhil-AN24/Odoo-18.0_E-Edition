@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- Training & Development Goal Types -->
+
+        <!-- WE - Work Experience -->
+        <record id="goal_type_we" model="goal.type">
+            <field name="name">Work Experience (WE)</field>
+            <field name="code">WE</field>
+            <field name="description">Work experience-based training goals focused on practical, on-the-job learning and skill development through real work assignments.</field>
+            <field name="sequence">10</field>
+            <field name="category">training</field>
+            <field name="color">1</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">4</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- I&W - Instruction & Workshop -->
+        <record id="goal_type_iw" model="goal.type">
+            <field name="name">Instruction &amp; Workshop (I&amp;W)</field>
+            <field name="code">IW</field>
+            <field name="description">Structured learning through formal instruction, workshops, seminars, and classroom-based training programs.</field>
+            <field name="sequence">20</field>
+            <field name="category">training</field>
+            <field name="color">2</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- WTL - Work-Team Learning -->
+        <record id="goal_type_wtl" model="goal.type">
+            <field name="name">Work-Team Learning (WTL)</field>
+            <field name="code">WTL</field>
+            <field name="description">Collaborative learning through team-based projects, peer learning, and group problem-solving activities.</field>
+            <field name="sequence">30</field>
+            <field name="category">training</field>
+            <field name="color">3</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- TSA - Technical Skill Acquisition -->
+        <record id="goal_type_tsa" model="goal.type">
+            <field name="name">Technical Skill Acquisition (TSA)</field>
+            <field name="code">TSA</field>
+            <field name="description">Goals focused on acquiring specific technical skills, tools, technologies, or domain expertise required for job performance.</field>
+            <field name="sequence">40</field>
+            <field name="category">training</field>
+            <field name="color">4</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">4</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- TTM - Train the Trainer & Mentoring -->
+        <record id="goal_type_ttm" model="goal.type">
+            <field name="name">Train the Trainer &amp; Mentoring (TTM)</field>
+            <field name="code">TTM</field>
+            <field name="description">Development of training delivery skills and mentoring capabilities to enable knowledge transfer to others.</field>
+            <field name="sequence">50</field>
+            <field name="category">training</field>
+            <field name="color">5</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- EPP - External Professional Programs -->
+        <record id="goal_type_epp" model="goal.type">
+            <field name="name">External Professional Programs (EPP)</field>
+            <field name="code">EPP</field>
+            <field name="description">Participation in external certifications, professional courses, conferences, and industry training programs.</field>
+            <field name="sequence">60</field>
+            <field name="category">training</field>
+            <field name="color">6</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- EPL - E-Learning Programs -->
+        <record id="goal_type_epl" model="goal.type">
+            <field name="name">E-Learning Programs (EPL)</field>
+            <field name="code">EPL</field>
+            <field name="description">Online learning through digital courses, webinars, virtual training, and self-paced learning platforms.</field>
+            <field name="sequence">70</field>
+            <field name="category">training</field>
+            <field name="color">7</field>
+            <field name="requires_approval">False</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- MLDP - Management & Leadership Development Program -->
+        <record id="goal_type_mldp" model="goal.type">
+            <field name="name">Management &amp; Leadership Development Program (MLDP)</field>
+            <field name="code">MLDP</field>
+            <field name="description">Comprehensive programs focused on developing leadership capabilities, management skills, and strategic thinking.</field>
+            <field name="sequence">80</field>
+            <field name="category">training</field>
+            <field name="color">8</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">5</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Performance-Based Goal Types -->
+
+        <!-- Coaching & Mentoring -->
+        <record id="goal_type_coaching" model="goal.type">
+            <field name="name">Coaching &amp; Mentoring</field>
+            <field name="code">COACH</field>
+            <field name="description">Goals related to coaching others, mentoring team members, and developing mentorship capabilities.</field>
+            <field name="sequence">90</field>
+            <field name="category">performance</field>
+            <field name="color">9</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Sales Target -->
+        <record id="goal_type_sales" model="goal.type">
+            <field name="name">Sales Target</field>
+            <field name="code">SALES</field>
+            <field name="description">Revenue and sales performance goals including targets for sales volume, revenue generation, and customer acquisition.</field>
+            <field name="sequence">100</field>
+            <field name="category">performance</field>
+            <field name="color">10</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">4</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Project Delivery -->
+        <record id="goal_type_project" model="goal.type">
+            <field name="name">Project Delivery</field>
+            <field name="code">PROJECT</field>
+            <field name="description">Goals focused on successful project completion, delivery timelines, and project quality metrics.</field>
+            <field name="sequence">110</field>
+            <field name="category">performance</field>
+            <field name="color">11</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">4</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Quality Improvement -->
+        <record id="goal_type_quality" model="goal.type">
+            <field name="name">Quality Improvement</field>
+            <field name="code">QUALITY</field>
+            <field name="description">Goals aimed at improving quality standards, reducing defects, and enhancing process efficiency.</field>
+            <field name="sequence">120</field>
+            <field name="category">performance</field>
+            <field name="color">1</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Organizational Goals -->
+
+        <record id="goal_type_organizational" model="goal.type">
+            <field name="name">Organizational Goal</field>
+            <field name="code">ORG</field>
+            <field name="description">Company-wide strategic goals and objectives aligned with organizational vision and business priorities.</field>
+            <field name="sequence">130</field>
+            <field name="category">organizational</field>
+            <field name="color">2</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">5</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Custom Goal Types -->
+
+        <!-- Personal Development -->
+        <record id="goal_type_personal" model="goal.type">
+            <field name="name">Personal Development</field>
+            <field name="code">PERSONAL</field>
+            <field name="description">Individual growth goals focused on personal skills, soft skills, and career development aspirations.</field>
+            <field name="sequence">140</field>
+            <field name="category">custom</field>
+            <field name="color">3</field>
+            <field name="requires_approval">True</field>
+            <field name="auto_create_milestones">False</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Skill Enhancement -->
+        <record id="goal_type_skill" model="goal.type">
+            <field name="name">Skill Enhancement</field>
+            <field name="code">SKILL</field>
+            <field name="description">Goals focused on enhancing existing skills, developing new competencies, and broadening skill sets.</field>
+            <field name="sequence">150</field>
+            <field name="category">custom</field>
+            <field name="color">4</field>
+            <field name="requires_approval">False</field>
+            <field name="auto_create_milestones">True</field>
+            <field name="default_milestone_count">3</field>
+            <field name="active">True</field>
+        </record>
+
+    </data>
+</odoo>

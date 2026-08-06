@@ -1,0 +1,8 @@
+<odoo>
+    <template id="report_saleorder_document_inherit" inherit_id="sale.report_saleorder_document">
+        <!-- Replace the default Sale Order Number with sdk_augmont_number -->
+        <xpath expr="//span[@t-field='doc.name']" position="replace">
+            <span t-esc="doc.sdk_augmont_number or doc.name"/>
+        </xpath>
+    </template>
+</odoo>

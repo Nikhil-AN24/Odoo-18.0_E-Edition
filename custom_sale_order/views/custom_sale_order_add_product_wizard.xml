@@ -1,0 +1,52 @@
+<odoo>
+
+    <record id="view_custom_sale_order_add_product_wizard" model="ir.ui.view">
+        <field name="name">custom.sale.order.add.product.wizard.form</field>
+        <field name="model">custom.sale.order.add.product.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Add Product by Certificate/Stock Number" >
+                <group>
+                    <field name="number"/>
+                </group>
+                <footer>
+                    <button name="action_add_product" type="object" string="Add" class="btn-primary"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_custom_sale_order_add_product_wizard" model="ir.actions.act_window">
+        <field name="name">Add Product</field>
+        <field name="res_model">custom.sale.order.add.product.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_order_id': active_id}</field>
+    </record>
+
+    <record id="view_order_form_inherit_add_product" model="ir.ui.view">
+        <field name="name">custom.sale.order.form.inherit.add.product</field>
+        <field name="model">custom.sale.order</field>
+        <field name="inherit_id" ref="custom_sale_order.view_custom_sale_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']" position="before">
+                <button name="%(action_custom_sale_order_add_product_wizard)d"
+                        type="action" string="Add Product"
+                        class="btn-primary"/>
+<!--                        invisible="state == 'draft'"/>-->
+            </xpath>
+        </field>
+    </record>
+
+<!--    <record id="view_order_form_inherit_product_popup" model="ir.ui.view">-->
+<!--        <field name="name">custom.sale.order.form.inherit.product.popup</field>-->
+<!--        <field name="model">custom.sale.order</field>-->
+<!--        <field name="inherit_id" ref="custom_sale_order.view_custom_sale_order_form"/>-->
+<!--        <field name="arch" type="xml">-->
+<!--            <xpath expr="//field[@name='order_line']/form//field[@name='product_id']" position="attributes">-->
+<!--                <attribute name="context">{'form_view_ref': 'product.product_template_only_form_view', 'target':'new'}</attribute>-->
+<!--            </xpath>-->
+<!--        </field>-->
+<!--    </record>-->
+
+</odoo>

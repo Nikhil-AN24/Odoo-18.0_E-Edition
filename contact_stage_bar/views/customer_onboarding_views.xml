@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_customer_onboarding_list" model="ir.ui.view">
+        <field name="name">customer.onboarding.list</field>
+        <field name="model">customer.onboarding</field>
+        <field name="arch" type="xml">
+            <list string="Onboarding">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="user_id" widget="many2one_avatar_user"/>
+                <field name="email"/>
+                <field name="mobile_number"/>
+                <field name="vat"/>
+                <field name="gst_treatment"/>
+                <field name="location"/>
+                <field name="quotation_date"/>
+                <field name="pricelist_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_customer_onboarding_form" model="ir.ui.view">
+        <field name="name">customer.onboarding.form</field>
+        <field name="model">customer.onboarding</field>
+        <field name="arch" type="xml">
+            <form string="Onboarding">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="partner_id" readonly="verification_status == 'verified'"/>
+                            <field name="email" readonly="verification_status == 'verified'"/>
+                            <field name="mobile_number" readonly="verification_status == 'verified'"/>
+                            <field name="country_code" widget="selection" readonly="verification_status == 'verified'"/> 
+                            
+                            <field name="state_id" readonly="verification_status == 'verified'"/>
+                            <field name="city" readonly="verification_status == 'verified'"/>
+                            <field name="zip" readonly="verification_status == 'verified'"/>
+                    
+                            <field name="is_india" invisible="1"/>  
+
+                            <label for="vat" string="GST Number" invisible="not is_india"/>
+                            <div invisible="not is_india">
+                                <field name="vat" class="oe_inline" readonly="verification_status == 'verified'" style="width: 220px;"/>
+                                <button name="action_verify_gst" type="object" string="Verify" class="btn-primary oe_inline" style="margin-left: 15px;"/>
+                                <button name="action_manual_verify" type="object" string="Manual Verify" class="btn-secondary oe_inline" style="margin-left: 10px;" invisible="verification_status == 'verified'"/>
+                            </div>
+                            
+                            <label for="ein_number" string="Company Registered Number" invisible="is_india"/>
+                            <div invisible="is_india">
+                                <field name="ein_number" class="oe_inline" readonly="verification_status == 'verified'" style="width: 220px;"/>
+                                <button name="action_verify_ein" type="object" string="Verify" class="btn-primary oe_inline" style="margin-left: 15px;"/>
+                                <button name="action_manual_verify" type="object" string="Manual Verify" class="btn-secondary oe_inline" style="margin-left: 10px;" invisible="verification_status == 'verified'"/>
+                            </div>                                                     
+                                                    
+                            <field name="gst_treatment" invisible="not is_india" readonly="verification_status == 'verified'"/>                            
+                            <field name="location" readonly="verification_status == 'verified'"/>
+                        </group>
+                        
+                        <group>
+                            <field name="user_id" widget="many2one_avatar_user" options="{'no_open': True}"/>
+
+                            <field name="quotation_date" readonly="verification_status == 'verified'"/>
+                            <field name="pricelist_id" readonly="verification_status == 'verified'"/>
+                            <field name="shipping_address" readonly="verification_status == 'verified'"/>
+                            <field name="other_address" readonly="verification_status == 'verified'"/>
+                            
+                            <label for="pan_gst_document"/>
+                            <div>
+                                <field name="pan_gst_document" filename="pan_gst_filename" options="{'accepted_file_extensions': '.pdf'}"/>
+                                <div class="text-muted" style="font-size: 12px; margin-top: 4px;">Will accept the document in PDF format only.</div>
+                            </div>
+                            <field name="pan_gst_filename" invisible="1"/>
+                          
+                            <field name="verification_status" widget="badge" decoration-success="verification_status == 'verified'" decoration-danger="verification_status == 'not_verified'" readonly="1" force_save="1"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_customer_onboarding_search" model="ir.ui.view">
+        <field name="name">customer.onboarding.search</field>
+        <field name="model">customer.onboarding</field>
+        <field name="arch" type="xml">
+            <search string="Search Onboarding">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="user_id"/> 
+                <field name="vat"/>
+                <field name="mobile_number"/>
+                <group expand="0" string="Group By">
+                    <filter string="Sales Person" name="by_owner" context="{'group_by': 'user_id'}"/>
+                    <filter string="Location" name="by_location" context="{'group_by': 'location'}"/>
+                    <filter string="Gst Treatment" name="by_gst_treatment" context="{'group_by': 'gst_treatment'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_customer_onboarding" model="ir.actions.act_window">
+        <field name="name">Onboarding</field>
+        <field name="res_model">customer.onboarding</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_customer_onboarding_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new Onboarding record
+            </p>
+        </field>
+    </record>
+
+</odoo>

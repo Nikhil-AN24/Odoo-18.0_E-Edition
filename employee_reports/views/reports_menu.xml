@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- === SALES — ASSIGNED === -->
+    <record id="view_res_partner_list_assigned_reports" model="ir.ui.view">
+        <field name="name">res.partner.list.assigned.reports</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <list string="Assigned"
+                  class="o_reports_list"
+                  create="0"
+                  delete="0">
+                <header>
+                    <button name="action_download_data"
+                            string="Download Data"
+                            type="object"
+                            display="always"/>
+                </header>
+                <field name="name"               string="Name"/>
+                <field name="phone"              string="Phone"/>
+                <field name="email"              string="Email"/>
+                <field name="user_id"            string="Salesperson" widget="many2one_avatar_user"/>
+                <field name="city"               string="City"/>
+                <field name="country_id"         string="Country"/>
+                <field name="stage_id"           string="Stage"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- === SALES — NOT ASSIGNED === -->
+    <record id="view_res_partner_list_not_assigned_reports" model="ir.ui.view">
+        <field name="name">res.partner.list.not.assigned.reports</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <list string="Not Assigned"
+                  class="o_reports_list"
+                  create="0"
+                  delete="0">
+                <header>
+                    <button name="action_download_data"
+                            string="Download Data"
+                            type="object"
+                            display="always"/>
+                </header>
+                <field name="name"               string="Name"/>
+                <field name="phone"              string="Phone"/>
+                <field name="email"              string="Email"/>
+                <field name="user_id"            string="Salesperson" widget="many2one_avatar_user"/>
+                <field name="city"               string="City"/>
+                <field name="country_id"         string="Country"/>
+                <field name="stage_id"           string="Stage"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- === PROCUREMENT — CUSTOMER RFQ LIST VIEW (inherited) === -->
+    <record id="view_customer_rfq_list_reports_new" model="ir.ui.view">
+        <field name="name">customer.rfq.list.reports</field>
+        <field name="model">customer.rfq</field>
+        <field name="arch" type="xml">
+            <list string="Customer RFQ" class="o_reports_list" create="0" delete="0">
+                <header>
+                    <button name="action_download_data" string="Download Data" type="object" display="always"/>
+                </header>
+                <field name="name" string="Reference"/>
+                <field name="owner_id" string="Owner"/>
+                <field name="partner_id" string="Customer Name"/>
+                <field name="state" string="Status"/>
+                <field name="create_date" string="CRFQ Created"/>
+                <field name="sent_to_procurement_dt" string="Sent to Procurement"/>
+                <field name="sent_back_to_sales_dt" string="Sent back to Sales"/>
+                <field name="time_difference" string="Time Difference"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_customer_rfq_form_reports_class" model="ir.ui.view">
+        <field name="name">customer.rfq.form.reports.class</field>
+        <field name="model">customer.rfq</field>
+        <field name="inherit_id" ref="contact_stage_bar.view_customer_rfq_form"/>
+        <field name="mode">primary</field>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="attributes">
+                <attribute name="class">o_reports_form</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- === EMPLOYEES === -->
+    <record id="view_res_users_list_employees" model="ir.ui.view">
+        <field name="name">res.users.list.employees.reports</field>
+        <field name="model">res.users</field>
+        <field name="arch" type="xml">
+            <list string="Employees"
+                  class="o_reports_list"
+                  create="0"
+                  delete="0">
+                <header>
+                    <button name="action_download_data"
+                            string="Download Data"
+                            type="object"
+                            display="always"/>
+                </header>
+                <field name="name"  string="Name"/>
+                <field name="login" string="Login"/>
+                <field name="email" string="Email"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Sales → Assigned -->
+        <!--  state != 'draft' excludes Draft Orders from the view. -->
+    <record id="action_reports_sales_assigned" model="ir.actions.act_window">
+        <field name="name">Assigned</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('user_id', '!=', False)]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_res_partner_list_assigned_reports')})]"/>
+        <field name="context">{
+            'create': False,
+            'no_breadcrumbs': True,
+            'no_action_menu': True,
+            'report_type': 'assigned'
+        }</field>
+    </record>
+
+    <!-- Sales → Not Assigned -->
+        <!-- state != 'draft' excludes Draft Orders from the view. -->
+    <record id="action_reports_sales_not_assigned" model="ir.actions.act_window">
+        <field name="name">Not Assigned</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('user_id', '=', False)]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_res_partner_list_not_assigned_reports')})]"/>
+        <field name="context">{
+            'create': False,
+            'no_breadcrumbs': True,
+            'no_action_menu': True,
+            'report_type': 'not_assigned'
+        }</field>
+    </record>
+
+    <!-- Procurement → Customer RFQ -->
+        <!-- state != 'draft' excludes Draft records from the view. -->
+    <record id="action_reports_procurement_customer_rfq" model="ir.actions.act_window">
+        <field name="name">Customer RFQ</field>
+        <field name="res_model">customer.rfq</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('state', '!=', 'draft')]</field>
+        <field name="search_view_id" ref="contact_stage_bar.view_customer_rfq_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_customer_rfq_list_reports_new')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_customer_rfq_form_reports_class')})]"/>
+        <field name="context">{
+            'create': False,
+            'no_breadcrumbs': True,
+            'no_action_menu': True,
+            'report_type': 'procurement'
+        }</field>
+    </record>
+
+    <!-- Employees action -->
+    <record id="action_reports_employees" model="ir.actions.act_window">
+        <field name="name">Employees Reports</field>
+        <field name="res_model">res.users</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_res_users_list_employees')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_users_form_reports_class')})]"/>
+        <field name="context">{
+            'create': False,
+            'no_breadcrumbs': True,
+            'no_action_menu': True
+        }</field>
+    </record>
+
+
+    <!-- === MENU ITEMS === -->
+    <menuitem id="menu_reports_root"
+              name="Reports"
+              web_icon="employee_reports,static/description/icon.png"
+              groups="employee_reports.group_reports_user"
+              sequence="100"/>
+
+    <menuitem id="menu_reports_sales_folder"
+              name="Sales"
+              parent="menu_reports_root"
+              sequence="10"/>
+
+    <record id="menu_reports_sales_folder" model="ir.ui.menu">
+        <field name="action" eval="False"/>
+    </record>
+
+    <menuitem id="menu_reports_sales_assigned"
+              name="Assigned"
+              parent="menu_reports_sales_folder"
+              action="action_reports_sales_assigned"
+              sequence="10"/>
+
+    <menuitem id="menu_reports_sales_not_assigned"
+              name="Not Assigned"
+              parent="menu_reports_sales_folder"
+              action="action_reports_sales_not_assigned"
+              sequence="20"/>
+
+    <!-- Procurement folder -->
+    <menuitem id="menu_reports_procurement"
+              name="Procurement"
+              parent="menu_reports_root"
+              sequence="20"/>
+    <record id="menu_reports_procurement" model="ir.ui.menu">
+        <field name="action" eval="False"/>
+    </record>
+
+    <!-- Procurement → Customer RFQ -->
+    <menuitem id="menu_reports_procurement_customer_rfq"
+              name="Customer RFQ"
+              parent="menu_reports_procurement"
+              action="action_reports_procurement_customer_rfq"
+              sequence="10"/>
+
+    <!-- Employees menu hidden; kept so it can be re-enabled by uncommenting
+    <menuitem id="menu_reports_employees"
+              name="Employees"
+              parent="menu_reports_root"
+              action="action_reports_employees"
+              sequence="30"/> -->
+
+</odoo>

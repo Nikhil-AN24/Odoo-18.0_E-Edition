@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!-- list View -->
+    <record id="view_augmont_api_retry_tree" model="ir.ui.view">
+        <field name="name">augmont.api.retry.tree</field>
+        <field name="model">augmont.api.retry</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sdk_augmont_number"/>
+                <field name="order_id"/>
+                <field name="order_number"/>
+                <field name="old_status"/>
+                <field name="new_status"/>
+                <field name="status_code"  decoration-success="status_code == '200' and state == 'success'"  decoration-danger="status_code in ('400','401','403','404','500')"/>
+                <field name="state" decoration-warning="state == 'pending'"/>
+                <field name="create_date"/>
+                <field name="updated_on"/>
+            </list>
+        </field>
+    </record>
+
+
+    <!-- Form View -->
+    <record id="view_augmont_api_retry_form" model="ir.ui.view">
+        <field name="name">augmont.api.retry.form</field>
+        <field name="model">augmont.api.retry</field>
+        <field name="arch" type="xml">
+            <form string="Augmont Retry Details">
+                <sheet>
+                    <group>
+                        <field name="sdk_augmont_number"/>
+                        <field name="order_id"/>
+                        <field name="order_line_id"/>
+                        <field name="order_number"/>
+                        <field name="old_status"/>
+                        <field name="new_status"/>
+                        <field name="status_code"/>
+                        <field name="state"/>
+                        <field name="error_message"/>
+                        <field name="payload_json" widget="text"/>
+                        <field name="headers_json" widget="text"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+        <!-- Action -->
+        <record id="action_augmont_retry" model="ir.actions.act_window">
+            <field name="name">Augmont Retry Logs</field>
+            <field name="res_model">augmont.api.retry</field>
+            <field name="view_mode">list,form</field>
+            <field name="help">These records store failed Augmont API attempts.</field>
+        </record>
+
+       <!-- Menu -->
+       <menuitem id="menu_augmont_root" name="Augmont API"  sequence="98"/>
+
+       <menuitem id="menu_augmont_retry" name="Augmont Retry Logs" parent="menu_augmont_root" action="action_augmont_retry" sequence="10"/>
+
+
+
+      
+
+</odoo>

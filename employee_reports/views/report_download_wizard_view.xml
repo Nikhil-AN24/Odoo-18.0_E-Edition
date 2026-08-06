@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_report_download_wizard_form" model="ir.ui.view">
+        <field name="name">report.download.wizard.form</field>
+        <field name="model">report.download.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Download Report">
+                <group>
+                    <group string="Select Date Range">
+                        <field name="date_from" string="Start Date" widget="date" required="1"/>
+                        <field name="date_to"   string="End Date"   widget="date" required="1"/>
+                    </group>
+                    <!-- Hidden context fields — not shown to user -->
+                    <field name="source_model" invisible="1"/>
+                    <field name="report_type"  invisible="1"/>
+                </group>
+                <footer>
+                    <button name="action_confirm"
+                            string="Download"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancel"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

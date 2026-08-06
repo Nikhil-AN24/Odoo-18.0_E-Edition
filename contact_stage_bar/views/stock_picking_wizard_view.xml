@@ -1,0 +1,74 @@
+<odoo>
+
+    <record id="view_stock_picking_wizard_form" model="ir.ui.view">
+        <field name="name">stock.picking.wizard.form</field>
+        <field name="model">stock.picking.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Dispatch">
+                <group>
+                    <field name="tracker_name"/>
+                    <field name="tracking_number"/>
+                    <field name="tracking_url" widget="url"/>
+                </group>
+                <footer>
+                    <button string="Save" type="object" name="action_apply" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_stock_picking_wizard" model="ir.actions.act_window">
+        <field name="name">Dispatch</field>
+        <field name="res_model">stock.picking.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <record id="view_picking_form_inherit_custom" model="ir.ui.view">
+        <field name="name">stock.picking.form.inherit.custom</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <header position="inside">
+                <button name="action_print_product_labels"
+                        type="object"
+                        string="Print Label"
+                        class="btn-primary"
+                        invisible="location_id != 10 or state not in ['assigned']"/>
+            </header>
+            <header position="inside">
+
+                <button name="%(action_stock_picking_wizard)d"
+                        string="Dispatch"
+                        type="action"
+                        class="btn-primary"
+                        invisible="state != 'done' or location_dest_id != 5 or tracking_number"/>
+                
+                <button name="action_delivered"
+                        string="Delivered"
+                        type="object"
+                        class="btn-success"
+                        invisible="state != 'done' or not tracking_number or not tracker_name or is_order_delivered" 
+                        confirm="Are you sure to Deliver order?"/>
+
+                <button name="action_order_completed"
+                        string="Order Completed"
+                        type="object"
+                        class="btn-success"
+                        invisible="state != 'done' or not tracking_number or not tracker_name or is_order_completed or not is_order_delivered"
+                        confirm="Are you sure to complete order?"/>
+            </header>
+
+            <xpath expr="//button[@name='button_validate']" position="before">
+                <button name="print_report_1"
+                        string="Delivery Challan"
+                        type="object"
+                        class="btn-primary"
+                        invisible="state not in ['pack'] or not is_packed or location_dest_id != 5"/>
+            </xpath>
+
+        </field>
+    </record>
+
+</odoo>

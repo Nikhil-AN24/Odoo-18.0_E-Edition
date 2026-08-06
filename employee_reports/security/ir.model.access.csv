@@ -1,0 +1,9 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_reports_res_users,res.users,base.model_res_users,base.group_user,1,1,1,1
+access_report_download_wizard,report.download.wizard,model_report_download_wizard,base.group_user,1,1,1,1
+access_reports_customer_rfq,customer.rfq,contact_stage_bar.model_customer_rfq,employee_reports.group_reports_user,1,0,0,0
+access_reports_customer_rfq_shape,customer.rfq.shape,contact_stage_bar.model_customer_rfq_shape,employee_reports.group_reports_user,1,0,0,0
+access_reports_sale_order,sale.order,sale.model_sale_order,employee_reports.group_reports_user,1,0,0,0
+access_reports_sale_order_line,sale.order.line,sale.model_sale_order_line,employee_reports.group_reports_user,1,0,0,0
+access_reports_res_users_group,res.users,base.model_res_users,employee_reports.group_reports_user,1,0,0,0
+access_reports_download_wizard,report.download.wizard,model_report_download_wizard,employee_reports.group_reports_user,1,1,1,1

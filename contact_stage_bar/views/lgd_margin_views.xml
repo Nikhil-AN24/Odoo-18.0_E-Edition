@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ── FORM VIEW : ADMIN (editable) ────────────────────────────── -->
+    <record id="view_lgd_margin_form_admin" model="ir.ui.view">
+        <field name="name">lgd.margin.form.admin</field>
+        <field name="model">lgd.margin</field>
+        <field name="arch" type="xml">
+            <form string="Margin Configuration">
+                <sheet>
+                    <separator string="Carat – Margin Table"/>
+                    <field name="line_ids">
+                        <list string="Carat Margin Lines" editable="bottom">
+                            <field name="carat_range" string="Carat"/>
+                            <field
+                                name="percentage"
+                                string="Percentage"
+                                widget="float"
+                                options="{'type': 'number'}"
+                            />
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+
+    <!-- ── LIST VIEW (admin view-switcher only) ────────────────────── -->
+    <record id="view_lgd_margin_list" model="ir.ui.view">
+        <field name="name">lgd.margin.list</field>
+        <field name="model">lgd.margin</field>
+        <field name="arch" type="xml">
+            <list string="Margins" create="false">
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+
+    <!--
+        Bound to lgd.margin — admin has perm_write=1 — framework check passes.
+        Calls action_open_singleton() which returns the editable form with
+        res_id set so admin always lands on saved data.
+    -->
+    <record id="action_lgd_margin_admin_server" model="ir.actions.server">
+        <field name="name">Margins</field>
+        <field name="model_id" ref="model_lgd_margin"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_open_singleton()</field>
+    </record>
+
+
+    <menuitem
+        id="menu_lgd_margin_admin"
+        name="Margins"
+        parent="custom_sale_order.menu_custom_sale_root"
+        action="action_lgd_margin_admin_server"
+        sequence="50"
+        groups="base.group_system"
+    />
+
+    <function model="lgd.margin" name="_setup_singleton"/>
+
+</odoo>

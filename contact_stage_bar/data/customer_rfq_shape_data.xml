@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <record id="shape_round" model="customer.rfq.shape">
+            <field name="name">Round</field>
+            <field name="sequence">1</field>
+        </record>
+        <record id="shape_oval" model="customer.rfq.shape">
+            <field name="name">Oval</field>
+            <field name="sequence">2</field>
+        </record>
+        <record id="shape_pear" model="customer.rfq.shape">
+            <field name="name">Pear</field>
+            <field name="sequence">3</field>
+        </record>
+        <record id="shape_radiant" model="customer.rfq.shape">
+            <field name="name">Radiant</field>
+            <field name="sequence">4</field>
+        </record>
+        <record id="shape_cushion" model="customer.rfq.shape">
+            <field name="name">Cushion</field>
+            <field name="sequence">5</field>
+        </record>
+        <record id="shape_sq_cushion" model="customer.rfq.shape">
+            <field name="name">Sq. cushion</field>
+            <field name="sequence">6</field>
+        </record>
+        <record id="shape_emerald" model="customer.rfq.shape">
+            <field name="name">Emerald</field>
+            <field name="sequence">7</field>
+        </record>
+        <record id="shape_heart" model="customer.rfq.shape">
+            <field name="name">Heart</field>
+            <field name="sequence">8</field>
+        </record>
+        <record id="shape_princess" model="customer.rfq.shape">
+            <field name="name">Princess</field>
+            <field name="sequence">9</field>
+        </record>
+        <record id="shape_marquise" model="customer.rfq.shape">
+            <field name="name">Marquise</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="shape_asscher" model="customer.rfq.shape">
+            <field name="name">Asscher</field>
+            <field name="sequence">11</field>
+        </record>
+        <record id="shape_portuguese" model="customer.rfq.shape">
+            <field name="name">Portuguese</field>
+            <field name="sequence">12</field>
+        </record>
+        <record id="shape_euro_cut" model="customer.rfq.shape">
+            <field name="name">Euro cut</field>
+            <field name="sequence">13</field>
+        </record>
+        <record id="shape_old_miner" model="customer.rfq.shape">
+            <field name="name">Old Miner</field>
+            <field name="sequence">14</field>
+        </record>
+        <record id="shape_square" model="customer.rfq.shape">
+            <field name="name">Square</field>
+            <field name="sequence">15</field>
+        </record>
+        <record id="shape_star_step_cut" model="customer.rfq.shape">
+            <field name="name">Star step cut</field>
+            <field name="sequence">16</field>
+        </record>
+        <record id="shape_rose_cut" model="customer.rfq.shape">
+            <field name="name">Rose cut</field>
+            <field name="sequence">17</field>
+        </record>
+        <record id="shape_shield" model="customer.rfq.shape">
+            <field name="name">Shield</field>
+            <field name="sequence">18</field>
+        </record>
+        <record id="shape_half_moon" model="customer.rfq.shape">
+            <field name="name">Half moon</field>
+            <field name="sequence">19</field>
+        </record>
+        <record id="shape_briolette" model="customer.rfq.shape">
+            <field name="name">Briolette</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="shape_flanders" model="customer.rfq.shape">
+            <field name="name">Flanders</field>
+            <field name="sequence">21</field>
+        </record>
+        <record id="shape_tapered_baguette" model="customer.rfq.shape">
+            <field name="name">Tapered baguette</field>
+            <field name="sequence">22</field>
+        </record>
+        <record id="shape_tapered_bullet" model="customer.rfq.shape">
+            <field name="name">Tapered bullet</field>
+            <field name="sequence">23</field>
+        </record>
+        <record id="shape_pentagon" model="customer.rfq.shape">
+            <field name="name">Pentagon</field>
+            <field name="sequence">24</field>
+        </record>
+        <record id="shape_hexagon" model="customer.rfq.shape">
+            <field name="name">Hexagon</field>
+            <field name="sequence">25</field>
+        </record>
+        <record id="shape_triangular" model="customer.rfq.shape">
+            <field name="name">Triangular</field>
+            <field name="sequence">26</field>
+        </record>
+        <record id="shape_trilliant" model="customer.rfq.shape">
+            <field name="name">Trilliant</field>
+            <field name="sequence">27</field>
+        </record>
+        <record id="shape_bullet" model="customer.rfq.shape">
+            <field name="name">Bullet</field>
+            <field name="sequence">28</field>
+        </record>
+        <record id="shape_kite" model="customer.rfq.shape">
+            <field name="name">Kite</field>
+            <field name="sequence">29</field>
+        </record>
+        <record id="shape_calf" model="customer.rfq.shape">
+            <field name="name">Calf</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="shape_lozenge" model="customer.rfq.shape">
+            <field name="name">Lozenge</field>
+            <field name="sequence">31</field>
+        </record>
+        <record id="shape_octagon" model="customer.rfq.shape">
+            <field name="name">Octagon</field>
+            <field name="sequence">32</field>
+        </record>
+        <record id="shape_baguette" model="customer.rfq.shape">
+            <field name="name">Baguette</field>
+            <field name="sequence">33</field>
+        </record>
+        <record id="shape_trapezoid" model="customer.rfq.shape">
+            <field name="name">Trapezoid</field>
+            <field name="sequence">34</field>
+        </record>
+        <record id="shape_other" model="customer.rfq.shape">
+            <field name="name">Other</field>
+            <field name="sequence">35</field>
+        </record>
+        <record id="shape_oval_cut" model="customer.rfq.shape">
+            <field name="name">Oval cut</field>
+            <field name="sequence">36</field>
+        </record>
+        <record id="shape_alphabets" model="customer.rfq.shape">
+            <field name="name">Alphabets</field>
+            <field name="sequence">37</field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Main Menu -->
+<menuitem id="menu_custom_sale_root"
+    name="Offline order"
+    sequence="5"
+    groups="contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement"
+    web_icon="custom_sale_order,static/description/icon.png"/>
+
+<!-- Orders Menu -->
+<menuitem id="menu_custom_sale_orders"
+    name="Orders"
+    parent="menu_custom_sale_root"
+    sequence="1"/>
+
+<!-- Custom Sale Orders Menu Item -->
+<menuitem id="menu_custom_sale_order_action"
+    name="Offline Orders"
+    parent="menu_custom_sale_orders"
+    action="action_custom_sale_orders"
+    sequence="1"/>
+</odoo>

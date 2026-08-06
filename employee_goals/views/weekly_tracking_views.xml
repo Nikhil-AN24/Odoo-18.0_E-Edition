@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Weekly Tracking Tree View -->
+    <record id="view_goal_weekly_tracking_tree" model="ir.ui.view">
+        <field name="name">goal.weekly.tracking.list</field>
+        <field name="model">goal.weekly.tracking</field>
+        <field name="arch" type="xml">
+            <list string="Weekly Tracking"
+                  decoration-success="status == 'completed'"
+                  decoration-danger="status == 'blocked'"
+                  decoration-warning="status == 'at_risk'">
+                <field name="week_number"/>
+                <field name="week_start_date"/>
+                <field name="week_end_date"/>
+                <field name="milestone_id"/>
+                <field name="employee_id"/>
+                <field name="weekly_progress" widget="progressbar"/>
+                <field name="total_hours_spent"/>
+                <field name="daily_count"/>
+                <field name="status" widget="badge"
+                       decoration-success="status == 'completed'"
+                       decoration-danger="status == 'blocked'"
+                       decoration-warning="status == 'at_risk'"
+                       decoration-info="status == 'on_track'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Weekly Tracking Form View -->
+    <record id="view_goal_weekly_tracking_form" model="ir.ui.view">
+        <field name="name">goal.weekly.tracking.form</field>
+        <field name="model">goal.weekly.tracking</field>
+        <field name="arch" type="xml">
+            <form string="Weekly Tracking">
+                <header>
+                    <field name="status" widget="statusbar"
+                           statusbar_visible="on_track,at_risk,blocked,completed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="milestone_id" required="1"/>
+                            <field name="goal_id"/>
+                            <field name="employee_id"/>
+                        </group>
+                        <group>
+                            <field name="week_start_date" required="1"/>
+                            <field name="week_end_date" required="1"/>
+                            <field name="week_number"/>
+                            <field name="weekly_progress" widget="progressbar"/>
+                            <field name="total_hours_spent"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Daily Progress" name="daily_progress">
+                            <field name="daily_tracking_ids">
+                                <list create="0" delete="0">
+                                    <field name="date"/>
+                                    <field name="work_done"/>
+                                    <field name="progress_percentage" widget="progressbar"/>
+                                    <field name="hours_spent"/>
+                                    <field name="status" widget="badge"/>
+                                </list>
+                            </field>
+                            <group>
+                                <field name="daily_count" string="Total Daily Updates"/>
+                            </group>
+                        </page>
+
+                        <page string="Weekly Summary" name="summary">
+                            <group>
+                                <field name="weekly_summary" widget="html"/>
+                            </group>
+                            <group>
+                                <group>
+                                    <field name="achievements" widget="text"/>
+                                </group>
+                                <group>
+                                    <field name="challenges" widget="text"/>
+                                </group>
+                            </group>
+                            <group>
+                                <field name="next_week_plan" widget="text"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Weekly Tracking Kanban View -->
+    <record id="view_goal_weekly_tracking_kanban" model="ir.ui.view">
+        <field name="name">goal.weekly.tracking.kanban</field>
+        <field name="model">goal.weekly.tracking</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="status" class="o_kanban_small_column">
+                <field name="milestone_id"/>
+                <field name="week_start_date"/>
+                <field name="week_end_date"/>
+                <field name="weekly_progress"/>
+                <field name="status"/>
+                <field name="daily_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        Week <field name="week_number"/> - <field name="milestone_id"/>
+                                    </strong>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div>
+                                    <field name="week_start_date"/> - <field name="week_end_date"/>
+                                </div>
+                                <div class="mt-2">
+                                    <field name="weekly_progress" widget="progressbar"/>
+                                </div>
+                                <div class="mt-1">
+                                    Daily Updates: <field name="daily_count"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Weekly Tracking Search View -->
+    <record id="view_goal_weekly_tracking_search" model="ir.ui.view">
+        <field name="name">goal.weekly.tracking.search</field>
+        <field name="model">goal.weekly.tracking</field>
+        <field name="arch" type="xml">
+            <search string="Weekly Tracking">
+                <field name="milestone_id"/>
+                <field name="goal_id"/>
+                <field name="employee_id"/>
+                <filter string="On Track" name="on_track" domain="[('status','=','on_track')]"/>
+                <filter string="At Risk" name="at_risk" domain="[('status','=','at_risk')]"/>
+                <filter string="Blocked" name="blocked" domain="[('status','=','blocked')]"/>
+                <filter string="Completed" name="completed" domain="[('status','=','completed')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Milestone" name="group_milestone" context="{'group_by':'milestone_id'}"/>
+                    <filter string="Goal" name="group_goal" context="{'group_by':'goal_id'}"/>
+                    <filter string="Employee" name="group_employee" context="{'group_by':'employee_id'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by':'status'}"/>
+                    <filter string="Week" name="group_week" context="{'group_by':'week_number'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Weekly Tracking Action -->
+    <record id="action_goal_weekly_tracking" model="ir.actions.act_window">
+        <field name="name">Weekly Tracking</field>
+        <field name="res_model">goal.weekly.tracking</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="search_view_id" ref="view_goal_weekly_tracking_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No weekly tracking records yet!
+            </p>
+            <p>
+                Weekly tracking records are automatically created from daily progress updates.
+            </p>
+        </field>
+    </record>
+
+</odoo>

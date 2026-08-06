@@ -1,0 +1,44 @@
+ <odoo>
+ <record id="view_partner_stage_tree" model="ir.ui.view">
+        <field name="name">res.partner.stage.list</field>
+        <field name="model">res.partner.stage</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence"/>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_partner_stage_form" model="ir.ui.view">
+        <field name="name">res.partner.stage.form</field>
+        <field name="model">res.partner.stage</field>
+        <field name="arch" type="xml">
+            <form string="Partner Stage">
+                <sheet>
+                    <group>
+                        <field name="sequence"/>
+                        <field name="name"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <menuitem id="contact_stage_bar.menu_partner_stage_root"
+          name="Stages"
+          parent="contacts.res_partner_menu_config"
+          action="contact_stage_bar.action_partner_stage"
+          sequence="50"/>
+
+    <record id="action_partner_stage" model="ir.actions.act_window">
+        <field name="name">Partner Stages</field>
+        <field name="res_model">res.partner.stage</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p>Manage stages for Contacts</p>
+        </field>
+    </record>
+
+    
+    </odoo>

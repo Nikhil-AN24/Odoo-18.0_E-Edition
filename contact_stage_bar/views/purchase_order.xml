@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="your_custom_view_id" model="ir.ui.view">
+        <field name="name">purchase.order.form.inherit</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="(//div[@class='oe_title']/span[@class='o_form_label'])[1]" position="replace">
+                <span class="o_form_label" invisible="state not in ('draft', 'sent')">Request for PO </span>
+            </xpath>
+
+            <xpath expr="//field[@name='currency_id']" position="after">
+                <field name="location" readonly="state != 'draft'"/>
+            </xpath>
+
+            <!-- After the Arrival (effective_date) field: Discount / Payment Terms
+                 selections + their Melee Many2many lists (shown only when Melee). -->
+            <xpath expr="//field[@name='effective_date']" position="after">
+                <!-- Discount -->
+                <field name="discount_type"/>
+                <field name="discount_melee_ids"
+                       widget="many2many_tags"
+                       invisible="discount_type != 'melee'"
+                       options="{'no_quick_create': True}"/>
+                <field name="discount_diamond_type"
+                       string="Diamond Type"
+                       invisible="discount_type != 'diamonds'"/>
+                <field name="discount_diamond_grade"
+                       string="Diamond Grade"
+                       invisible="discount_type != 'diamonds' or not discount_diamond_type"/>
+                <!-- Payment Terms -->
+                <field name="augmont_payment_terms"/>
+                <field name="payment_melee_ids"
+                       widget="many2many_tags"
+                       invisible="augmont_payment_terms != 'melee'"
+                       options="{'no_quick_create': True}"/>
+                <field name="payment_diamond_type"
+                       string="Diamond Type"
+                       invisible="augmont_payment_terms != 'diamonds'"/>
+                <field name="payment_diamond_grade"
+                       string="Diamond Grade"
+                       invisible="augmont_payment_terms != 'diamonds' or not payment_diamond_type"/>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_qty']" position="attributes">
+                <attribute name="widget">integer</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/list/field[@name='qty_received']" position="attributes">
+                <attribute name="widget">integer</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/list/field[@name='qty_invoiced']" position="attributes">
+                <attribute name="widget">integer</attribute>
+            </xpath>
+            <xpath expr="//field[@name='date_planned']" position="attributes">
+                <attribute name="readonly">state != 'draft'</attribute>
+            </xpath>
+
+            <xpath expr="(//field[@name='date_order'])[1]" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+            <xpath expr="//field[@name='date_planned']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+
+            <xpath expr="//div[@name='reminder']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='partner_ref']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']" position="attributes">
+                <attribute name="readonly">state != 'draft'</attribute>
+            </xpath>
+            <xpath expr="//field[@name='picking_type_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+
+            <!-- Hide the "Description" column (standard field 'name') in the Products list, for everyone. -->
+            <xpath expr="//field[@name='order_line']/list/field[@name='name']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="after">
+                <field name="product_display"
+                       string="Product"
+                       groups="contact_stage_bar.group_lgd_procurement"
+                       readonly="1"
+                       options="{'no_open': True}"/>
+                <field name="shapes" optional="show" readonly="1"/>
+                <field name="color" string="Colour" optional="show" readonly="1"/>
+                <field name="cut" optional="show" readonly="1"/>
+                <field name="clarity" optional="show" readonly="1"/>
+                <field name="carat_weight" string="Carat" optional="show" readonly="1"/>
+            </xpath>
+
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="phone_number"/>
+                <field name="email"/>
+                <label for="vendor_street" string="Address"/>
+                <div class="o_address_format">
+                    <field name="vendor_street" placeholder="Street..." class="o_address_street"/>
+                    <field name="vendor_street_2" placeholder="Street 2..." class="o_address_street"/>
+                    <field name="vendor_city" placeholder="City" class="o_address_city"/>
+                    <field name="vendor_state" class="o_address_state" placeholder="State" options='{"no_open": True}'/>
+                    <field name="vendor_zip" placeholder="ZIP" class="o_address_zip"/>
+                    <field name="vendor_country" placeholder="Country" class="o_address_country" options='{"no_open": True, "no_create": True}'/>
+                </div>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='taxes_id']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+                <attribute name="optional">hide</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='discount']" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+                <attribute name="optional">hide</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_subtotal']" position="attributes">
+                <attribute name="string">Total Amount</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="before">
+                <field name="custom_discount" string="Discount" optional="show"/>
+                <field name="rate_usd" string="Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show"/>
+                <field name="bank_rate" string="Bank Rate" optional="show"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
+                <field name="rupees_rate" string="Rupees Rate" readonly="1" force_save="1" optional="show"/>
+                <field name="weight" string="Weight" optional="show"/>
+            </xpath>
+
+            <xpath expr="//page[@name='purchase_delivery_invoice']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            
+            <!-- "Confirm Order" (draft_confirm / bid_confirm) keeps its native visibility
+                 in both draft and sent states, so the PO can be confirmed manually as well
+                 as through the automatic QC path in sale_order.py. -->
+
+            <!-- Hide "Send PO by Email" button — state = purchase. -->
+            <xpath expr="//button[@name='action_rfq_send'][@context=&quot;{'send_rfq':False}&quot;]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- Draft-state RFQ mail button keeps its native label ("Send by Email"). -->
+        </field>
+    </record>
+
+    <record id="view_purchase_order_kpis_tree_inherit_weight" model="ir.ui.view">
+        <field name="name">purchase.order.kpis.tree.inherit.weight</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_kpis_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list//field[@name='amount_total']" position="attributes">
+                <attribute name="string">Total Amount</attribute>
+            </xpath>
+            <xpath expr="//list//field[@name='amount_total']" position="after">
+                <field name="total_weight" optional="show"/>
+            </xpath>
+            <!-- Hide the "Buyer" column for LGD Procurement users -->
+            <xpath expr="//list//field[@name='user_id']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_purchase_order_tree_inherit_weight" model="ir.ui.view">
+        <field name="name">purchase.order.tree.inherit.weight</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list//field[@name='amount_total']" position="attributes">
+                <attribute name="string">Total Amount</attribute>
+            </xpath>
+            <xpath expr="//list//field[@name='amount_total']" position="after">
+                <field name="total_weight" optional="show"/>
+            </xpath>
+            <!-- Hide the "Buyer" column for LGD Procurement users -->
+            <xpath expr="//list//field[@name='user_id']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_purchase_order_view_tree_hide_buyer" model="ir.ui.view">
+        <field name="name">purchase.order.view.tree.hide.buyer</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_view_tree"/>
+        <field name="arch" type="xml">
+            <!-- Hide the "Buyer" column for LGD Procurement users -->
+            <xpath expr="//field[@name='user_id']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

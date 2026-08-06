@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_amplitude_config_list" model="ir.ui.view">
+        <field name="name">amplitude.config.list</field>
+        <field name="model">amplitude.config</field>
+        <field name="arch" type="xml">
+            <list string="Amplitude Configurations">
+                <field name="name"/>
+                <field name="project_id"/>
+                <field name="server_zone"/>
+                <field name="enable_analytics"/>
+                <field name="enable_heatmap"/>
+                <field name="enable_session_replay"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_amplitude_config_form" model="ir.ui.view">
+        <field name="name">amplitude.config.form</field>
+        <field name="model">amplitude.config</field>
+        <field name="arch" type="xml">
+            <form string="Amplitude Configuration">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. Amplitude (Production)"/></h1>
+                    </div>
+                    <group>
+                        <group string="Credentials">
+                            <field name="api_key" password="True"/>
+                            <field name="secret_key" password="True"/>
+                            <field name="project_id"/>
+                        </group>
+                        <group string="Connection">
+                            <field name="server_url"/>
+                            <field name="server_zone"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="Feature Toggles">
+                        <group>
+                            <field name="enable_analytics"/>
+                            <field name="enable_event_tracking"/>
+                            <field name="enable_debug"/>
+                        </group>
+                        <group>
+                            <field name="enable_heatmap"/>
+                            <field name="enable_session_replay"/>
+                            <field name="session_replay_sample_rate"
+                                   invisible="not enable_session_replay"/>
+                        </group>
+                    </group>
+                    <div class="text-muted" colspan="2">
+                        The <strong>API Key</strong> is shared with the browser SDK.
+                        The <strong>Secret Key</strong> stays on the server.
+                        Changes apply after the user reloads the web client.
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_amplitude_config" model="ir.actions.act_window">
+        <field name="name">Amplitude Configuration</field>
+        <field name="res_model">amplitude.config</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>

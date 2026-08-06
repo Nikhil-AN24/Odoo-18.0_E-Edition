@@ -1,0 +1,17 @@
+/* ── LIST VIEW: optional-columns gear inside the list <thead> ── */
+.o_reports_list .o_optional_columns_dropdown,
+.o_reports_list thead .o_optional_columns_dropdown_toggle,
+.o_reports_list .o_cp_action_menus {
+    display: none !important;
+}
+
+/* ── LIST VIEW: control panel gear (action menu cog) ── */
+.o_view_controller:has(.o_reports_list) .o_cp_action_menus {
+    display: none !important;
+}
+
+/* ── FORM VIEW: gear icon when a record is opened from our lists ── */
+.o_reports_form .o_cp_action_menus,
+.o_form_view:has(.o_reports_form) .o_cp_action_menus {
+    display: none !important;
+}

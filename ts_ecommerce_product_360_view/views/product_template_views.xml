@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="product_template_form_view_inherit_360images" model="ir.ui.view">
+        <field name="name">product.template.view.form.inherit.360images</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_only_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='options']" position="inside">
+                <span class="d-inline-flex">
+                    <field name="show_360_images"/>
+                    <label for="show_360_images"/>
+                </span>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page invisible="not show_360_images" string="360 Images">
+                    <field add-label="Add Media"
+                        name="product_images_ids"
+                        mode="kanban"
+                        class="o_website_sale_image_list"
+                        colspan="2"
+                        context="{'default_name': name}"
+                        nolabel="1"
+                        options="{'convert_to_webp': True}"
+                        widget="x2_many_media_viewer"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

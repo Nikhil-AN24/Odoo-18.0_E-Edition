@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- LIST VIEW -->
+    <record id="view_customer_rfq_list" model="ir.ui.view">
+        <field name="name">customer.rfq.list</field>
+        <field name="model">customer.rfq</field>
+        <field name="arch" type="xml">
+            <list string="Customer RFQ">
+                <field name="name"/>
+                <field name="partner_id"
+                       groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                <field name="customer_phone"
+                       groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                <field name="customer_email"
+                       groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                <field name="customer_address"
+                       groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                <field name="shape_ids" widget="many2many_tags"/>
+                <field name="carat"/>
+                <field name="color"/>
+                <field name="clarity"/>
+                <field name="size"/>
+                <field name="quantity"/>
+                <field name="price"/>
+                <!-- Show the computed Total in the list so Sales can see it at a glance -->
+                <field name="total_price" optional="show"/>
+                <field name="availability_status"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-warning="state == 'sent_to_procurement'"
+                       decoration-success="state == 'sent_back_to_sales'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- FORM VIEW -->
+    <record id="view_customer_rfq_form" model="ir.ui.view">
+        <field name="name">customer.rfq.form</field>
+        <field name="model">customer.rfq</field>
+        <field name="arch" type="xml">
+            <form string="Customer RFQ">
+                <header>
+                    <!-- Send to Procurement: visible to any logged-in user in draft state. -->                
+                    <button name="action_send_to_procurement" 
+                    string="Send to Procurement" 
+                    type="object" 
+                    class="btn-primary" 
+                    invisible="state != 'draft'"/>
+                    <!-- Send back to Sales: Procurement + Admin, in sent_to_procurement -->
+                    <button name="action_send_back_to_sales"
+                    string="Send back to Sales"
+                    type="object" class="btn-primary"
+                    invisible="state != 'sent_to_procurement'"
+                    groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+                    <!-- Create Offline Order: Sales/Admin only, after Procurement sent back -->
+                    <button name="action_create_offline_order" 
+                    string="Create Offline Order" type="object" class="btn-primary" 
+                    invisible="state != 'sent_back_to_sales'" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+
+                    <field name="state" widget="statusbar" statusbar_visible="draft,sent_to_procurement,sent_back_to_sales,offline_order_created"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+
+                            <!-- Price: visibility + readonly computed based on user group/state -->
+                            <field name="partner_id" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                            <field name="customer_phone" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                            <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                            <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                            <field name="stone_type" widget="radio" options="{'horizontal': true}"/>
+                            <field name="stone_certification_type" widget="radio" options="{'horizontal': true}" invisible="not stone_type"/>
+                            <field name="shape_ids" widget="many2many_tags" required="1" options="{'no_create': True, 'no_create_edit': True}"/>
+                            <field name="carat"/>
+                            <field name="color"/>
+                            <field name="clarity"/>
+                            <field name="size"/>
+                            <field name="quantity"/>
+                            <!-- Procurement sets whether the stone needs certification -->
+                            <field name="stone_certification" readonly="is_price_readonly" invisible="1"/>
+                        </group>
+                        <group>
+                            <!-- Hidden helper fields used for conditional rendering -->
+                            <field name="is_price_visible_for_user" invisible="1"/>
+                            <field name="is_price_readonly" invisible="1"/>
+                            <field name="currency_id" invisible="1"/>
+
+                            <!-- Price/carat: editable by Procurement, read-only for Sales (after sent back) -->
+                            <field name="price"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   invisible="not is_price_visible_for_user"
+                                   readonly="is_price_readonly"/>
+
+                            <field name="tax_ids"
+                                   widget="many2many_tags"
+                                   domain="[('type_tax_use', 'in', ['sale', 'all'])]"
+                                   invisible="not is_price_visible_for_user"
+                                   readonly="is_price_readonly"
+                                   options="{'no_create': True}"/>
+
+                            <!-- Owner: defaults to the record creator, editable so the record can be reassigned -->
+                            <field name="owner_id" string="Owner" options="{'no_create': True}"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Notes" name="notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- SEARCH VIEW -->
+    <record id="view_customer_rfq_search" model="ir.ui.view">
+        <field name="name">customer.rfq.search</field>
+        <field name="model">customer.rfq</field>
+        <field name="arch" type="xml">
+            <search string="Search Customer RFQ">
+                <field name="name"/>
+                <field name="shape_ids"/>
+                <filter string="Draft" name="draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Sent to Procurement" name="sent_to_procurement" domain="[('state', '=', 'sent_to_procurement')]"/>
+                <filter string="Sent back to Sales" name="sent_back_to_sales" domain="[('state', '=', 'sent_back_to_sales')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="by_state" context="{'group_by': 'state'}"/>
+                    <filter string="Availability" name="by_availability" context="{'group_by': 'availability_status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ACTION: Customer RFQ (Sales side) -->
+    <record id="action_customer_rfq_sales" model="ir.actions.act_window">
+        <field name="name">Customer RFQ</field>
+        <field name="res_model">customer.rfq</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_customer_rfq_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Create a new Customer RFQ</p>
+        </field>
+    </record>
+
+    <!-- ACTION: Customer Orders (Procurement side)                   -->
+    <!-- Shows only RFQs that have been sent to Procurement           -->
+    <record id="action_customer_orders_procurement" model="ir.actions.act_window">
+        <field name="name">Customer Quotations</field>
+        <field name="res_model">customer.rfq</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_customer_rfq_search"/>
+        <field name="domain">[('state', '=', 'sent_to_procurement')]</field>
+        <field name="context">{'from_customer_orders': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No customer orders sent by sales yet</p>
+        </field>
+    </record>
+
+    <!-- MENUS  -->
+    <!-- Custom 'Sales' top-level menu (recreates the UI-created menu
+         that had xml_id contact_stage_bar.menu_sales_3).
+         It points to sale.action_orders (standard Sales orders action). -->
+    <record id="action_dynamic_sales_orders" model="ir.actions.server">
+        <field name="name">Sales Orders</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[
+action_vals = dict(env.ref('sale.action_orders').sudo().read()[0])
+action_vals['id'] = env.ref('contact_stage_bar.action_dynamic_sales_orders').id
+action_vals['name'] = 'Sales'
+action_vals['display_name'] = 'Sales'
+action_vals.pop('path', None)
+action_vals.pop('xml_id', None)
+
+if env.user.has_group('base.group_system') or env.user.has_group('contact_stage_bar.group_lgd_procurement'):
+    action_vals['domain'] = []
+elif env.user.has_group('contact_stage_bar.group_lgd_sales_manager'):
+    # Manager sees ALL except Ankit and Aarav
+    action_vals['domain'] = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
+else:
+    # Standard salesperson sees ONLY their own
+    action_vals['domain'] = [('user_id', '=', env.uid)]
+
+action = action_vals
+        ]]></field>
+    </record>
+
+    <record id="menu_sales_3" model="ir.ui.menu">
+        <field name="name">Sales</field>
+        <field name="parent_id" eval="False"/>
+        <field name="sequence">2</field>
+        <field name="action" ref="contact_stage_bar.action_dynamic_sales_orders"/>
+        <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
+        <field name="active" eval="True"/>
+        <field name="groups_id" eval="[(4, ref('contact_stage_bar.group_lgd_sales')), (4, ref('base.group_system'))]"/>
+    </record>
+
+    <!-- Customer RFQ menu under the custom Sales top-level menu -->
+    <menuitem id="menu_customer_rfq_sales" name="Customer RFQ" parent="menu_sales_3" action="action_customer_rfq_sales" sequence="15" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+
+    <!-- Onboarding menu -->
+    <!-- <menuitem id="menu_onboarding_sales" name="Onboarding" parent="menu_sales_3" action="contact_stage_bar.action_customer_onboarding" sequence="21" groups="contact_stage_bar.group_lgd_sales,base.group_system"/> -->
+
+    <!-- Run on every module install/upgrade to hide the standard Sales root -->
+    <function model="ir.ui.menu" name="_reparent_customer_rfq"/>
+
+    <!-- Customer Orders menu under Purchase -->
+    <menuitem id="menu_customer_orders_procurement" name="Customer Quotations" parent="purchase.menu_purchase_root" action="action_customer_orders_procurement" sequence="-1" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+    
+    <!-- Online Orders: sale.order list inside Procurement → Orders.
+         Separate server action so the breadcrumb shows "Online Orders" instead
+         of "Sales" when accessed from Procurement. Same group-aware domain
+         logic as action_dynamic_sales_orders. -->    
+    <record id="action_dynamic_cfq_orders_procurement" model="ir.actions.server">
+        <field name="name">Online Orders</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[
+action_vals = dict(env.ref('sale.action_orders').sudo().read()[0])
+action_vals['id'] = env.ref('contact_stage_bar.action_dynamic_cfq_orders_procurement').id
+action_vals['name'] = 'Online Orders'
+action_vals['display_name'] = 'Online Orders'
+action_vals.pop('path', None)
+action_vals.pop('xml_id', None)
+
+if env.user.has_group('base.group_system'):
+    # Admin sees every CFQ Order without any restriction.
+    action_vals['domain'] = []
+
+# LGD Procurement users see ALL Online Orders EXCEPT those belonging to (Ankit & Aarav)
+elif env.user.has_group('contact_stage_bar.group_lgd_procurement'):
+    action_vals['domain'] = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
+
+elif env.user.has_group('contact_stage_bar.group_lgd_sales_manager'):
+    # Sales Manager sees ALL except Ankit and Aarav
+    action_vals['domain'] = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
+else:
+    # Standard salesperson sees ONLY their own records.
+    action_vals['domain'] = [('user_id', '=', env.uid)]
+ 
+action = action_vals
+        ]]></field>
+    </record>
+ 
+    <menuitem id="menu_cfq_orders_procurement" name="Online Orders" parent="purchase.menu_purchase_root" action="action_dynamic_cfq_orders_procurement" sequence="-2" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+</odoo>

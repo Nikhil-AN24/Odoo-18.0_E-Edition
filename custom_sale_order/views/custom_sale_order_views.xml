@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Custom Sale Order Tree View -->
+    <record id="view_custom_sale_order_tree" model="ir.ui.view">
+        <field name="name">custom.sale.order.tree</field>
+        <field name="model">custom.sale.order</field>
+        <field name="arch" type="xml">
+            <list string="Custom Sale Orders" sample="1">
+                <field name="name" decoration-bf="1"/>
+                <field name="date_order" optional="show"/>
+                <field name="partner_id"/>
+                <field name="user_id" optional="show" widget="many2one_avatar_user"/>
+                <field name="amount_total" sum="Total" widget="monetary"/>
+                <field name="currency_id" column_invisible="True"/>
+                <field name="state" optional="hide"
+                       decoration-success="state == 'confirmed'"
+                       decoration-info="state == 'draft' or state == 'sent'"
+                       widget="badge"/>
+                <field name="sale_state" widget="badge"
+                       decoration-info="sale_state in ('draft', 'sent')"
+                       decoration-success="sale_state == 'sale'"
+                       decoration-danger="sale_state == 'cancel'"/>
+                <field name="sdk_augmont_status" widget="badge"
+                       decoration-danger="sdk_augmont_status in ['Cancelled', 'QC Fail']"
+                       decoration-warning="sdk_augmont_status in ['Payment Pending', 'Not available', 'Diamond Booked', 'Order Received', 'Return of Order']"
+                       decoration-info="sdk_augmont_status in ['In QC process', 'Dispatched', 'Re - Dispatched']"
+                       decoration-success="sdk_augmont_status in ['Confirmed', 'Order Confirmed', 'Payment Completed', 'Delivered', 'Order Completed']"/>
+                <field name="sale_order_id" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Custom Sale Order Form View -->
+    <record id="view_custom_sale_order_form" model="ir.ui.view">
+        <field name="name">custom.sale.order.form</field>
+        <field name="model">custom.sale.order</field>
+        <field name="arch" type="xml">
+            <form string="Custom Sale Order">
+                <header>
+                    <!-- Legacy buttons + state — hidden for backward compat (DB still uses old state) -->
+                    <button name="action_confirm" string="Confirm" type="object" class="oe_highlight"
+                            invisible="1" groups="__export__.res_groups_49_fa649952"/>
+                    <button name="action_approve" string="Price Check" type="object" class="oe_highlight"
+                            invisible="1"/>
+                    <button name="action_open_cancel" string="Cancel" type="object"
+                            invisible="1"/>
+                    <button name="action_view_sale_order" string="View Sale Order" type="object"
+                            class="oe_highlight" invisible="1"/>
+                    <button name="action_done" string="Price Done" type="object"
+                            class="oe_highlight" groups="purchase.group_purchase_manager" invisible="1"/>
+                    <button name="action_again_price_check" string="Again Price Check" type="object"
+                            class="oe_highlight" groups="purchase.group_purchase_manager"
+                            invisible="1"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,sent,confirmed" invisible="1"/>
+
+                    <!-- New buttons — sale.order-style workflow -->
+                    <button name="action_quotation_send" string="Send"
+                            type="object" class="btn-primary"
+                            invisible="sale_state != 'draft'"/>
+                    <button name="action_confirm_offline_order" string="Confirm"
+                            type="object" class="btn-primary"
+                            invisible="sale_state not in ('draft', 'sent')"
+                            groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+                    <button name="action_cancel_offline_order" string="Cancel"
+                            type="object"
+                            invisible="sale_state == 'cancel'"/>
+                    <button name="action_set_to_quotation" string="Set to Quotation"
+                            type="object"
+                            invisible="sale_state != 'cancel'"/>
+                    <field name="sale_state" widget="statusbar"
+                           statusbar_visible="draft,sent,sale"/>
+                </header>
+                 
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_sale_order" type="object"
+                                class="oe_stat_button" icon="fa-usd"
+                                invisible="not sale_order_id">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Sale Order</span>
+                            </div>
+                        </button>
+                        <button name="action_view_customer_rfq" type="object"
+                                class="oe_stat_button" icon="fa-file-text-o"
+                                invisible="not customer_rfq_id">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Customer RFQ</span>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="partner_id" widget="res_partner_many2one"
+                                   context="{'res_partner_search_mode': 'customer', 'show_address': 1}"
+                                   options='{"always_reload": True, "no_quick_create": True}'/>
+                            <field name="shipping_address" readonly="state != 'draft'"/>
+                            <field name="billing_address" readonly="state != 'draft'"/>
+                            <field name="cancel_reason" invisible="state != 'cancel'" readonly="1"/>
+
+<!--                            <field name="gst_treatment" readonly="state != 'draft'"/>-->
+<!--                            <field name="location" readonly="state != 'draft'"/>-->
+
+<!--
+    <field name="partner_invoice_id"-->
+<!--                                   context="{'default_parent_id': partner_id}"-->
+<!--                                   options='{"no_quick_create": True}'/>-->
+<!--                            <field name="partner_shipping_id"-->
+<!--                                   context="{'default_parent_id': partner_id}"-->
+<!--                                   options='{"no_quick_create": True}'/>-->
+                        </group>
+                        <group>
+                            <field name="date_order" widget="datetime"/>
+<!--                            <field name="user_id" widget="many2one_avatar_user"/>-->
+<!--                            <field name="pricelist_id" options="{'no_create': True}"/>-->
+                            <field name="payment_term_id" options="{'no_create': True}"/>
+                            <field name="sdk_augmont_status" readonly="1"/>
+                            <field name="company_id" invisible="1"/>
+
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Order Lines" name="order_lines">
+                            <field name="order_line" widget="section_and_note_one2many" mode="tree,kanban">
+                                <list string="Custom Sale Order Lines" editable="bottom">
+<!--                                    <control>-->
+<!--                                        <create name="add_product_control" string="Add a product"/>-->
+<!--                                        <create name="add_section_control" string="Add a section"-->
+<!--                                                context="{'default_display_type': 'line_section'}"/>-->
+<!--                                        <create name="add_note_control" string="Add a note"-->
+<!--                                                context="{'default_display_type': 'line_note'}"/>-->
+<!--                                    </control>-->
+
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name" column_invisible="parent.state not in ['draft','price_done', 'to_approve']"/>
+                                    <field name="product_id"
+                                           context="{'partner_id':parent.partner_id, 'quantity':product_uom_qty, 'pricelist':parent.pricelist_id, 'company_id': parent.company_id}" column_invisible="1"/>
+                                    <field name="product_template_id" widget="selection" options="{}" readonly="1" column_invisible="parent.state == 'draft'"/>
+<!--                                    column_invisible="parent.state == 'draft'"-->
+                                    <button name="action_open_product_popup"
+                                            type="object"
+                                            icon="fa-info-circle"
+                                            title="View Product"
+                                            invisible="not product_template_id" />
+<!--                                            invisible="parent.state == 'draft'"/>-->
+
+
+                                    <field name="certificate_number" column_invisible="parent.state == 'draft'"/>
+<!--                                    <field name="draft_only" />-->
+<!--                                    <field name="vendor_sku"/>-->
+                                    <field name="lgd_stock_number" column_invisible="parent.state == 'draft'"/>
+                                    <field name="treatments" column_invisible="parent.state == 'draft'"/>
+                                    <field name="availability_status" string="Availability" column_invisible="parent.state == 'draft'"/>
+
+                                    <field name="product_uom_qty" column_invisible="True"/>
+                                    <field name="carat_weight" column_invisible="True"/>
+                                    <field name="shapes" readonly="1" column_invisible="parent.state == 'draft'"/>
+                                    <field name="color" readonly="1" column_invisible="parent.state == 'draft'"/>
+                                    <field name="clarity" readonly="1" column_invisible="parent.state == 'draft'"/>
+                                    <field name="cut" column_invisible="parent.state == 'draft'"/>
+                                    <field name="polish" column_invisible="parent.state == 'draft'"/>
+                                    <field name="symmetry" column_invisible="parent.state == 'draft'"/>
+                                    <field name="fluorescence_color" column_invisible="parent.state == 'draft'"/>
+                                    <field name="product_uom" groups="uom.group_uom" optional="show"/>
+                                    <field name="product_uom_category_id" column_invisible="True"/>
+                                    <field name="price_unit" column_invisible="parent.state == 'draft'"/>
+                                    <field name="discount" groups="product.group_discount_per_so_line" optional="show"/>
+<!--                                    <field name="tax_id" widget="many2many_tags" optional="show"/>-->
+                                    <field name="price_subtotal" widget="monetary" column_invisible="parent.state == 'draft'"/>
+                                    <field name="currency_id" column_invisible="True"/>
+                                    <field name="company_id" column_invisible="True"/>
+                                </list>
+                            </field>
+                            <group name="note_group" col="6">
+                                <group colspan="4">
+                                    <field name="note" nolabel="1"
+                                           placeholder="Setup default terms and conditions in your company settings."/>
+                                </group>
+                                <group colspan="2" invisible="state == 'draft'">
+                                    <group class="oe_subtotal_footer oe_right">
+                                        <field name="amount_untaxed" widget="monetary"
+                                               options="{'currency_field': 'currency_id'}"/>
+                                        <field name="amount_tax" widget="monetary"
+                                               options="{'currency_field': 'currency_id'}"/>
+                                        <div class="oe_subtotal_footer_separator oe_inline">
+                                            <label for="amount_total"/>
+                                        </div>
+                                        <field name="amount_total" nolabel="1" class="oe_subtotal_footer_separator"
+                                               widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                    </group>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Other Info" name="other_info">
+                            <group>
+                                <group>
+                                    <field name="sale_order_id" readonly="1"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+<!--                <div class="oe_chatter">-->
+<!--                    <field name="message_follower_ids"/>-->
+<!--                    <field name="activity_ids"/>-->
+<!--                    <field name="message_ids"/>-->
+<!--                </div>-->
+            </form>
+        </field>
+    </record>
+
+    <!-- Custom Sale Order Search View -->
+    <record id="view_custom_sale_order_filter" model="ir.ui.view">
+        <field name="name">custom.sale.order.search</field>
+        <field name="model">custom.sale.order</field>
+        <field name="arch" type="xml">
+            <search string="Search Custom Sale Order">
+                <field name="name" string="Order"/>
+                <field name="partner_id" operator="child_of"/>
+                <field name="user_id"/>
+                <filter string="My Orders" name="my_sale_orders" domain="[('user_id', '=', uid)]"/>
+                <separator/>
+                <filter string="Quotation" name="draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Quotation Sent" name="sent" domain="[('state', '=', 'sent')]"/>
+                <filter string="Confirmed" name="confirmed" domain="[('state', '=', 'confirmed')]"/>
+                <separator/>
+                <filter string="Order Date" name="order_date" date="date_order"/>
+                <group expand="0" string="Group By">
+                    <filter string="Salesperson" name="salesperson" context="{'group_by': 'user_id'}"/>
+                    <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"/>
+                    <filter string="Order Date" name="order_month" context="{'group_by': 'date_order'}"/>
+                    <filter string="Status" name="status" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Custom Sale Order Action -->
+    <record id="action_custom_sale_orders" model="ir.actions.act_window">
+        <field name="name">Offline Orders</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">custom.sale.order</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_my_sale_orders': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new Custom Sale Order
+            </p>
+            <p>
+                Use this module to create custom quotations that will generate standard sale orders when confirmed.
+            </p>
+        </field>
+    </record>
+
+
+    <!-- Smart button on Customer RFQ → the Offline Order(s) it created -->
+    <record id="view_customer_rfq_form_offline_button" model="ir.ui.view">
+        <field name="name">customer.rfq.form.offline.button</field>
+        <field name="model">customer.rfq</field>
+        <field name="inherit_id" ref="contact_stage_bar.view_customer_rfq_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@class='oe_title']" position="before">
+                <div class="oe_button_box" name="button_box">
+                    <button name="action_view_offline_orders" type="object"
+                            class="oe_stat_button" icon="fa-shopping-cart"
+                            invisible="offline_order_count == 0">
+                        <field name="offline_order_count" widget="statinfo"
+                               string="Offline Orders"/>
+                    </button>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- new optional product rename -->
+    <record id="sale_order_form_quote_rename_optional_products_page" model="ir.ui.view">
+        <field name="name">sale.order.form.quote.rename.optional.products.page</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale_management.sale_order_form_quote"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='optional_products']" position="attributes">
+                <attribute name="string">Augmount INV product</attribute>
+                <attribute name="groups">purchase.group_purchase_manager</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <data noupdate="1">
+        <record id="seq_custom_sale_order" model="ir.sequence">
+            <field name="name">Custom Sale Order</field>
+            <field name="code">custom.sale.order</field>
+            <field name="prefix">AUG-OFF-</field>
+            <field name="padding">5</field>
+            <field name="number_next">1</field>
+            <field name="number_increment">1</field>
+            <field name="implementation">standard</field>
+        </record>
+    </data>
+</odoo>

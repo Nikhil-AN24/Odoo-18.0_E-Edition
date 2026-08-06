@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_purchase_melee_value_list" model="ir.ui.view">
+        <field name="name">purchase.melee.value.list</field>
+        <field name="model">purchase.melee.value</field>
+        <field name="arch" type="xml">
+            <list string="Melee Values" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_purchase_melee_value_form" model="ir.ui.view">
+        <field name="name">purchase.melee.value.form</field>
+        <field name="model">purchase.melee.value</field>
+        <field name="arch" type="xml">
+            <form string="Melee Value">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="sequence"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_purchase_melee_value" model="ir.actions.act_window">
+        <field name="name">Melee Values</field>
+        <field name="res_model">purchase.melee.value</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Create your first Melee value</p>
+            <p>These values are selectable in the Discount / Payment Terms
+               Melee fields on Purchase Orders.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_purchase_melee_value"
+              name="Melee Values"
+              parent="purchase.menu_purchase_config"
+              action="action_purchase_melee_value"
+              sequence="90"/>
+
+</odoo>
