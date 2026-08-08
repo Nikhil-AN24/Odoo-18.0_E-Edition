@@ -25,12 +25,6 @@
         </field>
     </record>
 
-    <menuitem id="contact_stage_bar.menu_partner_stage_root"
-          name="Stages"
-          parent="contacts.res_partner_menu_config"
-          action="contact_stage_bar.action_partner_stage"
-          sequence="50"/>
-
     <record id="action_partner_stage" model="ir.actions.act_window">
         <field name="name">Partner Stages</field>
         <field name="res_model">res.partner.stage</field>
@@ -39,6 +33,12 @@
             <p>Manage stages for Contacts</p>
         </field>
     </record>
+
+    <menuitem id="contact_stage_bar.menu_partner_stage_root"
+          name="Stages"
+          parent="contacts.res_partner_menu_config"
+          action="contact_stage_bar.action_partner_stage"
+          sequence="50"/>
 
     
     </odoo>

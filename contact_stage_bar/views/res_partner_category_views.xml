@@ -23,12 +23,6 @@
         </field>
     </record>
 
-    <menuitem id="contact_stage_bar.menu_partner_category_root"
-              name="Category"
-              parent="contacts.res_partner_menu_config"
-              action="contact_stage_bar.action_partner_category"
-              sequence="50"/>
-
     <record id="action_partner_category" model="ir.actions.act_window">
         <field name="name">Partner Category</field>
         <field name="res_model">custom.category</field>
@@ -37,5 +31,11 @@
             <p>Manage Category for Contacts</p>
         </field>
     </record>
+
+    <menuitem id="contact_stage_bar.menu_partner_category_root"
+              name="Category"
+              parent="contacts.res_partner_menu_config"
+              action="contact_stage_bar.action_partner_category"
+              sequence="50"/>
 
 </odoo>

@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.1",
+    "version": "18.0.1.7.2",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -9,7 +9,7 @@
     "website": "https://www.augmont.com/",
     "depends": [
         "base", "contacts", "crm", "sale", "product", "stock", "web", "purchase",
-        "account", "mass_mailing", "hr", "hr_attendance", "hr_holidays",
+        "account", "mass_mailing", "hr", "hr_attendance", "hr_holidays", "l10n_in",
     ],
     "data": [
         'security/res_groups.xml',

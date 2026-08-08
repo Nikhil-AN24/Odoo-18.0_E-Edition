@@ -54,7 +54,7 @@
     <menuitem
         id="menu_lgd_margin_admin"
         name="Margins"
-        parent="custom_sale_order.menu_custom_sale_root"
+        parent="sale.sale_menu_root"
         action="action_lgd_margin_admin_server"
         sequence="50"
         groups="base.group_system"

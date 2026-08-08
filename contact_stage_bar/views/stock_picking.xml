@@ -7,19 +7,19 @@
         <field name="arch" type="xml">
 
             <!-- New Hide Return button -->
-            <xpath expr="//button[@name='468']" position="attributes">
+            <xpath expr="//button[@name='%(stock.act_stock_return_picking)d']" position="attributes">
                 <attribute name="invisible">True</attribute>
             </xpath>
 
             <!-- The method clears the tracking fields and reopens the dispatch
                  details wizard, so the user can re-enter Delivered By, Courier
                 Number and Tracking URL for the new delivery attempt. -->            
-            <xpath expr="(//button[@name='468' and @type='action'])[2]" position="attributes">
-                <attribute name="name">action_open_redispatch_wizard</attribute>
-                <attribute name="type">object</attribute>
-                <attribute name="string">Re-Dispatch</attribute>
-                <attribute name="invisible">not (state == 'done' and tracking_number and not is_order_completed) or is_order_delivered</attribute>
-                <attribute name="confirm">Before Re-dispatching, please update the dispatch details fields: Delivered By, Courier Number, and Tracking URL.</attribute>
+            <xpath expr="//button[@name='%(stock.act_stock_return_picking)d']" position="after">
+                <button name="action_open_redispatch_wizard"
+                        type="object"
+                        string="Re-Dispatch"
+                        invisible="not (state == 'done' and tracking_number and not is_order_completed) or is_order_delivered"
+                        confirm="Before Re-dispatching, please update the dispatch details fields: Delivered By, Courier Number, and Tracking URL."/>
             </xpath>
             
             <xpath expr="//button[@name='action_next_transfer']" position="attributes">
