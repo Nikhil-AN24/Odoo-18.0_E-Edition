@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <record model="res.partner.stage" id="open_stage">
+            <field name="name">Open</field>
+            <field name="sequence">1</field>
+        </record>
+
+        <record model="res.partner.stage" id="contacted_stage">
+            <field name="name">Contacted</field>
+            <field name="sequence">2</field>
+        </record>
+        
+        <record model="res.partner.stage" id="registered_stage">
+            <field name="name">Registered</field>
+            <field name="sequence">3</field>
+        </record>
+
+        <record model="res.partner.stage" id="converted_stage">
+            <field name="name">Converted</field>
+            <field name="sequence">4</field>
+        </record>
+
+         <!-- new groups for address field { quality , dispatch} -->
+         <record id="group_dispatch_team" model="res.groups">
+            <field name="name">Dispatch Team</field>
+            <field name="category_id" ref="base.module_category_inventory"/>
+        </record>
+
+    </data>
+</odoo>

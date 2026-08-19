@@ -1,0 +1,600 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="sale.action_quotations_with_onboarding" model="ir.actions.act_window">
+        <field name="name">Available Invoices</field>
+    </record>
+
+    <record id="sale_order_tree_cutom" model="ir.ui.view">
+        <field name="name">sale.order.list.custom.sale</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.sale_order_tree"/>
+        <field name="arch" type="xml">
+            <!-- Make list editable so Salesperson can be changed inline / in bulk -->
+            <xpath expr="//list" position="attributes">
+                <attribute name="multi_edit">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='user_id']" position="attributes">
+                <attribute name="readonly">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='name']" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </xpath>
+            <xpath expr="//field[@name='state']" position="after">
+                <field name="sdk_augmont_status" widget="badge"
+                    decoration-danger="sdk_augmont_status in ['Cancelled', 'QC Fail']"
+                    decoration-warning="sdk_augmont_status in ['Payment Pending', 'Not available', 'Diamond Booked', 'Order Received', 'Return of Order']"
+                    decoration-info="sdk_augmont_status in ['In QC process', 'Dispatched', 'Re - Dispatched']"
+                    decoration-success="sdk_augmont_status in ['Confirmed', 'Order Confirmed', 'Payment Completed', 'Delivered', 'Order Completed']"/>
+            </xpath>
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="sdk_augmont_number"/>
+                <field name="order_source" widget="badge" optional="show"
+                       decoration-info="order_source == 'website'"
+                       decoration-warning="order_source == 'offline'"/>
+            </xpath>
+             <xpath expr="//field[@name='invoice_status']" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </xpath>
+            <xpath expr="//field[@name='partner_id']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_form_inherit_payment_button" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.payment.button</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/list/control/create[@name='add_product_control']" position="replace"/>
+            <xpath expr="//field[@name='order_line']/list/control/create[@name='add_section_control']" position="replace"/>
+            <xpath expr="//field[@name='order_line']/list/control/create[@name='add_note_control']" position="replace"/>
+            <xpath expr="//field[@name='order_line']/list/control/button[@name='action_add_from_catalog']" position="replace"/>
+           
+            <!-- new  Retry Augmont API  button -->
+            <xpath expr="//header" position="inside">
+                <button name="action_retry_augmont_failed" string="Retry Augmont API" type="object" class="btn btn-secondary" invisible="1"/>
+            </xpath>
+
+            <xpath expr="//header" position="inside">
+                <button name="action_export_order_lines_csv" string="Export to Excel" type="object" class="btn-secondary" invisible="not order_line"/>
+            </xpath>
+
+            <!-- Cancel button: draft only. Marks 'Not available' lines as Cancelled. -->
+            <xpath expr="//header" position="inside">
+                <button name="action_cancel_unavailable_lines" string="Cancel" type="object"
+                        class="btn-secondary" invisible="state != 'draft'"
+                        confirm="Mark all 'Not available' order lines as Cancelled?"/>
+            </xpath>
+
+            <!-- Hide the "Other Info" notebook page for LGD Procurement users -->
+            <xpath expr="//page[@name='other_information']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+
+            <!-- Hide Send by Email button -->
+            <xpath expr="//button[@name='action_quotation_send']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- Hide Button Send by Email (Sent/Sale state) -->
+            <xpath expr="//button[@id='send_by_email']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- New Hide Set to Quotation when state = 'cancel' -->
+            <xpath expr="//header/button[@name='action_draft']" position="attributes">
+                 <attribute name="invisible">[('state', '=', 'cancel')]</attribute>
+            </xpath>
+
+            <!-- <xpath expr="//field[@name='order_line']" position="before"> -->
+            <!-- <xpath expr="//button[@name='action_quotation_send']" position="after"> -->
+                <!-- <button name="action_open_product_popup"
+                        type="object"
+                        string="Add New Product"
+                        class="btn-primary"
+                                
+                                
+                /> -->
+            <!-- <xpath expr="//field[@name='order_line']/list" position="attributes">
+                <attribute name="edit">False</attribute>
+            </xpath> -->
+            <!-- </xpath> -->  
+
+            <xpath expr="//button[@name='action_quotation_send']" position="after">
+                <button name="create_sale_payment" string="Register Payment" type="object" class="btn-primary" groups="base.group_user" invisible="1"></button>
+            </xpath>
+            
+            <xpath expr="//header" position="inside">
+                <button name="action_update_utr_to_augmont" string="Send UTR to Augmont" type="object" class="btn-secondary" invisible='1'/>
+            </xpath>
+            
+            <xpath expr="//button[@name='action_quotation_send']" position="after">
+                <button name="action_send_product_to_api" string="Product Line Send" type="object" class="btn-primary" invisible='1'></button>
+                <button name="action_update_kyc_gst" string="GST update    " type="object" class="btn-primary" invisible="1" ></button>
+            </xpath>
+            
+            <xpath expr="//div[@class='oe_button_box']" position="inside">
+                 <button name="action_view_payments" type="object" class="oe_stat_button" icon="fa-money" invisible="payment_count == 0">
+                <field name="payment_count" widget="statinfo" string="Payments"/>
+            </button>
+            </xpath>
+            
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="email" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="country_code" groups="!contact_stage_bar.group_lgd_procurement" widget="selection"/>
+
+                <field name="mobile_number" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="vat" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"/>
+                <field name="ein_number" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"/>
+                
+                <div class="o_row" groups="!contact_stage_bar.group_lgd_procurement">
+                    <label for="gst_treatment" string="Gst Treatment"/>
+                    <field name="gst_treatment" readonly="state != 'draft'"/>
+                    <button name="action_update_taxes" type="object" string=" Update Taxes" help="Recompute all taxes based on this fiscal position" class="btn-link mb-1 px-0" icon="fa-refresh" confirm="This will update all taxes based on the currently selected fiscal position." invisible="not show_update_fpos or state in ['sale', 'cancel']"/>
+                </div>
+                
+                <field name="location" readonly="state != 'draft'" required="state == 'confirm'" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="utr_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+                <field name="courier_partner_name" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+                <field name="tracking_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+                <field name="tracking_url" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+            </xpath>
+            
+            <xpath expr="//field[@name='name']" position="before">
+                <widget name="web_ribbon" title="Diamond Booked" bg_color="text-bg-info" invisible="sdk_augmont_status != 'Diamond Booked'"/>
+                <widget name="web_ribbon" title="Confirmed" bg_color="text-bg-primary" invisible="sdk_augmont_status != 'Confirmed'"/>
+                <widget name="web_ribbon" title="Order Confirmed" bg_color="text-bg-success" invisible="sdk_augmont_status != 'Order Confirmed'"/>
+                <widget name="web_ribbon" title="Confirmation Pending" bg_color="text-bg-warning" invisible="sdk_augmont_status != 'Confirmation Pending'"/>
+                <widget name="web_ribbon" title="Availability Check" bg_color="text-bg-warning" invisible="sdk_augmont_status != 'Availability Check'"/>
+                <widget name="web_ribbon" title="In QC Process" bg_color="text-bg-warning" invisible="sdk_augmont_status != 'In QC process'"/>
+                <widget name="web_ribbon" title="QC Fail" bg_color="text-bg-danger" invisible="sdk_augmont_status != 'QC Fail'"/>
+                <widget name="web_ribbon" title="Payment Pending" bg_color="text-bg-danger" invisible="sdk_augmont_status != 'Payment Pending'"/>
+                <widget name="web_ribbon" title="Payment Completed" bg_color="text-bg-success" invisible="sdk_augmont_status != 'Payment Completed'"/>
+                <widget name="web_ribbon" title="Dispatched" bg_color="text-bg-info" invisible="sdk_augmont_status != 'Dispatched'"/>
+                <widget name="web_ribbon" title="Re - Dispatched" bg_color="text-bg-info" invisible="sdk_augmont_status != 'Re - Dispatched'"/>
+                <widget name="web_ribbon" title="Delivered" bg_color="text-bg-success" invisible="sdk_augmont_status != 'Delivered'"/>
+                <widget name="web_ribbon" title="Order Completed" bg_color="text-bg-success" invisible="sdk_augmont_status != 'Order Completed'"/>
+                <widget name="web_ribbon" title="Return of Order" bg_color="text-bg-warning" invisible="sdk_augmont_status != 'Return of Order'"/>
+                <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-danger" invisible="sdk_augmont_status != 'Cancelled'"/>
+                <widget name="web_ribbon" title="Not Available" bg_color="text-bg-secondary" invisible="sdk_augmont_status != 'Not available'"/>
+            </xpath>
+            
+            <xpath expr="//field[@name='name']" position="before">
+                <field name="sdk_augmont_number" readonly="1"/>
+            </xpath>
+            <xpath expr="//field[@name='name']" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </xpath>
+            
+            <xpath expr="//field[@name='order_line']/list/field[@name='qty_delivered']" position="attributes">
+                <attribute name="widget">integer</attribute>
+                <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/list/field[@name='qty_invoiced']" position="attributes">
+                <attribute name="widget">integer</attribute>
+                <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+            </xpath>
+            
+            <xpath expr="//field[@name='order_line']/list" position="attributes">
+                <attribute name="delete">0</attribute>
+                <attribute name="create">0</attribute>
+            </xpath>
+            
+            <xpath expr="//button[@name='action_preview_sale_order']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            
+            <xpath expr="//field[@name='payment_term_id']" position="after">
+                <field name="sdk_augmont_status" readonly="1"/>
+                <field name="user_id" string="Salesperson" widget="many2one_avatar_user"/>
+                <field name="is_website" invisible="1"/>
+                <field name="all_lines_final" invisible="1"/>
+                
+                <field name="shipping_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="billing_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="shipping_charges" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
+
+                <field name="default_qc_requirements" invisible ="1"/>
+                <field name="item_notes" invisible ="1"/>
+            </xpath>
+            
+            <xpath expr="//field[@name='tax_totals']" position="before">
+                <field name="shipping_charges" string="Shipping" widget="monetary" options="{'currency_field': 'currency_id'}" invisible="shipping_charges == 0.0" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+            </xpath>
+
+            <xpath expr="//field[@name='partner_id']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+            
+            <xpath expr="//field[@name='payment_term_id']" position="attributes">
+                <attribute name="readonly">state != 'draft'</attribute>
+            </xpath>
+            
+            <xpath expr="//field[@name='order_line']" position="attributes">
+                <attribute name="readonly">state != 'draft'</attribute>
+            </xpath>
+                        
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="attributes">
+                <attribute name="widget">selection</attribute>
+                <attribute name="readonly">1</attribute>
+                <attribute name="options">{}</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="attributes">
+                <attribute name="widget">selection</attribute>
+                <attribute name="readonly">1</attribute>
+                <attribute name="options">{}</attribute>
+                <attribute name="domain">[('is_show_product', '!=', False)]</attribute>
+            </xpath>
+
+            <!-- <xpath expr="//field[@name='order_line']//field[@name='price_unit']" position="after">
+                <field name="availability_status" string="Availability" readonly="parent.state != 'draft'" required="1"/>
+                <field name="certificate" readonly="1" />
+                <field name="stock_number" readonly="1" string="Vendor SKU"/>
+                <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                <field name="shapes" readonly="1"/>
+                <field name="carat_weight" readonly="1"/>
+                <field name="color" readonly="1"/>
+                <field name="clarity" readonly="1"/>
+                <field name="vendor_id"/>
+                <field name="vendor_city"/>
+                <field name="final_price"/>
+            </xpath> -->              
+
+            <xpath expr="//field[@name='order_line']" position="before">
+                <style>
+                    th[data-name="carat_weight"],
+                    th[data-name="stock_number"],
+                    th[data-name="lgd_stock_number"],
+                    th[data-name="shapes"],
+                    th[data-name="color"],
+                    th[data-name="availability_status"],
+                    th[data-name="clarity"],
+                    th[data-name="final_price"],
+                    th[data-name="price_unit"],
+                    th[data-name="fluorescence_color"],
+                    th[data-name="vendor_id"] {
+                        width: 100px !important;
+                        max-width: 300px !important;
+                    }
+                    th[data-name="vendor_id"],
+                    th[data-name="certificate"],
+                    th[data-name="order_number"] {
+                        width: 150px !important;
+                        max-width: 300px !important;
+                    }
+                    th[data-name="product_template_id"]{
+                        width: 200px !important;
+                        max-width: 300px !important;
+                    }
+                    /* Highlight the Availability column so users see it is an editable dropdown */
+                    th[data-name="availability_status"],
+                    td[name="availability_status"] {
+                        background-color: #fff3cd !important;
+                    }
+                    .black-box .form-check-input {
+                        width: 20px;
+                        height: 20px;
+                        background-color: #000 !important;   
+                        border-color: #000 !important;       
+                    }
+                    .black-box .form-check-input:checked {
+                        background-color: #000 !important;   
+                        border-color: #000 !important;
+                    }
+                    <!-- Visually indent MELEE child parcel lines so they appear grouped below their parent MELEE summary line. -->
+                    tr.o_data_row[data-id]:has(td[name="is_melee_parent"] .o_boolean_false) {
+                        background-color: #f8f9fa !important;
+                    }
+                </style>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="before">
+                <field name="availability_status" string="Availability" groups="contact_stage_bar.group_lgd_sales" readonly="1" force_save="1"/>
+                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement"/>
+                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement" readonly="availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled'] or parent.state in ('sale', 'cancel')"/>
+                <field name="order_number" readonly="1"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="after">
+                <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
+                <field name="certificate" readonly="1"/>
+                <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="1"/>
+                <field name="stock_number" readonly="1" string="Vendor SKU"/>
+                <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
+                <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                <field name="treatments"/>
+            
+                <field name="shapes" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="color" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="clarity" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="cut" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="polish" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="symmetry" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="fluorescence_color" groups="!contact_stage_bar.group_lgd_procurement"/>
+
+                <!-- Helper invisible fields needed for conditional display -->
+                <field name="line_type"        column_invisible="True"/>
+                <field name="is_melee_parent"  column_invisible="True"/>
+
+
+                <!-- MELEE parent summary columns -->
+                <field name="melee_request_number"
+                       string="Request #"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_summary_title"
+                       string="MELEE Summary"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_treatment"
+                       string="Treatment"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_shapes"
+                       string="Shapes (MELEE)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_clarities"
+                       string="Clarities (MELEE)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_cuts"
+                       string="Cuts (MELEE)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_fancy_color"
+                       string="Fancy Color (MELEE)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <field name="melee_total_qty"
+                       string="Total Qty (Carats)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
+
+
+                <!-- MELEE child parcel columns -->
+                <field name="melee_parcel_sort_order"
+                       string="Parcel #"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_quantity"
+                       string="Pieces"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_length_mm"
+                       string="L (mm)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_width_mm"
+                       string="W (mm)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_depth_mm"
+                       string="D (mm)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_avg_carat"
+                       string="Avg ct/Stone"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_qty_carats"
+                       string="Qty (Carats)"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+
+
+                <field name="melee_parcel_price_per_carat"
+                       string="Price/Carat"
+                       readonly="1"
+                       optional="hide"
+                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='product_uom_qty']" position="replace">
+                <field name="product_uom_qty" widget="integer" readonly="1" groups="contact_stage_bar.group_lgd_sales" column_invisible="True"/>
+                <field name="product_uom_qty" widget="integer" groups="!contact_stage_bar.group_lgd_sales" column_invisible="True"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="before">
+                <field name="carat_weight" readonly="1" column_invisible="True"/>
+                <field name="vendor_per_carat_price" string="Vendor Price Per Carat" readonly="1" column_invisible="1"/>
+                <field name="final_price" string="Vendor Final Price" readonly="1" column_invisible="1"/>
+            </xpath>
+            
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="attributes">
+                <attribute name="column_invisible">True</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
+                <field name="final_price_margin" string="Final Price" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='tax_id']" position="replace">
+                <field name="tax_id" widget="many2many_tags" options="{'no_create': True}" context="{'search_view_ref': 'account.account_tax_view_search'}" domain="[('type_tax_use','=','sale'),('company_id','=',parent.company_id), ('country_id', '=', parent.tax_country_id)]" readonly="qty_invoiced &gt; 0" groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"/>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_subtotal']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+
+            <!-- {Confirm} calls action_confirm_wrapper.
+                 {Save}    calls action_save_statuses. -->
+            <xpath expr="//button[@name='action_confirm']" position="replace">
+                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" />
+                <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" groups="!contact_stage_bar.group_lgd_procurement" />
+            </xpath>
+
+            <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+
+            <!-- ─────────────────────────────────────────────────────────────
+                 PRINT INVOICE BUTTON  (conditional by Country Code field)
+                 Calls SaleOrder.action_print_invoice() in models/sale_order.py.
+                   • Country Code = India (IN)  → Augmont Tax Invoice PDF
+                   • Country Code ≠ India        → Astreylla Memo PDF
+            ───────────────────────────────────────────────────────────── -->
+            <xpath expr="//button[@name='action_confirm_wrapper']" position="after">
+                <button
+                    name="action_print_invoice"
+                    string="Print Invoice"
+                    type="object"
+                    class="btn-secondary"
+                    invisible="not sdk_augmont_number"
+                    groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_sales_manager,!contact_stage_bar.group_lgd_procurement"
+                    title="India customers: Augmont Tax Invoice. All other countries: Forever Grown Diamonds Memo."
+                />
+            </xpath>            
+
+            <!-- Hide {Cancel} button completely from the Procurement module. Only {Confirm} and {Save} should be visible. -->
+            <xpath expr="//header/button[@name='action_cancel']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            
+        </field>
+    </record>
+
+    <record id="view_order_form_hide_confirm_final" model="ir.ui.view">
+        <field name="name">sale.order.form.hide.confirm.final</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="priority">999</field>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@name='action_confirm']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_filter_augmont" model="ir.ui.view">
+        <field name="name">sale.order.search.augmont</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            <!-- Invoice Number + Vendor SKU + LGD SKU at the TOP of search -->
+                <xpath expr="//search/field[1]" position="before">
+                    <field name="sdk_augmont_number" string="Invoice Number"/>
+                    <field name="order_line" string="Vendor SKU"
+                        filter_domain="[('order_line.stock_number', 'ilike', self)]"/>
+                    <field name="order_line" string="LGD SKU"
+                        filter_domain="[('order_line.lgd_stock_number', 'ilike', self)]"/>
+                </xpath>
+                <!-- Status field + filters at end -->
+            <!-- Add new fields to the search -->
+            <xpath expr="//search" position="inside">
+                <!-- <field name="sdk_augmont_number"/> -->
+                <field name="sdk_augmont_status"/>
+                <!-- Optional filters -->
+                <filter string="Diamond Booked" name="augmont_draft" domain="[('sdk_augmont_status','=','Diamond Booked')]"/>
+                <filter string="Confirmed" name="augmont_confirmed" domain="[('sdk_augmont_status','=','confirmed')]"/>
+                <filter string="Cancelled" name="augmont_cancel" domain="[('sdk_augmont_status','=','Cancelled')]"/>
+                <filter string="Delivered" name="augmont_deliver" domain="[('sdk_augmont_status','=','Delivered')]"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_form_inherit_add_product" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.add.product</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']" position="before">
+                <button name="%(action_sale_order_add_product_wizard)d" type="action" string="Add Product" class="btn-primary"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_form_inherit_product_popup" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.product.popup</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/form//field[@name='product_id']" position="attributes">
+                <attribute name="context">{'form_view_ref': 'product.product_template_only_form_view', 'target':'new'}</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- <record id="view_order_form_inherit_add_product" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.add.product</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/form//header" position="inside">
+                <button name="action_open_product_popup"
+                        type="object"
+                        string="Add New Product"
+                        class="btn-primary"
+                        context="{'default_order_id': active_id}"
+                />
+            </xpath>
+        </field>
+    </record> -->
+      <!-- <record id="view_order_line_form_inherit_extra_fields" model="ir.ui.view">
+        <field name="name">sale.order.line.form.inherit.extra.fields</field>
+        <field name="model">sale.order.line</field>
+        <field name="inherit_id" ref="sale.view_order_line_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='product_id']" position="after">
+                <field name="availability_status" string="Availability"
+                       class="black-box"
+                       readonly="parent.state != 'draft'"
+                       required="1"/>
+                <field name="certificate" readonly="1"/>
+                <field name="stock_number" readonly="1" string="Vendor SKU"/>
+                <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                <field name="shapes" readonly="1"/>
+                <field name="carat_weight" readonly="1"/>
+                <field name="color" readonly="1"/>
+                <field name="clarity" readonly="1"/>
+                <field name="vendor_id"/>
+                <field name="vendor_city"/>
+                <field name="final_price"/>
+            </xpath>
+        </field>
+    </record> -->    
+
+</odoo>

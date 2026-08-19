@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="ts_ecommerce_product_360_view.product" inherit_id="website_sale.product" name="Website 360 degree View">
+        <xpath expr="//div[@id='wrap']" position="before">
+            <t t-set="product_images_ids" t-value="False"/>
+            <t t-set="show_360_images" t-value="False"/>
+            <t t-if="product.show_360_images and product.product_images_ids and len(product.product_variant_ids) == 1">
+                <t t-set="product_images_ids" t-value="product.product_images_ids"/>
+                <t t-set="show_360_images" t-value="True"/>
+            </t>
+        </xpath>
+        <xpath expr="//div[contains(@t-attf-class, 'o_wsale_product_images')]" position="after">
+            <t t-nocache="360 degree">
+                <t t-if="product_images_ids and show_360_images">
+                    <data data-page="product" id="product_360_view"/>
+                    <div class="col-12 col-lg-6 mt-4 o_wsale_product_images position-relative">
+                        <!-- 360 degree indicator -->
+                        <div class="position-absolute d-flex align-items-center" style="top: 15px; left: 15px; z-index: 20; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 20px;">
+                            <small class="text-white font-weight-bold">360° VIEW</small>
+                        </div>
+
+                        <!-- Auto-play toggle button (default to manual state) -->
+                        <div class="position-absolute d-flex align-items-center" style="top: 15px; right: 15px; z-index: 20; background: rgba(108, 117, 125, 0.9); padding: 6px 10px; border-radius: 15px; cursor: pointer; transition: background-color 0.3s ease;" id="auto-toggle-btn">
+                            <i class="fa fa-play text-white" style="font-size: 12px; margin-right: 4px;"></i>
+                            <small class="text-white">MANUAL</small>
+                        </div>
+
+                        <!-- Instructions overlay -->
+                        <div class="instruction_div position-absolute d-flex align-items-center justify-content-center" style="bottom: 15px; left: 50%; transform: translateX(-50%); z-index: 20; background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 20px;">
+                            <small class="text-white">
+                                <i class="fa fa-mouse-pointer mr-1"></i> Drag • 
+                                <i class="fa fa-arrows-h mx-1"></i> Arrow Keys • 
+                                <i class="fa fa-refresh mx-1"></i> Mouse Wheel
+                            </small>
+                            <style>
+                                @media (max-width: 768px) {
+                                    .instruction_div { display: none !important; }
+                                }
+                            </style>
+                        </div>
+
+                        <!-- Main rotation container -->
+                        <div class="d-flex justify-content-center">
+                            <div class="rotation w-100 position-relative" id="rotation_div">
+                                <t t-as="image_obj" t-foreach="product_images_ids">
+                                    <span
+                                        itemprop="image" 
+                                        t-field="image_obj.image_1920"
+                                        t-options="{
+                                            'widget': 'image',
+                                            'class': 'product_360_image',
+                                            'alt-field': 'name'
+                                        }"
+                                    />
+                                </t>
+                            </div>
+                        </div>
+
+                        <!-- Progress indicator (Remove d-none from class to make it visible) -->
+                        <div class="d-flex justify-content-center mt-3 d-none">
+                            <div class="progress" style="width: 60%; height: 4px; background-color: #e9ecef;">
+                                <div class="progress-bar bg-primary" id="rotation-progress" role="progressbar" style="width: 0%; transition: width 0.2s ease;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </xpath>
+        <xpath expr="//div[contains(@t-attf-class, 'o_wsale_product_images')]" position="attributes">
+            <attribute name="t-att-style">
+                'display:none;' if product_images_ids and show_360_images else ''
+            </attribute>
+        </xpath>
+    </template>
+</odoo>

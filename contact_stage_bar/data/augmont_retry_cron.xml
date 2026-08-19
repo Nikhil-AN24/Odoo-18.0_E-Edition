@@ -1,0 +1,13 @@
+<odoo>
+    <data>
+       <record id="ir_cron_retry_augmont_api" model="ir.cron">
+            <field name="name">Retry Augmont Failed API</field>
+            <field name="model_id" ref="contact_stage_bar.model_augmont_api_retry"/>
+            <field name="state">code</field>
+            <field name="code">model.retry_api_call()</field>
+            <field name="interval_number">5</field>    
+            <field name="interval_type">minutes</field> 
+            <field name="active">True</field>
+        </record>  
+    </data>
+</odoo>

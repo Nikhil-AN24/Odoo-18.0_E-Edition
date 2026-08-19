@@ -1,0 +1,18 @@
+<odoo>
+    <!-- Keep the Purchase app named "Procurement"  -->
+    <record id="purchase.menu_purchase_root" model="ir.ui.menu">
+        <field name="name">Procurement</field>
+    </record>
+
+    <function model="ir.ui.menu" name="_hide_sales_extra_menus"/>
+    <function model="ir.ui.menu" name="_rename_purchase_orders_menu"/>
+    <function model="ir.ui.menu" name="_rename_rfq_menu"/>
+
+    <record id="purchase.purchase_rfq" model="ir.actions.act_window">
+        <field name="name">Request for PO</field>
+    </record>
+
+    <record id="account.res_partner_action_supplier" model="ir.actions.act_window">
+        <field name="name">Suppliers</field>
+    </record>
+</odoo>

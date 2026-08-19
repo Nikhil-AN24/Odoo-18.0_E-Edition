@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Inherit the form view of contacts to add status bar -->
+    <record id="view_crm_lead_form_inherit_field" model="ir.ui.view">
+        <field name="name">crm.lead</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='website']" position="after">
+                <field name="lead_source" invisible="True"/>
+                <field name="lead_tagging" string="Lead Tagging"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="crm_menu_leads" model="ir.ui.menu">
+        <field name="name">Leads</field>  
+        <field name="active" eval="False"/>
+    </record>
+
+</odoo>

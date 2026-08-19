@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- Rating Scale Data -->
+
+        <!-- O - Outstanding -->
+        <record id="rating_scale_o" model="rating.scale">
+            <field name="name">Outstanding</field>
+            <field name="code">O</field>
+            <field name="score">100</field>
+            <field name="description">Consistently exceeds expectations and delivers exceptional results. Demonstrates outstanding performance in all key areas with significant impact on organizational success.</field>
+            <field name="color">10</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- A+ - Excellent -->
+        <record id="rating_scale_a_plus" model="rating.scale">
+            <field name="name">Excellent</field>
+            <field name="code">A+</field>
+            <field name="score">95</field>
+            <field name="description">Exceeds expectations in most areas and consistently delivers high-quality work. Shows strong initiative and makes valuable contributions to team and organizational goals.</field>
+            <field name="color">9</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- A - Very Good -->
+        <record id="rating_scale_a" model="rating.scale">
+            <field name="name">Very Good</field>
+            <field name="code">A</field>
+            <field name="score">90</field>
+            <field name="description">Frequently exceeds expectations and demonstrates strong competence in job responsibilities. Delivers reliable results and contributes positively to team performance.</field>
+            <field name="color">8</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- B+ - Good -->
+        <record id="rating_scale_b_plus" model="rating.scale">
+            <field name="name">Good</field>
+            <field name="code">B+</field>
+            <field name="score">85</field>
+            <field name="description">Meets all expectations and occasionally exceeds them. Demonstrates good understanding of role and consistently produces quality work.</field>
+            <field name="color">7</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- B - Satisfactory -->
+        <record id="rating_scale_b" model="rating.scale">
+            <field name="name">Satisfactory</field>
+            <field name="code">B</field>
+            <field name="score">80</field>
+            <field name="description">Consistently meets job expectations and fulfills core responsibilities. Performance is solid and reliable with room for growth in some areas.</field>
+            <field name="color">6</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- C - Needs Improvement -->
+        <record id="rating_scale_c" model="rating.scale">
+            <field name="name">Needs Improvement</field>
+            <field name="code">C</field>
+            <field name="score">70</field>
+            <field name="description">Meets some expectations but falls short in key areas. Performance requires improvement to reach acceptable standards. Additional support and development needed.</field>
+            <field name="color">3</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- D - Unsatisfactory -->
+        <record id="rating_scale_d" model="rating.scale">
+            <field name="name">Unsatisfactory</field>
+            <field name="code">D</field>
+            <field name="score">60</field>
+            <field name="description">Does not meet minimum job expectations. Significant performance issues exist that require immediate attention and improvement. Performance improvement plan recommended.</field>
+            <field name="color">1</field>
+            <field name="active">True</field>
+        </record>
+
+    </data>
+</odoo>

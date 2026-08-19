@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Default Amplitude configuration (TEST environment).
+         noupdate="1": edits made in the UI are preserved across upgrades. -->
+    <record id="amplitude_config_default" model="amplitude.config">
+        <field name="name">Amplitude (Test)</field>
+        <field name="active" eval="True"/>
+        <field name="api_key">08990e09c9e8b90704a4902837bc2c4b</field>
+        <field name="secret_key">d0f41005eda5fec45c627abbade00447</field>
+        <field name="project_id">808932</field>
+        <field name="server_url">https://api2.amplitude.com/2/httpapi</field>
+        <field name="server_zone">US</field>
+        <field name="enable_analytics" eval="True"/>
+        <field name="enable_heatmap" eval="True"/>
+        <field name="enable_session_replay" eval="True"/>
+        <field name="enable_event_tracking" eval="True"/>
+        <field name="enable_debug" eval="True"/>
+        <field name="session_replay_sample_rate" eval="1.0"/>
+    </record>
+</odoo>

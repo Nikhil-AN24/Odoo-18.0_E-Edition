@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Employee Form View Inherit -->
+    <record id="view_employee_form_goals" model="ir.ui.view">
+        <field name="name">hr.employee.form.goals</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <!-- Add Smart Buttons -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_goals" type="object" class="oe_stat_button" icon="fa-bullseye">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="active_goal_count" widget="integer"/> / <field name="goal_count" widget="integer"/>
+                        </span>
+                        <span class="o_stat_text">Goals</span>
+                    </div>
+                </button>
+                <button name="action_view_performance_ratings" type="object" class="oe_stat_button" icon="fa-star">
+                    <field name="latest_rating" widget="badge"/>
+                </button>
+                <button name="action_create_goal" type="object" class="oe_stat_button" icon="fa-plus-square" string="Create Goal"/>
+            </xpath>
+
+            <!-- Add Goals Tab -->
+            <xpath expr="//notebook" position="inside">
+                <page string="Goals &amp; Performance">
+                    <group>
+                        <group string="Goal Statistics">
+                            <field name="goal_count"/>
+                            <field name="active_goal_count"/>
+                            <field name="completed_goal_count"/>
+                            <field name="goal_completion_rate" widget="percentage"/>
+                        </group>
+                        <group string="Performance Ratings">
+                            <field name="latest_rating"/>
+                            <field name="previous_rating"/>
+                        </group>
+                        <group string="Status Information">
+                            <field name="lmi_status"/>
+                            <field name="employment_status"/>
+                        </group>
+                    </group>
+                    <group string="Current Goals">
+                        <field name="current_goal_ids" nolabel="1">
+                            <list>
+                                <field name="title"/>
+                                <field name="goal_type_id"/>
+                                <field name="start_date"/>
+                                <field name="end_date"/>
+                                <field name="progress" widget="progressbar"/>
+                                <field name="state" widget="badge"/>
+                            </list>
+                        </field>
+                    </group>
+                    <group string="Performance History">
+                        <field name="performance_rating_ids" nolabel="1">
+                            <list>
+                                <field name="rating_period"/>
+                                <field name="period_start_date"/>
+                                <field name="period_end_date"/>
+                                <field name="rating"/>
+                                <field name="rating_score"/>
+                                <field name="goal_completion_rate" widget="percentage"/>
+                                <field name="state"/>
+                            </list>
+                        </field>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Employee Tree View Inherit -->
+    <!-- <record id="view_employee_tree_goals" model="ir.ui.view">
+        <field name="name">hr.employee.list.goals</field>f
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_list"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='department_id']" position="after">
+                <field name="active_goal_count" optional="hide"/>
+                <field name="latest_rating" optional="hide" widget="badge"/>
+            </xpath>
+        </field>
+    </record> -->
+
+    <!-- Employee Search View Inherit -->
+    <record id="view_employee_search_goals" model="ir.ui.view">
+        <field name="name">hr.employee.search.goals</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter string="Rating O" name="rating_o" domain="[('latest_rating','=','o')]"/>
+                <filter string="Rating A+" name="rating_a_plus" domain="[('latest_rating','=','a_plus')]"/>
+                <filter string="Rating A" name="rating_a" domain="[('latest_rating','=','a')]"/>
+                <filter string="Rating B+" name="rating_b_plus" domain="[('latest_rating','=','b_plus')]"/>
+                <filter string="Rating B" name="rating_b" domain="[('latest_rating','=','b')]"/>
+                <separator/>
+                <filter string="LMI Status" name="lmi_active" domain="[('lmi_status','=',True)]"/>
+                <separator/>
+                <filter string="Employment Status A" name="employment_a" domain="[('employment_status','=','a')]"/>
+                <filter string="Employment Status B" name="employment_b" domain="[('employment_status','=','b')]"/>
+                <filter string="Employment Status C" name="employment_c" domain="[('employment_status','=','c')]"/>
+                <filter string="Employment Status D" name="employment_d" domain="[('employment_status','=','d')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Latest Rating" name="group_latest_rating" context="{'group_by':'latest_rating'}"/>
+                    <filter string="LMI Status" name="group_lmi_status" context="{'group_by':'lmi_status'}"/>
+                    <filter string="Employment Status" name="group_employment_status" context="{'group_by':'employment_status'}"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Employee Kanban View Inherit -->
+    <!-- <record id="view_employee_kanban_goals" model="ir.ui.view">
+        <field name="name">hr.employee.kanban.goals</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.hr_kanban_view_employees"/>
+        <field name="arch" type="xml">
+            <xpath expr="//kanban" position="inside">
+                <field name="goal_count"/>
+                <field name="active_goal_count"/>
+                <field name="goal_completion_rate"/>
+                <field name="latest_rating"/>
+            </xpath>
+            <xpath expr="//div[@class='oe_kanban_details']" position="inside">
+                <div>
+                    <span>Goals: <field name="active_goal_count"/>/<field name="goal_count"/></span>
+                </div>
+                <div>
+                    <span>Completion: <field name="goal_completion_rate"/>%</span>
+                </div>
+                <div t-if="record.latest_rating.value">
+                    <span>Rating: <field name="latest_rating"/></span>
+                </div>
+            </xpath>
+        </field>
+    </record> -->
+</odoo>

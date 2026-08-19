@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_custom_sale_order_form_payment" model="ir.ui.view">
+        <field name="name">custom.sale.order.form.payment_offline_sales</field>
+        <field name="model">custom.sale.order</field>
+        <field name="inherit_id" ref="custom_sale_order.view_custom_sale_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/button[@name='action_confirm_offline_order']" position="after">
+                <button name="action_accept_payment"
+                        string="Accept Payment"
+                        type="object"
+                        class="btn-primary"/>
+            </xpath>
+            <xpath expr="//sheet" position="inside">
+                <group string="Payment Details" invisible="not utr_number and not payment_link_sent">
+                    <field name="utr_number" readonly="1" invisible="not utr_number"/>
+                    <field name="payment_provider_used" readonly="1" invisible="not payment_link_sent"/>
+                    <field name="payment_link_sent_date" readonly="1" invisible="not payment_link_sent"/>
+                    <field name="payment_link_url" readonly="1" widget="url" invisible="not payment_link_sent"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

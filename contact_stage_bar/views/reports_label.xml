@@ -1,0 +1,305 @@
+<!-- <odoo>
+    <record id="paperformat_label_3x6" model="report.paperformat">
+        <field name="name">Label 3x6 cm</field>
+        <field name="default" eval="False"/>
+        <field name="format">custom</field>
+        <field name="page_height">30</field> 
+        <field name="page_width">60</field>  
+        <field name="orientation">Landscape</field>
+        <field name="margin_top">1</field>
+        <field name="margin_bottom">1</field>
+        <field name="margin_left">1</field>
+        <field name="margin_right">1</field>
+        <field name="header_line" eval="False"/>
+        <field name="header_spacing">0</field>
+        <field name="dpi">203</field>
+    </record>
+
+    <record id="report_product_template_label_3x6_noprice" model="ir.actions.report">
+        <field name="name">Product Label 3x6 cm (No Price)</field>
+        <field name="model">product.template</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">contact_stage_bar.report_producttemplatelabel_3x6_noprice</field>
+        <field name="report_file">contact_stage_bar.report_producttemplatelabel_3x6_noprice</field>
+        <field name="paperformat_id" ref="contact_stage_bar.paperformat_label_3x6"/>
+        <field name="print_report_name">'Product Labels - %s' % (object.name)</field>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="report_producttemplatelabel_3x6_noprice">
+        <t t-call="web.basic_layout">
+            <div class="page">
+                <t t-foreach="docs" t-as="o">
+                    <div style="width:60mm; height:30mm; text-align:center; font-size:10pt; border:1px solid #000; margin-bottom:5px;">
+                        <strong><t t-esc="o.name"/></strong><br/>
+                        <img t-att-src="'/report/barcode/?type=Code128&amp;value=%s&amp;width=200&amp;height=40' % o.default_code"/>
+                    </div>
+                </t>
+            </div>
+        </t>
+    </template>
+
+</odoo> -->
+
+
+<!-- <odoo>
+    <record id="action_report_product_product_dymo" model="ir.actions.report">
+        <field name="name">Labels (Dymo)</field>
+        <field name="model">product.template</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">product.report_simple_label_dymo</field>
+        <field name="report_file">product.report_simple_label_dymo</field>
+    </record>
+
+    <record id="action_report_product_product_dymo_noprice" model="ir.actions.report">
+        <field name="name">Labels (Dymo, No Price)</field>
+        <field name="model">product.template</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">contact_stage_bar.report_simple_label_dymo_noprice</field>
+        <field name="report_file">contact_stage_bar.report_simple_label_dymo_noprice</field>
+        <field name="print_report_name">'Product Labels No Price'</field>
+    </record>
+
+
+    <template id="report_simple_label_dymo_noprice" inherit_id="product.report_simple_label_dymo">
+        <xpath expr="//div[@class='text-end']" position="replace">
+            <div class="text-end" style="padding: 0 4px;">
+                <strong class="o_label_qty"
+                        t-esc="quantity_by_product.get(product.id, 1)"/>
+            </div>
+        </xpath>
+    </template> -->
+
+    <odoo>
+    <!-- Your modified template -->
+    <!-- <template id="report_simple_label_dymo_noprice" inherit_id="product.report_simple_label_dymo">
+        <xpath expr="//div[@class='text-end']" position="replace">
+            <div class="d-flex justify-content-between" style="padding: 0 4px;">
+                <strong class="o_label_qty">Quantity</strong>
+                <span class="o_label_qty_value" t-esc="quantity_by_product.get(product.id, 1)"/>Nos.
+            </div>
+        </xpath>
+        <xpath expr="//div[@class='o_label_name']/span[@t-out='barcode']" position="attributes">
+            <attribute name="style">font-size:14px; font-weight:bold;</attribute>
+        </xpath>
+    </template> -->
+    <template id="report_simple_label_dymo_noprice" inherit_id="product.report_simple_label_dymo">
+        <!-- Add Quantity just below the product name -->
+        <xpath expr="//div[@class='o_label_name']" position="after">
+            <div class="d-flex justify-content-start" style="padding: 2px 4px;">
+                <strong class="o_label_qty">Quantity: </strong>
+                <span class="o_label_qty_value" t-esc="quantity_by_product.get(product.id, 1)"/> Nos.
+            </div>
+            <div class="d-flex justify-content-start" style="padding: 2px 4px;">
+                <strong class="o_label_qty">LAB Type: </strong>
+                <span class="o_label_qty_value" t-esc="product.labs or None"/>
+            </div>
+            <div class="d-flex justify-content-start" style="padding: 2px 4px;">
+                <strong class="o_label_qty">LGD SKU: </strong>
+                <span class="o_label_qty_value" t-esc="product.lgd_stock_number or None"/>
+            </div>
+        </xpath>
+        <xpath expr="//div[@class='o_label_name']/span[@t-out='barcode']" position="before">
+            <span style="font-weight:bold; font-size:12px;">Certificate Number: </span>
+        </xpath>
+
+        <!-- Style the barcode text -->
+        <!-- <xpath expr="//div[@class='o_label_name']/span[@t-out='barcode']" position="attributes">
+            <attribute name="style">font-size:12px; font-weight:bold;</attribute>
+        </xpath> -->
+    </template>
+
+    <!-- New report action -->
+    <record id="action_report_product_product_dymo_noprice" model="ir.actions.report">
+        <field name="name">Labels (Dymo, No Price)</field>
+        <field name="model">product.template</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">product.report_simple_label_dymo_noprice</field>
+        <field name="report_file">product.report_simple_label_dymo_noprice</field>
+        <field name="print_report_name">'Labels_NoPrice_%s' % (object.display_name)</field>
+    </record>
+
+    <!-- Report Action -->
+    <!-- <report
+            id="contact_stage_bar.action_material_tag"
+            model="stock.picking"
+            string="Delivery Report"
+            report_type="qweb-pdf"
+            name="contact_stage_bar.report_material_tag_document"
+            file="contact_stage_bar.report_material_tag_document"
+            print_report_name="'Delivery Report - %s' % (object.name)"
+    /> -->
+
+    <!-- <template id="contact_stage_bar.report_material_tag_document">
+        <t t-call="web.external_layout">
+            <div class="page"
+                 style="border: 1px solid black; padding: 10px; font-size: 12px;">
+
+                <h3 style="text-align:center; margin:0; padding:0;">
+                    AUGMONT PRIVATE LIMITES
+                </h3>
+                <h4 style="text-align:center; margin:0; padding:0;">
+                    DELIVERY SLIP
+                </h4>
+                <br/>
+
+                <table style="width:100%; border-collapse: collapse;">
+                    <tr>
+                        <td>
+                            <strong>CUSTOMER :</strong>
+                        </td>
+                        <td>
+                            <span t-esc="doc.partner_id.name"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>PRODUCT :</strong>
+                        </td>
+                        <td>
+                            <t t-foreach="doc.move_ids_without_package" t-as="line">
+                                [<span t-esc="line.product_id.default_code"/>]
+                                <span t-esc="line.product_id.display_name"/>
+                            </t>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>ORDER Number :</strong>
+                        </td>
+                        <td>
+                            <span t-esc="doc.sale_id.sdk_augmont_number"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>BILLING ADDRESS :</strong>
+                        </td>
+                        <td>
+                            <span t-esc="doc.billing_address"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>SHIPPING ADDRESS :</strong>
+                        </td>
+                        <td>
+                            <span t-esc="doc.shipping_address"/>
+                        </td>
+                    </tr>
+                </table>
+
+            </div>
+        </t>
+    </template> -->
+
+    <record id="contact_stage_bar.paperformat_label_6x3" model="report.paperformat">
+    <field name="name">Label 6x3 inch</field>
+    <field name="default" eval="False"/>
+    <field name="format">custom</field>
+    <field name="page_width">76</field>   <!-- 6 inches ≈ 152 mm -->
+    <field name="page_height">152</field>   <!-- 3 inches ≈ 76 mm -->
+    <field name="margin_top">1</field>
+    <field name="margin_bottom">1</field>
+    <field name="margin_left">1</field>
+    <field name="margin_right">1</field>
+    <field name="orientation">Landscape</field>
+    <field name="header_line" eval="False"/>
+</record>
+
+<record id="action_material_tag" model="ir.actions.report">
+    <field name="name">Delivery Report</field>
+    <field name="model">stock.picking</field>
+    <field name="report_type">qweb-pdf</field>
+    <field name="report_name">contact_stage_bar.report_material_tag_document</field>
+    <field name="report_file">contact_stage_bar.report_material_tag_document</field>
+    <field name="print_report_name">'Delivery Report - %s' % (object.name)</field>
+    <field name="binding_model_id" ref="model_stock_picking"/>
+    <field name="binding_type">report</field>
+    <field name="paperformat_id" ref="contact_stage_bar.paperformat_label_6x3"/>
+</record>
+
+
+<template id="contact_stage_bar.report_material_tag_document">
+    <t t-call="web.basic_layout">
+        <t t-foreach="docs" t-as="doc">
+            <main>
+                <div class="page" style="width:100%; height:100%; padding:8px; font-size:12px; border:2px solid black; box-sizing:border-box;">
+
+                <!-- <div class="page" style="width: 6in; height: 3in; padding: 8px; font-size: 12px; border: 2px solid black; box-sizing: border-box;"> -->
+                    
+                    <!-- Title -->
+                    <h3 style="text-align:center; margin:0; padding:0;">
+                        AUGMONT PRIVATE LIMITED
+                    </h3>
+                    <!-- <h4 style="text-align:center; margin:0; padding:0; font-weight:normal;">
+                        DELIVERY SLIP - PRODUCT LABEL
+                    </h4> -->
+
+                    <!-- Table with Borders -->
+                    <table style="width:100%; border-collapse: collapse; font-size: 12px; margin-top:5px;">
+                        <tr>
+                            <td style="width:35%; font-weight:bold; border:1px solid black; padding:3px;">Online Order Number :</td>
+                            <td style="width:65%; border:1px solid black; padding:3px;">
+                                <span t-esc="doc.sdk_augmont_number"/>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="width:35%; font-weight:bold; border:1px solid black; padding:3px;">CUSTOMER :</td>
+                            <td style="width:65%; border:1px solid black; padding:3px;">
+                                <span t-esc="doc.partner_id.name"/>
+                            </td>
+                        </tr>
+                         <tr>
+                            <td style="width:35%; font-weight:bold; border:1px solid black; padding:3px;">MOBILE :</td>
+                            <td style="width:65%; border:1px solid black; padding:3px;">
+                                <span t-esc="doc.partner_id.phone"/>
+                            </td>
+                        </tr>
+
+                        <!-- <tr>
+                            <td style="font-weight:bold; border:1px solid black; padding:3px;">PRODUCT :</td>
+                            <td style="border:1px solid black; padding:3px;">
+                                <t t-foreach="doc.move_ids_without_package" t-as="line">
+                                    <span t-esc="line.product_id.display_name"/><br/>
+                                </t>
+                            </td>
+                        </tr> -->
+
+                        <!-- <tr>
+                            <td style="font-weight:bold; border:1px solid black; padding:3px;">BILLING ADDRESS :</td>
+                            <td style="border:1px solid black; padding:3px;">
+                                <span t-esc="doc.billing_address"/>
+                            </td>
+                        </tr> -->
+
+                        <tr>
+                            <td style="font-weight:bold; border:1px solid black; padding:3px;">SHIPPING ADDRESS :</td>
+                            <td style="border:1px solid black; padding:3px;">
+                                <span t-esc="doc.shipping_address"/>
+                            </td>
+                        </tr>
+                    </table>
+                    
+
+                </div>
+            </main>
+            <div style="margin-top:10px; text-align:center; font-size:12px; font-weight:bold;">
+                        Return Delivery Note
+                    </div>
+                    <div style="margin-top:5px; text-align:center; font-size:12px; font-style:italic;">
+                        <span t-esc="doc.company_id.name"/> - 
+                        <span t-esc="doc.company_id.street"/> 
+                        <span t-esc="doc.company_id.street2"/> , 
+                        <span t-esc="doc.company_id.city"/> , 
+                        <span t-esc="doc.company_id.state_id.name"/> ,
+                        <span t-esc="doc.company_id.zip"/> ,
+                        <span t-esc="doc.company_id.country_id.name"/>
+                        <span t-esc="doc.company_id.phone"/>
+                    </div>
+
+        </t>
+    </t>
+</template>
+
+</odoo>

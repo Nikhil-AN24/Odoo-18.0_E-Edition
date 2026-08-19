@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="sale_order_view_form_acefone" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.acefone</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <field name="partner_id" position="after">
+                <button name="action_acefone_click_to_call" type="object"
+                        string="Call Customer" icon="fa-phone" class="btn-link"
+                        invisible="not partner_id"/>
+            </field>
+        </field>
+    </record>
+</odoo>

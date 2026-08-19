@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ========================================= -->
+    <!-- YEARLY GOALS - Main Menu -->
+    <!-- ========================================= -->
+    <menuitem id="menu_my_goals_root"
+              name="Yearly Goals"
+              action="action_employee_goal_my"
+              sequence="50"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- MONTHLY MILESTONES - Main Menu -->
+    <!-- ========================================= -->
+    <menuitem id="menu_my_milestones"
+              name="Monthly Milestones"
+              action="action_goal_milestone"
+              sequence="51"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- MY DAILY PROGRESS - Main Menu -->
+    <!-- ========================================= -->
+    <menuitem id="menu_my_daily_updates"
+              name="My Daily Progress"
+              action="action_goal_daily_tracking_my"
+              sequence="52"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- TEAM PERFORMANCE RATINGS - Main Menu -->
+    <!-- ========================================= -->
+    <menuitem id="menu_my_performance_ratings"
+              name="Team Performance Ratings"
+              action="action_performance_rating_my"
+              sequence="53"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- TEAM YEARLY GOALS - Main Menu (For Managers) -->
+    <!-- ========================================= -->
+    <menuitem id="menu_team_goals_root"
+              name="Team Yearly Goals"
+              groups="employee_goals.group_goal_team_manager"
+              action="action_employee_goal_team"
+              sequence="54"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- TEAM MONTHLY MILESTONES - Main Menu (For Managers) -->
+    <!-- ========================================= -->
+    <menuitem id="menu_team_milestones"
+              name="Team Monthly Milestones"
+              groups="employee_goals.group_goal_team_manager"
+              action="action_goal_milestone"
+              sequence="55"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- TEAM DAILY PROGRESS - Main Menu (For Managers) -->
+    <!-- ========================================= -->
+    <menuitem id="menu_team_daily_updates"
+              name="Team Daily Progress"
+              groups="employee_goals.group_goal_team_manager"
+              action="action_goal_daily_tracking_team"
+              sequence="56"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- ALL YEARLY GOALS - Main Menu (For Managers) -->
+    <!-- ========================================= -->
+    <menuitem id="menu_all_goals_root"
+              name="Org Wide Goals"
+              groups="employee_goals.group_goal_team_manager"
+              action="action_employee_goal_all"
+              sequence="57"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <!-- ========================================= -->
+    <!-- CONFIGURATION - Main Menu (Admin Only) -->
+    <!-- ========================================= -->
+    <menuitem id="menu_goals_configuration"
+              name="Configuration"
+              groups="employee_goals.group_goal_manager"
+              sequence="90"
+              web_icon="employee_goals,static/description/icon.png"/>
+
+    <menuitem id="menu_goal_types"
+              name="Goal Types"
+              parent="menu_goals_configuration"
+              action="action_goal_type"
+              sequence="10"/>
+
+</odoo>

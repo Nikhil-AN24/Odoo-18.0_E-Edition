@@ -1,0 +1,248 @@
+
+<odoo>
+    <record id="view_picking_form_inherit_groups" model="ir.ui.view">
+        <field name="name">stock.picking.form.inherit.groups</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+
+            <!-- New Hide Return button -->
+            <xpath expr="//button[@name='%(stock.act_stock_return_picking)d']" position="attributes">
+                <attribute name="invisible">True</attribute>
+            </xpath>
+
+            <!-- The method clears the tracking fields and reopens the dispatch
+                 details wizard, so the user can re-enter Delivered By, Courier
+                Number and Tracking URL for the new delivery attempt. -->            
+            <xpath expr="//button[@name='%(stock.act_stock_return_picking)d']" position="after">
+                <button name="action_open_redispatch_wizard"
+                        type="object"
+                        string="Re-Dispatch"
+                        invisible="not (state == 'done' and tracking_number and not is_order_completed) or is_order_delivered"
+                        confirm="Before Re-dispatching, please update the dispatch details fields: Delivered By, Courier Number, and Tracking URL."/>
+            </xpath>
+            
+            <xpath expr="//button[@name='action_next_transfer']" position="attributes">
+                   <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='move_ids_without_package']/list" position="attributes">
+                   <attribute name="delete">0</attribute>
+            </xpath>
+            
+            <xpath expr="//field[@name='move_ids_without_package']/list/field[@name='product_id']" position="after">
+                <field name="weight_carat"/>
+                <field name="is_weight_carat" column_invisible="parent.location_dest_id != 10" class="black-box"/>
+                <field name="lgd_stock_number"/>
+                <field name="order_specific" column_invisible="parent.location_dest_id != 10"/>
+                <field name="is_order_specific" column_invisible="parent.location_dest_id != 10" class="black-box"/>
+                <field name="item_notes" column_invisible="parent.location_dest_id != 10"/>
+                <field name="is_item_notes" column_invisible="parent.location_dest_id != 10" class="black-box"/>
+                <field name="default_qc_requirements" column_invisible="parent.location_dest_id != 10"/>
+                <field name="is_default_qc_requirements" column_invisible="parent.location_dest_id != 10" class="black-box"/>
+            </xpath>
+
+            <xpath expr="//field[@name='move_ids_without_package']" position="before">
+                <style>
+                    th[data-name="weight_carat"],
+                    th[data-name="is_weight_carat"],
+                    th[data-name="order_specific"],
+                    th[data-name="lgd_stock_number"],
+                    th[data-name="is_order_specific"],
+                    th[data-name="item_notes"],
+                    th[data-name="is_item_notes"],
+                    th[data-name="product_id"],
+                    th[data-name="default_qc_requirements"],
+                    th[data-name="is_default_qc_requirements"]
+                    {
+                        width: 150px !important;
+                        max-width: 300px !important;
+                    }
+                    /* <style> */
+                    .black-box .form-check-input {
+                        width: 20px;
+                        height: 20px;
+                        background-color: #000 !important;   /* square always black */
+                        border-color: #000 !important;       /* border also black */
+                    }
+
+                    /* When checked, keep it black */
+                    .black-box .form-check-input:checked {
+                        background-color: #000 !important;   /* filled black */
+                        border-color: #000 !important;
+                    }
+                    /* </style> */
+                </style>
+            </xpath>
+
+            <xpath expr="//div[@class='o_td_label']" position="before">
+                <field name="sdk_augmont_number"/>
+            </xpath>
+
+            <xpath expr="(//label[@for='partner_id'])[1]" position="attributes">
+                <attribute name="string">Vendor</attribute>
+            </xpath>
+            <xpath expr="(//label[@for='partner_id'])[2]" position="attributes">
+                <attribute name="string">Vendor</attribute>
+            </xpath>
+            <xpath expr="(//label[@for='partner_id'])[3]" position="attributes">
+                <attribute name="string">Vendor</attribute>
+            </xpath>
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <div groups="!contact_stage_bar.group_dispatch_team">
+                    <label for="street1" string="Address"/>
+
+                    <div class="o_address_format">
+                        <field name="street1" placeholder="Street..." class="o_address_street"/>
+                        <field name="street_2" placeholder="Street 2..." class="o_address_street"/>
+                        <field name="city" placeholder="City" class="o_address_city"/>
+                        <field name="state_id" class="o_address_state" placeholder="State" options='{"no_open": True}'/>
+                        <field name="zip" placeholder="ZIP" class="o_address_zip"/>
+                        <field name="country" placeholder="Country" class="o_address_country" options='{"no_open": True, "no_create": True}'/>
+                    </div>
+                </div>
+                <field name="phone"/>
+                <field name="email_id"/>
+                <field name="shipping_address" invisible="not shipping_address"/>
+                <field name="billing_address" invisible="not billing_address"/>
+                <field name="location" invisible="not location" readonly="1"/>
+            </xpath>
+
+            <xpath expr="//field[@name='move_ids_without_package']/list/field[@name='quantity']" position="after">
+                <button name="action_pass" string="Pass" type="object" class="btn-success" invisible="parent.location_dest_id != 10 or parent.state != 'assigned'"/>
+                <button name="action_fail" string="Fail" type="object" class="btn-danger" invisible="parent.location_dest_id != 10 or parent.state != 'assigned'"/>
+                <field name="qc_status" column_invisible="parent.location_dest_id != 10"/>
+                <field name="failure_reason" column_invisible="parent.location_dest_id != 10"/>
+            </xpath>
+
+            <xpath expr="//button[@name='button_validate']" position="before">
+                <button name="action_pack"
+                        type="object"
+                        string="Pack"
+                        invisible="state != 'assigned' or location_dest_id != 5"
+                        class="btn-primary"/>
+            </xpath>
+
+            <xpath expr="//field[@name='name']" position="before">
+                <widget name="web_ribbon" title="Sent to Quality" bg_color="text-bg-success"
+                    invisible="location_dest_id != 4 or state != 'done'"/>
+                <widget name="web_ribbon" title="Sent to Inventory" bg_color="text-bg-success"
+                    invisible="state != 'done' or location_id != 18"/>
+                <widget name="web_ribbon" title="Stock Received" bg_color="text-bg-success"
+                    invisible="state != 'done' or location_dest_id != 20 or location_dest_id != 21"/>
+                  <!-- <widget name="web_ribbon" title="Dispatched" bg_color="text-bg-success"
+                    invisible="location_dest_id != 5 or state != 'done'"/> -->
+                  <widget name="web_ribbon" title="Packed" bg_color="text-bg-success"
+                    invisible="state != 'pack'"/>
+            </xpath>
+
+            <xpath expr="//field[@name='origin']" position="after">
+                <field name="utr_number" invisible="not utr_number"/>
+                <field name="tracker_name" invisible="not tracker_name"/>
+                <field name="tracking_number" invisible="not tracking_number"/>
+                <field name="tracking_url" invisible="not tracking_url"  widget="url"/>
+                <field name="is_confirm" invisible="True" readonly="1"/>
+            </xpath>
+
+            <xpath expr="//button[@name='do_print_picking']" position="attributes">
+                <attribute name="invisible">True</attribute>
+            </xpath>
+
+            <xpath expr="//button[@name='action_detailed_operations']" position="attributes">
+                <attribute name="invisible">True</attribute>
+            </xpath>
+
+            <xpath expr="//button[@name='action_view_stock_valuation_layers']" position="attributes">
+                <attribute name="invisible">True</attribute>
+            </xpath>
+
+            <xpath expr="//page[@name='extra']" position="attributes">
+                <attribute name="invisible">True</attribute>
+            </xpath>
+
+            <xpath expr="//page[@name='note']" position="attributes">
+                <attribute name="invisible">True</attribute>
+            </xpath>
+
+            <!-- ── Cancelled Stone tab — inserted after the Operations page ───── -->
+            <xpath expr="//page[@name='operations']" position="after">
+                <page name="cancelled_stone" string="Cancelled Stone">
+                    <group>
+                        <group string="Contact Details">
+                            <field name="cancelled_stone_person_name" placeholder="Full name of the person."/>
+                            <field name="cancelled_stone_phone"       inputmode="numeric"/>
+                        </group>
+                        <group string="Location &amp; Timing">
+                            <field name="cancelled_stone_destination" placeholder="e.g. IND-WH-03 / Shop-79, USA."/>
+                            <field name="cancelled_stone_delivery_datetime"/>
+                            <field name="cancelled_stone_return_date"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+
+            <xpath expr="//field[@name='origin']" position="attributes">
+                <attribute name="string">Related P.O.</attribute>
+                <attribute name="readonly">True</attribute>
+                <attribute name="invisible">picking_type_id == 2</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='picking_type_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='location_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='location_dest_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+        </field>
+    </record>
+
+
+      <!-- Use the same ID to modify the existing record -->
+    <record id="stock.act_stock_return_picking" model="ir.actions.act_window">
+        <field name="name">Re dispatch</field>
+    </record>
+
+
+    <!-- Inherit the form view to change button labels and other text -->
+    <record id="view_stock_return_picking_form_inherit" model="ir.ui.view">
+        <field name="name">Return lines - Re dispatch</field>
+        <field name="model">stock.return.picking</field>
+        <field name="inherit_id" ref="stock.view_stock_return_picking_form"/>
+        <field name="arch" type="xml">
+
+             <!-- Add integer widget to quantity field -->
+            <xpath expr="//field[@name='product_return_moves']/list/field[@name='quantity']" position="attributes">
+                <attribute name="widget">integer</attribute>
+            </xpath>
+
+            <!-- Make the quantity field readonly -->
+            <!-- <xpath expr="//field[@name='quantity']" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </xpath> -->
+
+            <!-- Change the "Return" button text to "Re dispatch" -->
+            <xpath expr="//button[@name='action_create_returns']" position="attributes">
+                <attribute name="string">Re dispatch</attribute>
+            </xpath>
+            
+            <!-- Optional: Change "Return All" button if needed -->
+            <xpath expr="//button[@name='action_create_returns_all']" position="attributes">
+                <attribute name="string">Re dispatch All</attribute>
+            </xpath>
+            
+            <!-- Optional: Change "Return for Exchange" button if needed -->
+            <xpath expr="//button[@name='action_create_exchanges']" position="attributes">
+                <attribute name="string">Re dispatch for Exchange</attribute>
+            </xpath>
+            
+        </field>
+    </record>
+  
+
+</odoo>

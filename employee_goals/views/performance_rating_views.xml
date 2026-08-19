@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Performance Rating Tree View -->
+    <record id="view_performance_rating_tree" model="ir.ui.view">
+        <field name="name">performance.rating.list</field>
+        <field name="model">performance.rating</field>
+        <field name="arch" type="xml">
+            <list string="Performance Ratings" decoration-success="state=='approved'" decoration-muted="state=='draft'" decoration-info="state in ('self_review','manager_review','hr_review')" decoration-danger="state=='rejected'">
+                <field name="display_name"/>
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <field name="job_id"/>
+                <field name="manager_id"/>
+                <field name="rating_period"/>
+                <field name="period_start_date"/>
+                <field name="period_end_date"/>
+                <field name="rating"/>
+                <field name="rating_score"/>
+                <field name="goal_completion_rate"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Performance Rating Form View -->
+    <record id="view_performance_rating_form" model="ir.ui.view">
+        <field name="name">performance.rating.form</field>
+        <field name="model">performance.rating</field>
+        <field name="arch" type="xml">
+            <form string="Performance Rating">
+                <header>
+                    <button name="action_submit_self_review" string="Submit Self Review" type="object" class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_submit_manager_review" string="Submit Manager Review" type="object" class="btn-primary" invisible="state != 'self_review'"/>
+                    <button name="action_submit_hr_review" string="Submit HR Review" type="object" class="btn-primary" invisible="state != 'manager_review'"/>
+                    <button name="action_approve" string="Approve" type="object" class="btn-success" invisible="state != 'hr_review'"/>
+                    <button name="action_reject" string="Reject" type="object" class="btn-danger" invisible="state not in ('self_review','manager_review','hr_review')"/>
+                    <button name="action_reset_to_draft" string="Reset to Draft" type="object" invisible="state not in ('rejected','approved')"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,self_review,manager_review,hr_review,approved"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Employee Information">
+                            <field name="employee_id" required="1"/>
+                            <field name="department_id"/>
+                            <field name="job_id"/>
+                            <field name="manager_id"/>
+                        </group>
+                        <group string="Rating Period">
+                            <field name="rating_period" required="1"/>
+                            <field name="period_start_date" required="1"/>
+                            <field name="period_end_date" required="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Performance Metrics">
+                            <group>
+                                <group string="Rating">
+                                    <field name="rating"/>
+                                    <field name="rating_score"/>
+                                </group>
+                                <group string="Goals Performance">
+                                    <field name="total_goals"/>
+                                    <field name="completed_goals"/>
+                                    <field name="goal_completion_rate" widget="percentage"/>
+                                    <field name="average_goal_progress" widget="percentage"/>
+                                </group>
+                            </group>
+                            <group>
+                                <group string="Training">
+                                    <field name="training_programs_completed"/>
+                                    <field name="training_completion_rate" widget="percentage"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Goals">
+                            <field name="goal_ids">
+                                <list>
+                                    <field name="title"/>
+                                    <field name="goal_type_id"/>
+                                    <field name="start_date"/>
+                                    <field name="end_date"/>
+                                    <field name="progress" widget="progressbar"/>
+                                    <field name="state" widget="badge"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Feedback">
+                            <group>
+                                <field name="achievements" widget="text"/>
+                                <field name="strengths" widget="text"/>
+                                <field name="areas_of_improvement" widget="text"/>
+                            </group>
+                        </page>
+                        <page string="Comments">
+                            <group>
+                                <field name="employee_comments" widget="text"/>
+                                <field name="manager_comments" widget="text"/>
+                                <field name="hr_comments" widget="text"/>
+                            </group>
+                        </page>
+                        <page string="Recommendations">
+                            <group>
+                                <group string="Career Development">
+                                    <field name="promotion_recommended"/>
+                                    <field name="salary_increment_recommended"/>
+                                    <field name="increment_percentage" invisible="not salary_increment_recommended"/>
+                                </group>
+                            </group>
+                            <group>
+                                <field name="training_recommendations" widget="text"/>
+                            </group>
+                        </page>
+                        <page string="Signatures">
+                            <group>
+                                <group string="Employee Signature">
+                                    <field name="employee_signed"/>
+                                    <field name="employee_signed_date"/>
+                                </group>
+                                <group string="Manager Signature">
+                                    <field name="manager_signed"/>
+                                    <field name="manager_signed_date"/>
+                                </group>
+                                <group string="HR Signature">
+                                    <field name="hr_signed"/>
+                                    <field name="hr_signed_date"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                  <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Performance Rating Search View -->
+    <record id="view_performance_rating_search" model="ir.ui.view">
+        <field name="name">performance.rating.search</field>
+        <field name="model">performance.rating</field>
+        <field name="arch" type="xml">
+            <search string="Performance Ratings">
+                <field name="display_name"/>
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <field name="manager_id"/>
+                <field name="rating_period"/>
+                <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
+                <filter string="Self Review" name="self_review" domain="[('state','=','self_review')]"/>
+                <filter string="Manager Review" name="manager_review" domain="[('state','=','manager_review')]"/>
+                <filter string="HR Review" name="hr_review" domain="[('state','=','hr_review')]"/>
+                <filter string="Approved" name="approved" domain="[('state','=','approved')]"/>
+                <filter string="Rejected" name="rejected" domain="[('state','=','rejected')]"/>
+                <separator/>
+                <filter string="Promotion Recommended" name="promotion_recommended" domain="[('promotion_recommended','=',True)]"/>
+                <filter string="Increment Recommended" name="increment_recommended" domain="[('salary_increment_recommended','=',True)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Employee" name="group_employee" context="{'group_by':'employee_id'}"/>
+                    <filter string="Department" name="group_department" context="{'group_by':'department_id'}"/>
+                    <filter string="Manager" name="group_manager" context="{'group_by':'manager_id'}"/>
+                    <filter string="Rating Period" name="group_period" context="{'group_by':'rating_period'}"/>
+                    <filter string="Rating" name="group_rating" context="{'group_by':'rating'}"/>
+                    <filter string="State" name="group_state" context="{'group_by':'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Performance Rating Kanban View -->
+    <record id="view_performance_rating_kanban" model="ir.ui.view">
+        <field name="name">performance.rating.kanban</field>
+        <field name="model">performance.rating</field>
+        <field name="arch" type="xml">
+            <kanban>
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <field name="rating"/>
+                <field name="rating_score"/>
+                <field name="goal_completion_rate"/>
+                <field name="state"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <div class="oe_kanban_details">
+                                <strong>
+                                    <field name="display_name"/>
+                                </strong>
+                                <div>
+                                    <field name="employee_id"/>
+                                </div>
+                                <div>
+                                    <field name="department_id"/>
+                                </div>
+                                <div>
+                                    Rating: <field name="rating"/>
+                                </div>
+                                <div>
+                                    Score: <field name="rating_score"/>
+                                </div>
+                                <div>
+                                    Goal Completion: <field name="goal_completion_rate"/>%
+                                </div>
+                                <div>
+                                    <field name="state" widget="label_selection"
+                                        options="{'classes': {'draft': 'default', 'self_review': 'info', 'manager_review': 'info', 'hr_review': 'info', 'approved': 'success', 'rejected': 'danger'}}"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Team Performance Rating Action: All -->
+    <record id="action_performance_rating_all" model="ir.actions.act_window">
+        <field name="name">Team Performance Ratings</field>
+        <field name="res_model">performance.rating</field>
+        <field name="view_mode">list,form,kanban,pivot,graph</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new Team Performance Rating
+            </p>
+            <p>
+                Track and manage employee team performance ratings including goals, feedback, and recommendations.
+            </p>
+        </field>
+    </record>
+
+    <!-- Team Performance Rating Action: My Ratings -->
+    <record id="action_performance_rating_my" model="ir.actions.act_window">
+        <field name="name">Team Performance Ratings</field>
+        <field name="res_model">performance.rating</field>
+        <field name="view_mode">list,form,graph</field>
+        <field name="domain">[('employee_id.user_id', '=', uid)]</field>
+        <field name="context">{'search_default_my_ratings': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No team performance ratings yet!
+            </p>
+            <p>
+                Your team performance ratings will appear here once they are created by your manager.
+            </p>
+        </field>
+    </record>
+
+</odoo>

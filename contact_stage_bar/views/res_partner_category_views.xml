@@ -1,0 +1,41 @@
+<odoo>
+    <record id="view_partner_category_tree" model="ir.ui.view">
+        <field name="name">custom.category.list</field>
+        <field name="model">custom.category</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_partner_category_form" model="ir.ui.view">
+        <field name="name">custom.category.form</field>
+        <field name="model">custom.category</field>
+        <field name="arch" type="xml">
+            <form string="Partner Stage">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_partner_category" model="ir.actions.act_window">
+        <field name="name">Partner Category</field>
+        <field name="res_model">custom.category</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p>Manage Category for Contacts</p>
+        </field>
+    </record>
+
+    <menuitem id="contact_stage_bar.menu_partner_category_root"
+              name="Category"
+              parent="contacts.res_partner_menu_config"
+              action="contact_stage_bar.action_partner_category"
+              sequence="50"/>
+
+</odoo>

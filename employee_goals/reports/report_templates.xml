@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Goal Report Template -->
+    <template id="report_employee_goal_document">
+        <t t-call="web.external_layout">
+            <div class="page">
+                <div class="oe_structure"/>
+                <div class="row">
+                    <div class="col-12">
+                        <h2>Employee Goal Report</h2>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Employee:</strong>
+                        <p t-field="o.employee_id.name"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>Department:</strong>
+                        <p t-field="o.employee_id.department_id.name"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Goal Title:</strong>
+                        <p t-field="o.name"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>Status:</strong>
+                        <p t-field="o.state"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Start Date:</strong>
+                        <p t-field="o.start_date"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>End Date:</strong>
+                        <p t-field="o.end_date"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Target Value:</strong>
+                        <p t-field="o.target_value"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>Current Value:</strong>
+                        <p t-field="o.current_value"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-12">
+                        <strong>Description:</strong>
+                        <p t-field="o.description"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-12">
+                        <strong>Progress:</strong>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar" role="progressbar"
+                                 t-attf-style="width: #{o.progress}%;"
+                                 t-attf-aria-valuenow="#{o.progress}"
+                                 aria-valuemin="0" aria-valuemax="100">
+                                <span t-esc="o.progress"/>%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="oe_structure"/>
+            </div>
+        </t>
+    </template>
+
+    <!-- Performance Rating Report Template -->
+    <template id="report_performance_rating_document">
+        <t t-call="web.external_layout">
+            <div class="page">
+                <div class="oe_structure"/>
+                <div class="row">
+                    <div class="col-12">
+                        <h2>Performance Rating Report</h2>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Employee:</strong>
+                        <p t-field="o.employee_id.name"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>Department:</strong>
+                        <p t-field="o.employee_id.department_id.name"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Rating Period:</strong>
+                        <p t-field="o.rating_period"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>Rating Date:</strong>
+                        <p t-field="o.rating_date"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-6">
+                        <strong>Overall Rating:</strong>
+                        <p t-field="o.overall_rating"/>
+                    </div>
+                    <div class="col-6">
+                        <strong>Reviewer:</strong>
+                        <p t-field="o.reviewer_id.name"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-12">
+                        <h4>Rating Details</h4>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Rating</th>
+                                    <th>Weight</th>
+                                    <th>Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="o.rating_line_ids" t-as="line">
+                                    <tr>
+                                        <td><span t-field="line.category_id.name"/></td>
+                                        <td><span t-field="line.rating"/></td>
+                                        <td><span t-field="line.weight"/></td>
+                                        <td><span t-field="line.comments"/></td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-12">
+                        <strong>General Comments:</strong>
+                        <p t-field="o.comments"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-12">
+                        <strong>Strengths:</strong>
+                        <p t-field="o.strengths"/>
+                    </div>
+                </div>
+
+                <div class="row mt32 mb32">
+                    <div class="col-12">
+                        <strong>Areas for Improvement:</strong>
+                        <p t-field="o.areas_for_improvement"/>
+                    </div>
+                </div>
+
+                <div class="oe_structure"/>
+            </div>
+        </t>
+    </template>
+
+    <!-- Main Report Templates -->
+    <template id="report_employee_goal">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="employee_goals.report_employee_goal_document"/>
+            </t>
+        </t>
+    </template>
+
+    <template id="report_performance_rating">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="employee_goals.report_performance_rating_document"/>
+            </t>
+        </t>
+    </template>
+</odoo>
