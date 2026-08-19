@@ -31,7 +31,7 @@ class CustomerRfq(models.Model):
     )
 
     partner_id = fields.Many2one(
-        'res.partner', string='Customer Name', tracking=True, required=True,
+        'res.partner', string='Company Name', tracking=True, required=True,
     )
 
     # Owner: defaults to whoever creates the record, but unlike create_uid

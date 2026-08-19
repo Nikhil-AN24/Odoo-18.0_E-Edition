@@ -26,8 +26,10 @@
                 </group>
             </xpath>
             <xpath expr="//group[2]/field[@name='function']" position="after">
-                <field name="first_name"/>
-                <field name="last_name"/>
+                <field name="first_name" invisible="not id"/>
+                <field name="last_name" invisible="not id"/>
+                <field name="contact_person_name"/>
+                <field name="job_position"/>
             </xpath>
             <xpath expr="//field[@name='category_id']" position="after">
                 <field name="category_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
@@ -35,6 +37,8 @@
                 <field name="user_id"/>
                 <field name="lead_source"/>
                 <field name="graduation_rate" widget="priority"/>
+                <field name="shipping_address"/>
+                <field name="terms"/>
             </xpath>
             <xpath expr="//page[@name='sales_purchases']" position="attributes">
                 <attribute name="invisible">1</attribute>

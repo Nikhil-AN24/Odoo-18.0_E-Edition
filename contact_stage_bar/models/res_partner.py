@@ -22,6 +22,15 @@ class ResPartner(models.Model):
     ], string='EIN Status', tracking=True)
     first_name = fields.Char(string="First Name")
     last_name = fields.Char(string="Last Name")
+    contact_person_name = fields.Char(string="Contact Person Name")
+    job_position = fields.Char(string="Job Position")
+    billing_address = fields.Text(string="Billing Address")
+    shipping_address = fields.Text(string="Shipping Address")
+    terms = fields.Selection([
+        ('advance', 'Advance'),
+        ('credit', 'Credit'),
+        ('cod', 'Cash on Delivery'),
+    ], string="Terms", default='advance')
     stage_id = fields.Many2one('res.partner.stage',string="Status",tracking=True,group_expand="_group_expand_stage_id")
 
     # company_type = fields.Selection(string='Company Type',

@@ -9,6 +9,7 @@
             <list string="Customer RFQ">
                 <field name="name"/>
                 <field name="partner_id"
+                       string="Company Name"
                        groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
                 <field name="customer_phone"
                        groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
@@ -70,18 +71,19 @@
                         <group>
 
                             <!-- Price: visibility + readonly computed based on user group/state -->
-                            <field name="partner_id" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                            <field name="partner_id" string="Company Name" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
                             <field name="customer_phone" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
-                            <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
-                            <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                            <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1"/>
+                            <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1"/>
                             <field name="stone_type" widget="radio" options="{'horizontal': true}"/>
                             <field name="stone_certification_type" widget="radio" options="{'horizontal': true}" invisible="not stone_type"/>
                             <field name="shape_ids" widget="many2many_tags" required="1" options="{'no_create': True, 'no_create_edit': True}"/>
                             <field name="carat"/>
                             <field name="color"/>
                             <field name="clarity"/>
-                            <field name="size"/>
-                            <field name="quantity"/>
+                            <field name="size" invisible="stone_certification_type == 'certified'"/>
+                            <field name="quantity" invisible="stone_certification_type == 'non_certified'"/>
+
                             <!-- Procurement sets whether the stone needs certification -->
                             <field name="stone_certification" readonly="is_price_readonly" invisible="1"/>
                         </group>
