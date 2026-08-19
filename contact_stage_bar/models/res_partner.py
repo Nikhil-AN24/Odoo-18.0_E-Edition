@@ -25,7 +25,18 @@ class ResPartner(models.Model):
     contact_person_name = fields.Char(string="Contact Person Name")
     job_position = fields.Char(string="Job Position")
     billing_address = fields.Text(string="Billing Address")
-    shipping_address = fields.Text(string="Shipping Address")
+    shipping_address_differs = fields.Boolean(
+        string="The Shipping Address does not match the Billing Address.",
+        default=False
+    )
+    shipping_address = fields.Text(string="Shipping Address", compute="_compute_shipping_address", store=True, readonly=False)
+
+    @api.depends('billing_address', 'shipping_address_differs')
+    def _compute_shipping_address(self):
+        for partner in self:
+            if not partner.shipping_address_differs:
+                partner.shipping_address = partner.billing_address
+
     terms = fields.Selection([
         ('advance', 'Advance'),
         ('credit', 'Credit'),

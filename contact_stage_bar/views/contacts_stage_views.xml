@@ -15,6 +15,9 @@
             <xpath expr="//field[@name='company_type']" position="attributes">
                 <attribute name="invisible">True</attribute>
             </xpath>
+            <xpath expr="//span[@name='address_name']/span" position="replace">
+                <span invisible="not is_company">Billing Address</span>
+            </xpath>
             <xpath expr="//group[1]" position="after">
                 <group>
                     <group>
@@ -37,7 +40,9 @@
                 <field name="user_id"/>
                 <field name="lead_source"/>
                 <field name="graduation_rate" widget="priority"/>
-                <field name="shipping_address"/>
+                <field name="billing_address"/>
+                <field name="shipping_address_differs"/>
+                <field name="shipping_address" readonly="not shipping_address_differs"/>
                 <field name="terms"/>
             </xpath>
             <xpath expr="//page[@name='sales_purchases']" position="attributes">
