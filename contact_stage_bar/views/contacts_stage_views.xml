@@ -20,6 +20,40 @@
             </xpath>
             <xpath expr="//field[@name='name'][1]" position="attributes">
                 <attribute name="placeholder">e.g. Anirath Overseas</attribute>
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='street'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='street2'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='city'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='state_id'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='zip'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='country_id'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='phone'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='email'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='mobile'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='vat'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='l10n_in_pan'][1]" position="attributes">
+                <attribute name="required">1</attribute>
             </xpath>
             <xpath expr="//group[1]" position="after">
                 <group>
@@ -34,14 +68,14 @@
             <xpath expr="//group[2]/field[@name='function']" position="after">
                 <field name="first_name" invisible="not id"/>
                 <field name="last_name" invisible="not id"/>
-                <field name="contact_person_name"/>
+                <field name="contact_person_name" required="1"/>
                 <field name="job_position"/>
             </xpath>
             <xpath expr="//field[@name='category_id']" position="after">
                 <field name="category_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
                 <field name="primary_category_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
                 <field name="user_id"/>
-                <field name="lead_source"/>
+                <field name="lead_source" required="1"/>
                 <field name="graduation_rate" widget="priority"/>
                 <field name="shipping_address_differs"/>
                 <field name="shipping_address" readonly="not shipping_address_differs"/>

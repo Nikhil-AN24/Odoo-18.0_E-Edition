@@ -22,7 +22,7 @@ class ResPartner(models.Model):
     ], string='EIN Status', tracking=True)
     first_name = fields.Char(string="First Name")
     last_name = fields.Char(string="Last Name")
-    contact_person_name = fields.Char(string="Contact Person Name")
+    contact_person_name = fields.Char(string="Contact Person Name", tracking=True)
     job_position = fields.Char(string="Job Position")
     billing_address = fields.Text(string="Billing Address")
     shipping_address_differs = fields.Boolean(
@@ -30,6 +30,20 @@ class ResPartner(models.Model):
         default=False
     )
     shipping_address = fields.Text(string="Shipping Address", compute="_compute_shipping_address", store=True, readonly=False)
+
+    # Base/localization fields extended here only to enable chatter tracking
+    name = fields.Char(tracking=True)
+    phone = fields.Char(tracking=True)
+    email = fields.Char(tracking=True)
+    mobile = fields.Char(tracking=True)
+    street = fields.Char(tracking=True)
+    street2 = fields.Char(tracking=True)
+    city = fields.Char(tracking=True)
+    state_id = fields.Many2one(tracking=True)
+    zip = fields.Char(tracking=True)
+    country_id = fields.Many2one(tracking=True)
+    vat = fields.Char(tracking=True)  # GSTIN
+    l10n_in_pan = fields.Char(tracking=True)  # PAN
 
     @api.depends('billing_address', 'shipping_address_differs')
     def _compute_shipping_address(self):
@@ -68,7 +82,7 @@ class ResPartner(models.Model):
         string="Primary Category",
         copy=False,
     )
-    lead_source = fields.Selection([('website', 'Website'), ('cold_call', 'Cold Call'), ('email', 'Email'), ('marketing_campaign', 'Marketing Campaign')], string='Lead Source')
+    lead_source = fields.Selection([('website', 'Website'), ('cold_call', 'Cold Call'), ('email', 'Email'), ('marketing_campaign', 'Marketing Campaign')], string='Lead Source', tracking=True)
     graduation_rate = fields.Selection([('0', 'No Rating'),('1', '1'),('2', '2'),('3', '3'),('4', '4'),], string='Graduation Rate', default='0') 
    
     # vendor_per_carat_price = fields.Float(string="Vendor Price Per Carat")
