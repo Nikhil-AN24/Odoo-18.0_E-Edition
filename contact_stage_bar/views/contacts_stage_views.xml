@@ -18,6 +18,9 @@
             <xpath expr="//span[@name='address_name']/span" position="replace">
                 <span invisible="not is_company">Billing Address</span>
             </xpath>
+            <xpath expr="//field[@name='name'][1]" position="attributes">
+                <attribute name="placeholder">e.g. Anirath Overseas</attribute>
+            </xpath>
             <xpath expr="//group[1]" position="after">
                 <group>
                     <group>
@@ -40,7 +43,6 @@
                 <field name="user_id"/>
                 <field name="lead_source"/>
                 <field name="graduation_rate" widget="priority"/>
-                <field name="billing_address"/>
                 <field name="shipping_address_differs"/>
                 <field name="shipping_address" readonly="not shipping_address_differs"/>
                 <field name="terms"/>
