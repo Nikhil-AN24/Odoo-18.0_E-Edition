@@ -46,6 +46,11 @@
                 <field name="shipping_address_differs"/>
                 <field name="shipping_address" readonly="not shipping_address_differs"/>
                 <field name="terms"/>
+                <field name="document" filename="document_filename" help="Only one document can be uploaded here. Uploading a new file will replace the existing one."/>
+                <div class="text-muted" style="font-size: 12px;">
+                    <i class="fa fa-info-circle" title="Info"/> Only one document can be uploaded. Uploading a new file will replace the existing one.
+                </div>
+                <field name="document_filename" invisible="1"/>
             </xpath>
             <xpath expr="//page[@name='sales_purchases']" position="attributes">
                 <attribute name="invisible">1</attribute>
