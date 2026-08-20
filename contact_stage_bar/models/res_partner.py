@@ -44,6 +44,9 @@ class ResPartner(models.Model):
     ], string="Terms", default='advance')
     stage_id = fields.Many2one('res.partner.stage',string="Status",tracking=True,group_expand="_group_expand_stage_id")
 
+    document = fields.Binary(string="Document", attachment=True)
+    document_filename = fields.Char(string="Document Filename")
+
     # company_type = fields.Selection(string='Company Type',
     # selection=[('person', 'Individual'), ('company', 'Company')],
     # compute='_compute_company_type', inverse='_write_company_type', default='company')
