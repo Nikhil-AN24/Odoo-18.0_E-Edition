@@ -58,12 +58,18 @@
         <record id="lgd_sales_own_partner_read_rule" model="ir.rule">
             <field name="name">LGD Sales Own Partner Read</field>
             <field name="model_id" ref="base.model_res_partner"/>
-            <field name="domain_force">['|', '|', '|', '|', '|',
+
+            <field name="domain_force">['|', '|',
+                                        ('id', '=', user.partner_id.id),
+                                        ('id', '=', user.company_id.partner_id.id),
+                                        '&amp;',
+                                        '|',
+                                        ('partner_kind', '=', 'buyer'),
+                                        ('parent_id.partner_kind', '=', 'buyer'),
+                                        '|', '|', '|',
                                         ('create_uid', '=', user.id),
                                         ('user_id', '=', user.id),
                                         ('parent_id.user_id', '=', user.id),
-                                        ('id', '=', user.partner_id.id),
-                                        ('id', '=', user.company_id.partner_id.id),
                                         ('sale_order_ids.user_id', '=', user.id)]</field>
             <field name="groups" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_sales')])]"/>
             <field name="perm_read" eval="True"/>
@@ -72,12 +78,12 @@
             <field name="perm_unlink" eval="False"/>
         </record>
 
+
         <record id="lgd_global_partner_read_rule" model="ir.rule">
             <field name="name">LGD Global Partner Read Bypass</field>
             <field name="model_id" ref="base.model_res_partner"/>
             <field name="domain_force">[(1, '=', 1)]</field>
             <field name="groups" eval="[(6, 0, [
-                ref('contact_stage_bar.group_lgd_procurement'),
                 ref('contact_stage_bar.group_lgd_logistics'),
                 ref('contact_stage_bar.group_lgd_shipment'),
                 ref('contact_stage_bar.group_lgd_accounting'),
@@ -90,15 +96,50 @@
             <field name="perm_unlink" eval="False"/>
         </record>
 
+        <record id="lgd_procurement_partner_rule" model="ir.rule">
+            <field name="name">LGD Procurement Partner Access (Suppliers Only)</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="domain_force">['|', '|', '|',
+                                        ('id', '=', user.partner_id.id),
+                                        ('id', '=', user.company_id.partner_id.id),
+                                        ('partner_kind', '=', 'supplier'),
+                                        ('parent_id.partner_kind', '=', 'supplier')]</field>
+            <field name="groups" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement')])]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
         <record id="lgd_sales_manager_partner_read_rule" model="ir.rule">
             <field name="name">LGD Sales Manager Partner Read Bypass (Restricted)</field>
             <field name="model_id" ref="base.model_res_partner"/>
-            <field name="domain_force">['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
+            <field name="domain_force">['|', '|',
+                                        ('id', '=', user.partner_id.id),
+                                        ('id', '=', user.company_id.partner_id.id),
+                                        '&amp;',
+                                        '|',
+                                        ('partner_kind', '=', 'buyer'),
+                                        ('parent_id.partner_kind', '=', 'buyer'),
+                                        '|',
+                                        ('user_id', '=', False),
+                                        ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
             <field name="groups" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_sales_manager')])]"/>
             <field name="perm_read" eval="True"/>
             <field name="perm_write" eval="True"/>
             <field name="perm_create" eval="True"/>
             <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="lgd_admin_partner_all_rule" model="ir.rule">
+            <field name="name">LGD Admin Partner Full Access</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(6, 0, [ref('base.group_system')])]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
         </record>
 
         <function name="write" model="ir.model.data">

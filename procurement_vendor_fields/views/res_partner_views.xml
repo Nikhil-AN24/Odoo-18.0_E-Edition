@@ -86,9 +86,8 @@
         </field>
     </record>
 
-    <!-- Rename the Procurement "Vendors" menu to "Suppliers" -->
     <record id="purchase.menu_procurement_management_supplier_name" model="ir.ui.menu">
-        <field name="name">Suppliers</field>
+        <field name="name">Vendors</field>
     </record>
 
     <!-- Add the vendor selection fields to the partner list view -->
@@ -101,6 +100,18 @@
                 <field name="vendor_discount" optional="show"/>
                 <field name="certified_payment_term" optional="show"/>
                 <field name="non_certified_payment_term" optional="show"/>
+                <!-- Supplier import-sheet columns, off by default to keep the
+                     list readable; togglable from the column picker. -->
+                <field name="trading_name" optional="hide"/>
+                <field name="kyc_company_name" optional="hide"/>
+                <field name="lg_cert_discount" optional="hide"/>
+                <field name="lg_non_cert_discount" optional="hide"/>
+                <field name="natural_cert_discount" optional="hide"/>
+                <field name="natural_non_cert_discount" optional="hide"/>
+                <field name="lg_cert_payment_days" optional="hide"/>
+                <field name="lg_non_cert_payment_days" optional="hide"/>
+                <field name="natural_cert_payment_days" optional="hide"/>
+                <field name="natural_non_cert_payment_days" optional="hide"/>
             </xpath>
             <!-- Hide Salesperson / Activities / City columns by default -->
             <xpath expr="//field[@name='user_id']" position="attributes">
@@ -113,10 +124,5 @@
                 <attribute name="optional">hide</attribute>
             </xpath>
         </field>
-    </record>
-
-    <!-- Vendor/Supplier action: default to LIST view (not the stage kanban) -->
-    <record id="account.res_partner_action_supplier" model="ir.actions.act_window">
-        <field name="view_mode">list,kanban,form</field>
     </record>
 </odoo>

@@ -16,6 +16,34 @@ _PAYMENT_TERM_SELECTION = [
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
+    # ── Supplier identity (columns from the "seller - seller" import sheet) ──
+    # `name` already holds company_name and `vat` the gstin, so only the two
+    # extra company names below are new.
+    trading_name = fields.Char(string='Trading Name', tracking=True)
+    kyc_company_name = fields.Char(string='KYC Company Name', tracking=True)
+
+    # ── Discount / Payment terms matrix (Lab Grown|Natural x Cert|Non Cert) ──
+    # The import sheet carries plain numbers (discount 0,1,2… / terms 0,7,10,
+    # 15,30 days), so these are Float/Integer rather than the older "Less N"
+    # selections above, which stay untouched for existing vendor records.
+    lg_cert_discount = fields.Float(
+        string='Lab Grown > Cert > Discount', digits=(16, 2), tracking=True)
+    lg_non_cert_discount = fields.Float(
+        string='Lab Grown > Non Cert > Discount', digits=(16, 2), tracking=True)
+    natural_cert_discount = fields.Float(
+        string='Natural > Cert > Discount', digits=(16, 2), tracking=True)
+    natural_non_cert_discount = fields.Float(
+        string='Natural > Non Cert > Discount', digits=(16, 2), tracking=True)
+
+    lg_cert_payment_days = fields.Integer(
+        string='Lab Grown > Cert > Payment terms (Days)', tracking=True)
+    lg_non_cert_payment_days = fields.Integer(
+        string='Lab Grown > Non Cert > Payment terms (Days)', tracking=True)
+    natural_cert_payment_days = fields.Integer(
+        string='Natural > Cert > Payment terms (Days)', tracking=True)
+    natural_non_cert_payment_days = fields.Integer(
+        string='Natural > Non Cert > Payment terms (Days)', tracking=True)
+
     vendor_discount = fields.Selection(
         selection=[
             ('less_1', 'Less 1'),
