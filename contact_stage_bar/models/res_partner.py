@@ -29,7 +29,27 @@ class ResPartner(models.Model):
         string="The Shipping Address does not match the Billing Address.",
         default=False
     )
-    shipping_address = fields.Text(string="Shipping Address", compute="_compute_shipping_address", store=True, readonly=False)
+    shipping_address = fields.Text(string="Shipping Address",
+        compute="_compute_shipping_address", store=True)
+
+    shipping_street = fields.Char(string="Shipping Street")
+    shipping_street2 = fields.Char(string="Shipping Street 2")
+    shipping_city = fields.Char(string="Shipping City")
+    shipping_zip = fields.Char(string="Shipping ZIP")
+    shipping_state_id = fields.Many2one(
+        "res.country.state", string="Shipping State",
+        domain="[('country_id', '=?', shipping_country_id)]")
+    shipping_country_id = fields.Many2one("res.country", string="Shipping Country")
+
+    # Shipping field -> billing field it mirrors while the flag is off.
+    _SHIPPING_ADDRESS_FIELDS = {
+        'shipping_street': 'street',
+        'shipping_street2': 'street2',
+        'shipping_city': 'city',
+        'shipping_zip': 'zip',
+        'shipping_state_id': 'state_id',
+        'shipping_country_id': 'country_id',
+    }
 
     # Base/localization fields extended here only to enable chatter tracking
     name = fields.Char(tracking=True)
@@ -45,11 +65,40 @@ class ResPartner(models.Model):
     vat = fields.Char(tracking=True)  # GSTIN
     l10n_in_pan = fields.Char(tracking=True)  # PAN
 
-    @api.depends('billing_address', 'shipping_address_differs')
-    def _compute_shipping_address(self):
+    def _sync_shipping_from_billing(self):
+        for partner in self:
+            partner.update({ship: partner[bill]
+                            for ship, bill in self._SHIPPING_ADDRESS_FIELDS.items()})
+
+    def _clear_shipping_address(self):
+        self.update(dict.fromkeys(self._SHIPPING_ADDRESS_FIELDS, False))
+
+    @api.onchange('shipping_address_differs')
+    def _onchange_shipping_address_differs(self):
+        for partner in self:
+            if partner.shipping_address_differs:
+                partner._clear_shipping_address()
+            else:
+                partner._sync_shipping_from_billing()
+
+    @api.onchange('street', 'street2', 'city', 'zip', 'state_id', 'country_id')
+    def _onchange_billing_address(self):
         for partner in self:
             if not partner.shipping_address_differs:
-                partner.shipping_address = partner.billing_address
+                partner._sync_shipping_from_billing()
+
+    @api.depends('shipping_street', 'shipping_street2', 'shipping_city',
+                 'shipping_zip', 'shipping_state_id', 'shipping_country_id')
+    def _compute_shipping_address(self):
+        """Flat text copy, kept for reports and any code reading the old field."""
+        for partner in self:
+            locality = ", ".join(p for p in (partner.shipping_city,
+                                             partner.shipping_state_id.name,
+                                             partner.shipping_zip) if p)
+            partner.shipping_address = "\n".join(
+                p for p in (partner.shipping_street, partner.shipping_street2,
+                            locality, partner.shipping_country_id.name) if p
+            ) or False
 
     terms = fields.Selection([
         ('advance', 'Advance'),
@@ -95,7 +144,23 @@ class ResPartner(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        return super(ResPartner, self.sudo()).create(vals_list)
+        partners = super(ResPartner, self.sudo()).create(vals_list)
+        partners.filtered(lambda p: not p.shipping_address_differs) \
+                ._sync_shipping_from_billing()
+        return partners
+
+    def write(self, vals):
+        res = super().write(vals)
+        # A caller that sets shipping values explicitly is left alone.
+        if set(vals) & set(self._SHIPPING_ADDRESS_FIELDS):
+            return res
+        if set(vals) & set(self._SHIPPING_ADDRESS_FIELDS.values()) \
+                or 'shipping_address_differs' in vals:
+            mirrored = self.filtered(lambda p: not p.shipping_address_differs)
+            mirrored._sync_shipping_from_billing()
+            if 'shipping_address_differs' in vals:
+                (self - mirrored)._clear_shipping_address()
+        return res
 
     @api.model
     def name_create(self, name):
