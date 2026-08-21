@@ -66,6 +66,13 @@
                 </group>
             </xpath>
             <xpath expr="//group[2]/field[@name='function']" position="after">
+                <!-- Carries default_partner_kind from the action context onto
+                     new records. Odoo only calls default_get for fields that
+                     are present in the view, so without this the tag would
+                     stay empty and a freshly created record would drop out of
+                     the very list it was created from. Invisible: the menu the
+                     user is in decides it, never the user. -->
+                <field name="partner_kind" invisible="1"/>
                 <field name="first_name" invisible="not id"/>
                 <field name="last_name" invisible="not id"/>
                 <field name="contact_person_name" required="1"/>
@@ -127,14 +134,14 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[('user_id', '=', uid)]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('user_id', '=', uid)]</field>
     </record>
 
     <record id="contacts.action_contacts" model="ir.actions.act_window">
         <field name="name">Accounts India (My)</field>
-        <field name="domain">[('user_id', '=', uid), ('country_id', '=', 104)]</field>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('user_id', '=', uid), ('country_id', '=', 104)]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
     </record>
 
     <record id="action_contacts_custom_usa" model="ir.actions.act_window">
@@ -143,8 +150,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[('user_id', '=', uid), ('country_id', '!=', 104), ('country_id', '!=', False)]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('user_id', '=', uid), ('country_id', '!=', 104), ('country_id', '!=', False)]</field>
     </record>
 
     <record id="action_contacts_custom_all" model="ir.actions.act_window">
@@ -153,8 +160,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
     </record>
 
     <record id="action_contacts_custom" model="ir.actions.act_window">
@@ -163,8 +170,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[('country_id', '=', 104), ('country_id', '!=', False), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '=', 104), ('country_id', '!=', False), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
     </record>
 
     <record id="action_contacts_custom_usa_admin" model="ir.actions.act_window">
@@ -173,8 +180,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[('country_id', '!=', 104), ('country_id', '!=', False), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '!=', 104), ('country_id', '!=', False), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
     </record>
 
     <record id="action_contacts_custom_all_sysadmin" model="ir.actions.act_window">
@@ -182,8 +189,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer')]</field>
     </record>
 
     <record id="action_contacts_custom_sysadmin" model="ir.actions.act_window">
@@ -191,8 +198,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[('country_id', '=', 104), ('country_id', '!=', False)]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '=', 104), ('country_id', '!=', False)]</field>
     </record>
 
     <record id="action_contacts_custom_usa_sysadmin" model="ir.actions.act_window">
@@ -200,8 +207,8 @@
         <field name="res_model">res.partner</field>
         <field name="view_mode">kanban,list,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
-        <field name="context">{'default_is_company': True,'search_default_type_company': 1}</field>
-        <field name="domain">[('country_id', '!=', 104), ('country_id', '!=', False)]</field>
+        <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
+        <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '!=', 104), ('country_id', '!=', False)]</field>
     </record>
 
     <menuitem id="res_partner_menu_contacts_all_mine" name="My Accounts" action="contact_stage_bar.action_contacts_custom_all_mine" parent="contacts.menu_contacts" sequence="1" groups="contact_stage_bar.group_lgd_sales"/>

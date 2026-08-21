@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- ==================================================================
+         Supplier form  —  Procurement > Suppliers > Vendors
+         ================================================================== -->
+    <record id="view_partner_form_supplier" model="ir.ui.view">
+        <field name="name">res.partner.form.supplier</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="mode">primary</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+
+            <!-- contact_stage_bar sets create="0" on the shared partner form;
+                 suppliers must stay creatable from this one. -->
+            <xpath expr="/form" position="attributes">
+                <attribute name="create">1</attribute>
+            </xpath>
+
+            <!-- The buyer pipeline status bar has no meaning for suppliers. -->
+            <xpath expr="//field[@name='stage_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- ===== company_name / trading_name / kyc_company_name ===== -->
+            <xpath expr="//field[@name='name'][1]" position="attributes">
+                <attribute name="placeholder">e.g. AKSHAY PARASMAL SANGHVI</attribute>
+                <attribute name="required">1</attribute>
+            </xpath>
+
+            <!-- ===== first_name / last_name ===== -->
+            <!-- The shared form only reveals these on saved records; on the
+                 supplier form they are part of the mandatory identity block. -->
+            <xpath expr="//field[@name='first_name']" position="attributes">
+                <attribute name="invisible">0</attribute>
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='last_name']" position="attributes">
+                <attribute name="invisible">0</attribute>
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='last_name']" position="after">
+                <field name="trading_name" placeholder="e.g. J Y SANGHVI"/>
+                <field name="kyc_company_name"
+                       placeholder="e.g. AKSHAY PARASMAL SANGHVI"/>
+            </xpath>
+
+            <!-- Buyer-side contact fields; the sheet has no column for them. -->
+            <xpath expr="//field[@name='contact_person_name']" position="attributes">
+                <attribute name="invisible">1</attribute>
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='job_position']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- ===== email / mobile_number ===== -->
+            <xpath expr="//field[@name='email'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='mobile'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+                <attribute name="string">Mobile Number</attribute>
+            </xpath>
+            <xpath expr="//field[@name='phone'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+
+            <!-- ===== billing_address =====
+                 The import sheet leaves the address blank for a large share of
+                 the suppliers, so the required flags contact_stage_bar puts on
+                 the buyer form are lifted here. -->
+            <xpath expr="//field[@name='street'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='street2'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='city'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='state_id'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='zip'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='country_id'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+
+            <!-- ===== gstin / gstin_status / ein / ein_status =====
+                 res_partner_views.xml hides the EIN/GST block whenever
+                 supplier_rank > 0; on the supplier form it is required data,
+                 so bring it back and label it the way the sheet does. -->
+            <xpath expr="//field[@name='vat'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+                <attribute name="string">GSTIN</attribute>
+            </xpath>
+            <xpath expr="//field[@name='l10n_in_pan'][1]" position="attributes">
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='gst_stages']" position="attributes">
+                <attribute name="invisible">0</attribute>
+                <attribute name="string">GSTIN Status</attribute>
+            </xpath>
+            <xpath expr="//field[@name='ein_number']" position="attributes">
+                <attribute name="invisible">0</attribute>
+                <attribute name="string">EIN</attribute>
+            </xpath>
+            <xpath expr="//field[@name='ein_status']" position="attributes">
+                <attribute name="invisible">0</attribute>
+            </xpath>
+
+            <!-- ===== buyer-only fields: hidden outright ===== -->
+            <xpath expr="//field[@name='category_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='category_ids']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='primary_category_ids']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='user_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='lead_source']" position="attributes">
+                <attribute name="invisible">1</attribute>
+                <attribute name="required">0</attribute>
+            </xpath>
+            <xpath expr="//field[@name='graduation_rate']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='website']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='terms']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <!-- Buyer document upload + its "only one document" hint. The KYC
+                 document from res_partner_views.xml stays as the supplier
+                 equivalent. -->
+            <xpath expr="//field[@name='document']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='document']/following-sibling::div[1]"
+                   position="replace"/>
+
+            <!-- Purchase settings live on this page; contact_stage_bar hides it
+                 for buyers, suppliers need it. -->
+            <xpath expr="//page[@name='sales_purchases']" position="attributes">
+                <attribute name="invisible">0</attribute>
+            </xpath>
+
+            <!-- ===== Discount / Payment terms matrix ===== -->
+            <xpath expr="//notebook" position="inside">
+                <page name="supplier_discount_terms"
+                      string="Discounts &amp; Payment Terms">
+                    <group>
+                        <group string="Discount">
+                            <field name="lg_cert_discount"
+                                   string="Lab Grown &gt; Cert"/>
+                            <field name="lg_non_cert_discount"
+                                   string="Lab Grown &gt; Non Cert"/>
+                            <field name="natural_cert_discount"
+                                   string="Natural &gt; Cert"/>
+                            <field name="natural_non_cert_discount"
+                                   string="Natural &gt; Non Cert"/>
+                        </group>
+                        <group string="Payment Terms (Days)">
+                            <field name="lg_cert_payment_days"
+                                   string="Lab Grown &gt; Cert"/>
+                            <field name="lg_non_cert_payment_days"
+                                   string="Lab Grown &gt; Non Cert"/>
+                            <field name="natural_cert_payment_days"
+                                   string="Natural &gt; Cert"/>
+                            <field name="natural_non_cert_payment_days"
+                                   string="Natural &gt; Non Cert"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ==================================================================
+         Procurement > Suppliers > Vendors
+         ================================================================== -->
+    <record id="account.res_partner_action_supplier" model="ir.actions.act_window">
+        <field name="view_mode">list,kanban,form</field>
+        <field name="domain">[('partner_kind', '=', 'supplier')]</field>
+        <field name="context">{
+            'res_partner_search_mode': 'supplier',
+            'default_partner_kind': 'supplier',
+            'default_is_company': True,
+            'default_supplier_rank': 1,
+        }</field>
+        <field name="view_ids" eval="[
+            (5, 0, 0),
+            (0, 0, {'view_mode': 'list',   'sequence': 10}),
+            (0, 0, {'view_mode': 'kanban', 'sequence': 20}),
+            (0, 0, {'view_mode': 'form',   'sequence': 30,
+                    'view_id': ref('view_partner_form_supplier')}),
+        ]"/>
+    </record>
+</odoo>

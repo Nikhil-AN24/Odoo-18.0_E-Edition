@@ -4,6 +4,15 @@ from odoo import models, fields, api
 class ResPartner(models.Model):
     _inherit = "res.partner"
 
+    partner_kind = fields.Selection(
+        selection=[('buyer', 'Buyer'), ('supplier', 'Supplier')],
+        string="Account Type",
+        index=True,
+        tracking=True,
+        help="Determines which menu the record appears under. Set "
+             "automatically from the menu the record is created in.",
+    )
+
     ein_number = fields.Char(string="EIN Number")
     gst_stages = fields.Selection([
         ('pending', 'Pending'),
@@ -142,8 +151,42 @@ class ResPartner(models.Model):
     def _group_expand_stage_id(self, stages, domain):
         return self.env['res.partner.stage'].search([])
 
+    @api.model
+    def _infer_partner_kind(self, vals):
+        """Work out the Account Type for a record created without one.
+
+        The menu actions pass default_partner_kind in their context, but that
+        only reaches a record through default_get -- which the import wizard
+        and the quick-create on a PO/SO partner field both bypass. Without a
+        fallback, an imported supplier is stored untagged and vanishes from
+        the very list it was imported into.
+
+        Inference runs at creation only, from the values being written. Odoo
+        pushes supplier_rank/customer_rank upwards later as documents get
+        confirmed, and that must never silently re-file an existing record --
+        which is why partner_kind exists as its own column in the first place.
+        """
+        kind = self.env.context.get('default_partner_kind')
+        if kind:
+            return kind
+        supplier, customer = vals.get('supplier_rank'), vals.get('customer_rank')
+        if supplier and not customer:
+            return 'supplier'
+        if customer and not supplier:
+            return 'buyer'
+        # A child address inherits whichever book its parent sits in.
+        if vals.get('parent_id'):
+            return self.browse(vals['parent_id']).partner_kind
+        return False
+
     @api.model_create_multi
     def create(self, vals_list):
+        vals_list = [dict(vals) for vals in vals_list]
+        for vals in vals_list:
+            if not vals.get('partner_kind'):
+                kind = self._infer_partner_kind(vals)
+                if kind:
+                    vals['partner_kind'] = kind
         partners = super(ResPartner, self.sudo()).create(vals_list)
         partners.filtered(lambda p: not p.shipping_address_differs) \
                 ._sync_shipping_from_billing()
