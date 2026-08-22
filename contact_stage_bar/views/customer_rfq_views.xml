@@ -183,6 +183,13 @@ action_vals['display_name'] = 'Sales'
 action_vals.pop('path', None)
 action_vals.pop('xml_id', None)
 
+# No New button here either: orders reach this list from the RFQ and online
+# flows, they are not keyed in by hand. hide_cog_menu drops the control-panel
+# cog (Import / Export / Duplicate / Delete) via the CogMenu patch in
+# static/src/js/hide_cog_menu.js. Both are set on the action context so they
+# apply to this action only and leave sale.view_order_form usable elsewhere.
+action_vals['context'] = {'create': False, 'hide_cog_menu': True}
+
 if env.user.has_group('base.group_system') or env.user.has_group('contact_stage_bar.group_lgd_procurement'):
     action_vals['domain'] = []
 elif env.user.has_group('contact_stage_bar.group_lgd_sales_manager'):
@@ -235,12 +242,11 @@ action_vals.pop('path', None)
 action_vals.pop('xml_id', None)
 
 # Procurement reads the orders Sales has raised; it never raises them here, so
-# the New button is dropped. 'create': False on the action context scopes this
-# to this action alone -- Sales > Sales is a separate action over the same
-# sale.order list and keeps its New button. Doing it here rather than with
-# create="0" on the view avoids taking the button away from every other place
-# sale.view_order_form is used.
-action_vals['context'] = {'create': False}
+# the New button and the control-panel cog (Import / Export / Duplicate /
+# Delete) are both dropped. Setting them on the action context scopes this to
+# this action alone, rather than create="0" on the view, which would take the
+# button away from every other place sale.view_order_form is used.
+action_vals['context'] = {'create': False, 'hide_cog_menu': True}
 
 if env.user.has_group('base.group_system'):
     # Admin sees every CFQ Order without any restriction.
