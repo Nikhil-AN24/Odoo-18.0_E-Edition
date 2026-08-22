@@ -19,35 +19,6 @@
                        string="KYC Document" invisible="supplier_rank == 0"/>
             </xpath>
 
-            <!-- Melee / Diamonds Discount & Payment Terms, placed next to Title
-                 (vendor-only). supplier_rank is loaded invisibly above. -->
-            <xpath expr="//field[@name='title']" position="after">
-                <field name="discount_type"
-                       invisible="supplier_rank == 0"/>
-                <field name="discount_melee_ids"
-                       widget="many2many_tags"
-                       invisible="supplier_rank == 0 or discount_type != 'melee'"
-                       options="{'no_quick_create': True}"/>
-                <field name="discount_diamond_type"
-                       string="Diamond Type"
-                       invisible="supplier_rank == 0 or discount_type != 'diamonds'"/>
-                <field name="discount_diamond_grade"
-                       string="Diamond Grade"
-                       invisible="supplier_rank == 0 or discount_type != 'diamonds' or not discount_diamond_type"/>
-                <field name="augmont_payment_terms"
-                       invisible="supplier_rank == 0"/>
-                <field name="payment_melee_ids"
-                       widget="many2many_tags"
-                       invisible="supplier_rank == 0 or augmont_payment_terms != 'melee'"
-                       options="{'no_quick_create': True}"/>
-                <field name="payment_diamond_type"
-                       string="Diamond Type"
-                       invisible="supplier_rank == 0 or augmont_payment_terms != 'diamonds'"/>
-                <field name="payment_diamond_grade"
-                       string="Diamond Grade"
-                       invisible="supplier_rank == 0 or augmont_payment_terms != 'diamonds' or not payment_diamond_type"/>
-            </xpath>
-
             <!-- Hide these fields on the vendor form (supplier_rank > 0) -->
             <xpath expr="//field[@name='graduation_rate']" position="attributes">
                 <attribute name="invisible">supplier_rank &gt; 0</attribute>

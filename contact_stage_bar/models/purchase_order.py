@@ -131,19 +131,6 @@ class PurchaseOrder(models.Model):
             # Location: India -> mumbai, anything else -> surat.
             order.location = 'mumbai' if partner.country_id.code == 'IN' else 'surat'
 
-            # Discount (Melee/Diamonds branch), mirrored field-for-field.
-            order.discount_type = partner.discount_type
-            order.discount_melee_ids = [(6, 0, partner.discount_melee_ids.ids)]
-            order.discount_diamond_type = partner.discount_diamond_type
-            order.discount_diamond_grade = partner.discount_diamond_grade
-
-            # Payment Terms (Melee/Diamonds branch), mirrored field-for-field.
-            order.augmont_payment_terms = partner.augmont_payment_terms
-            order.payment_melee_ids = [(6, 0, partner.payment_melee_ids.ids)]
-            order.payment_diamond_type = partner.payment_diamond_type
-            order.payment_diamond_grade = partner.payment_diamond_grade
-
-
     # ── Melee / Diamonds classification (shown after the Arrival field) ──
     discount_type = fields.Selection(
         [('melee', 'Melee'), ('diamonds', 'Diamonds')],

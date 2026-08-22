@@ -234,6 +234,14 @@ action_vals['display_name'] = 'Online Orders'
 action_vals.pop('path', None)
 action_vals.pop('xml_id', None)
 
+# Procurement reads the orders Sales has raised; it never raises them here, so
+# the New button is dropped. 'create': False on the action context scopes this
+# to this action alone -- Sales > Sales is a separate action over the same
+# sale.order list and keeps its New button. Doing it here rather than with
+# create="0" on the view avoids taking the button away from every other place
+# sale.view_order_form is used.
+action_vals['context'] = {'create': False}
+
 if env.user.has_group('base.group_system'):
     # Admin sees every CFQ Order without any restriction.
     action_vals['domain'] = []
