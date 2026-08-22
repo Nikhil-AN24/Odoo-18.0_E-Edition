@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.62",
+    "version": "18.0.1.7.63",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -10,6 +10,11 @@
     "depends": [
         "base", "contacts", "crm", "sale", "product", "stock", "web", "purchase",
         "account", "mass_mailing", "hr", "hr_attendance", "hr_holidays", "l10n_in",
+        # Declared so models/ir_http.py loads *after* it. That module ORs
+        # can_insert_in_spreadsheet back on for sales_team.group_sale_manager,
+        # and without the dependency the load order is undefined: our override
+        # landed inside theirs and was silently undone for sales managers.
+        "spreadsheet_sale_management",
     ],
     "data": [
         'security/res_groups.xml',
