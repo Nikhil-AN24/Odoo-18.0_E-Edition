@@ -53,10 +53,11 @@
                             invisible="1"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,sent,confirmed" invisible="1"/>
 
-                    <!-- New buttons — sale.order-style workflow -->
-                    <button name="action_quotation_send" string="Send"
-                            type="object" class="btn-primary"
-                            invisible="sale_state != 'draft'"/>
+                    <!-- New buttons — sale.order-style workflow.
+                         "Send" removed: an offline order goes straight from
+                         Quotation to Confirm, and action_confirm_offline_order
+                         already accepts the draft state, so the intermediate
+                         "Quotation Sent" step was a dead click. -->
                     <button name="action_confirm_offline_order" string="Confirm"
                             type="object" class="btn-primary"
                             invisible="sale_state not in ('draft', 'sent')"

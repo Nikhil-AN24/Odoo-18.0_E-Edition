@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Main Menu -->
+    <!-- Main Menu. Admin only: Sales reach an offline order through the
+         Customer RFQ (Create Offline Order, and the RFQ smart button),
+         which needs model access rather than menu visibility, so the
+         ACLs in security/ir.model.access.csv are left alone. -->
 <menuitem id="menu_custom_sale_root"
     name="Offline order"
     sequence="5"
-    groups="contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement"
+    groups="base.group_system"
     web_icon="custom_sale_order,static/description/icon.png"/>
 
 <!-- Orders Menu -->
@@ -19,4 +22,12 @@
     parent="menu_custom_sale_orders"
     action="action_custom_sale_orders"
     sequence="1"/>
+    <!-- <menuitem groups="..."> only ever LINKS groups (Command.link in
+         odoo/tools/convert.py), so the roles granted by earlier versions of
+         this file survive an upgrade. Replace the set outright so the menu
+         really is admin-only on databases that already had it. -->
+    <record id="menu_custom_sale_root" model="ir.ui.menu">
+        <field name="groups_id" eval="[(6, 0, [ref('base.group_system')])]"/>
+    </record>
+
 </odoo>
