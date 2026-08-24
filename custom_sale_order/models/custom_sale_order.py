@@ -58,21 +58,9 @@ class CustomSaleOrder(models.Model):
                                  states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
                                  change_default=True, tracking=1, domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]")
 
-    # gst_treatment = fields.Selection([
-    #     ('within_maharashtra', 'Within Maharashtra'),
-    #     ('outside_maharashtra', 'Outside Maharashtra'),
-    # ], string='GST Treatment')
-    # location = fields.Selection([('mumbai', 'Mumbai'), ('surat', 'Surat')], string='Location',required=True)
     shipping_address = fields.Text(string="Shipping Address")
     billing_address = fields.Text(string="Billing Address")
 
-    # partner_invoice_id = fields.Many2one('res.partner', string='Invoice Address',
-    #                                      states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
-    #                                      compute='_compute_partner_invoice_id', store=True, precompute=True)
-
-    # partner_shipping_id = fields.Many2one('res.partner', string='Delivery Address',
-    #                                       states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
-    #                                       compute='_compute_partner_shipping_id', store=True, precompute=True)
 
     pricelist_id = fields.Many2one('product.pricelist', string='Pricelist',
                                    states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
@@ -102,15 +90,6 @@ class CustomSaleOrder(models.Model):
     customer_rfq_id = fields.Many2one('customer.rfq', string='Customer RFQ',
                                       readonly=True, copy=False, index=True)
 
-    # @api.depends('partner_id')
-    # def _compute_partner_invoice_id(self):
-    #     for order in self:
-    #         order.partner_invoice_id = order.partner_id.address_get(['invoice'])['invoice'] if order.partner_id else False
-
-    # @api.depends('partner_id')
-    # def _compute_partner_shipping_id(self):
-    #     for order in self:
-    #         order.partner_shipping_id = order.partner_id.address_get(['delivery'])['delivery'] if order.partner_id else False
 
     @api.depends('order_line.price_total')
     def _compute_amounts(self):
@@ -130,13 +109,6 @@ class CustomSaleOrder(models.Model):
         if self.partner_id:
             self.pricelist_id = self.partner_id.property_product_pricelist.id
             self.payment_term_id = self.partner_id.property_payment_term_id.id
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        for vals in vals_list:
-            if vals.get('name', 'New') == 'New':
-                vals['name'] = self.env['ir.sequence'].next_by_code('custom.sale.order') or 'New'
-        return super().create(vals_list)
 
     @api.depends('order_line.availability_status', 'sale_state')
     def _compute_augmont_status_from_lines(self):
@@ -220,12 +192,18 @@ class CustomSaleOrder(models.Model):
                 raise UserError(_(
                     "This offline order is already confirmed (Sale Order %s)."
                 ) % rec.sale_order_id.name)
-            # Stone details must be added before an offline order can be confirmed.
-            if not any(line.certificate_number or line.lgd_stock_number
-                       for line in rec.order_line):
+            if not rec.order_line:
+                raise UserError(_(
+                    "Add at least one line before confirming the offline order."
+                ))
+
+            if not rec.customer_rfq_id and not any(
+                    line.certificate_number or line.lgd_stock_number
+                    for line in rec.order_line):
                 raise UserError(_(
                     "Please add stone details (Certificate Number or LGD SKU) "
-                    "before confirming the offline order."
+                    'before confirming the offline order — use the "Add Product" '
+                    "button above the order lines."
                 ))
             sale_order = rec._create_sale_order()
             rec.write({
@@ -413,7 +391,7 @@ class CustomSaleOrder(models.Model):
             'order_line': order_lines,
             'origin': self.name,
             # Offline serial reused as the Invoice Number so the Sales list can
-            # show + differentiate offline orders (e.g. AUG-OFF-00006).
+            # show + differentiate offline orders (e.g. AUG-OFF-007).
             'sdk_augmont_number': self.name,
             'order_source': 'offline',
             'custom_sale_order_id': self.id,
@@ -465,13 +443,27 @@ class CustomSaleOrder(models.Model):
         }
 
     @api.model
-    def create(self, vals):
-        if vals.get('name', 'New') == 'New':
-            vals['name'] = self.env['ir.sequence'].next_by_code('custom.sale.order') or 'New'
-        return super(CustomSaleOrder, self).create(vals)
+    def _next_order_reference(self):
+        """Draw the next AUG-OFF-xxxxx reference.
+        next_by_code() only looks at sequences belonging to the *active*
+        company (or to no company at all). The live sequence is pinned to a
+        single company, so users logged into any other company silently got
+        back False and the order was saved literally named "New". Fall back to
+        the sequence itself, whichever company owns it. """
+        Sequence = self.env['ir.sequence'].sudo()
+        name = Sequence.next_by_code('custom.sale.order')
+        if name:
+            return name
+        seq = Sequence.search([('code', '=', 'custom.sale.order')],
+                              order='company_id', limit=1)
+        return seq.next_by_id() if seq else 'New'
 
-
-
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('name', 'New') == 'New':
+                vals['name'] = self._next_order_reference()
+        return super(CustomSaleOrder, self).create(vals_list)
 
 
 class CustomSaleOrderLine(models.Model):
@@ -537,25 +529,6 @@ class CustomSaleOrderLine(models.Model):
     currency_id = fields.Many2one(related='order_id.currency_id', store=True, string='Currency', readonly=True)
     company_id = fields.Many2one(related='order_id.company_id', string='Company', store=True, readonly=True)
 
-    # order_state = fields.Selection(
-    #     related='order_id.state',
-    #     string="Order State",
-    #     store=True
-    # )
-
-
-    # @api.depends('product_uom_qty', 'discount', 'price_unit', 'tax_id')
-    # def _compute_amount(self):
-    #     for line in self:
-    #         price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
-    #         taxes = line.tax_id.compute_all(price, line.order_id.currency_id, line.product_uom_qty,
-    #                                         product=line.product_id, partner=line.order_id.partner_id)
-    #         line.update({
-    #             'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
-    #             'price_total': taxes['total_included'],
-    #             'price_subtotal': taxes['total_excluded'],
-    #         })
-
     @api.depends('product_uom_qty', 'discount', 'price_unit', 'tax_id', 'availability_status')
     def _compute_amount(self):
         zero_lines = self.filtered(
@@ -588,7 +561,6 @@ class CustomSaleOrderLine(models.Model):
             self.carat_weight = tmpl.weight_carat
 
 
-
     @api.onchange('product_id')
     def product_id_change(self):
         if not self.product_id:
@@ -619,7 +591,6 @@ class CustomSaleOrderLine(models.Model):
             'res_id': self.product_template_id.id,
             'target': 'new',  # popup instead of new page
         }
-
             # For when click add a product button create unlink (Delete)
 
     def remove_empty_order_lines(self):
@@ -630,10 +601,3 @@ class CustomSaleOrderLine(models.Model):
             )
             if empty_lines:
                 empty_lines.unlink()
-
-
-
-
-
-
-

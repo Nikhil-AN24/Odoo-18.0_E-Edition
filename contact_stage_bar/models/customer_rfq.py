@@ -241,11 +241,16 @@ class CustomerRfq(models.Model):
             rec_tax_amount = 0.0
             if rec.tax_ids and taxable_amount:
                 # compute_all returns a dict with 'taxes' list & 'total_included'
-                tax_result = rec.tax_ids.compute_all(
+                # sudo() on the partner for the same reason as the margin
+                # table above: compute_all() reads the partner to resolve its
+                # fiscal position, and a Sales user has no read access to most
+                # res.partner records. The partner is only an input to the tax
+                # calculation here -- nothing about it is exposed to the user.
+                tax_result = rec.tax_ids.sudo().compute_all(
                     price_unit=taxable_amount,
                     currency=rec.currency_id,
                     quantity=1.0,
-                    partner=rec.partner_id or False,
+                    partner=rec.partner_id.sudo() or False,
                 )
                 # Sum the individual tax amounts from all tax lines
                 rec_tax_amount = sum(t['amount'] for t in tax_result.get('taxes', []))
@@ -369,6 +374,24 @@ class CustomerRfq(models.Model):
                 "Sent back to Sales team with price: %s | Total: %s"
             ) % (rec.price, rec.total_price))
 
+    def _create_requested_stone(self, unit_price):
+        vals = {
+            'sale_ok': True,
+            'shapes': ', '.join(self.shape_ids.mapped('name')),
+            'color': self.color,
+            'clarity': self.clarity,
+            'weight_carat': str(self.carat) if self.carat else False,
+            'list_price': unit_price,
+            'name': self.name,
+        }
+
+        product = self.env['product.template'].sudo().with_context(
+            default_order_id=False).create(vals)
+        product.action_combine_sdk_fields()
+        if not product.name:
+            product.name = self.name
+        return product
+
     def action_create_offline_order(self):
         self.ensure_one()
         if self.state == 'offline_order_created':
@@ -382,17 +405,26 @@ class CustomerRfq(models.Model):
         if self.size:
             description = _("%s - Size: %s") % (self.name, self.size)
 
+        unit_price = self.total_price if self.total_price else self.price
+        product = self._create_requested_stone(unit_price)
+
         order = self.env['custom.sale.order'].create({
             'partner_id': self.partner_id.id,
             'state': 'draft',
             'customer_rfq_id': self.id,
             'order_line': [(0, 0, {
                 'name': description,
+                'product_template_id': product.id,
+                'product_id': product.product_variant_id.id,
+                'product_uom': product.uom_id.id,
                 'shapes': ', '.join(self.shape_ids.mapped('name')),
                 'color': self.color,
                 'clarity': self.clarity,
                 'carat_weight': str(self.carat) if self.carat else False,
-                'product_uom_qty': 1,
+                # Carry the RFQ's requested quantity through to the order line.
+                # Total_price is the all-in price for ONE stone of this spec
+                # (price/carat x carat + margin + tax), so it is the unit price and the quantity multiplies it.
+                'product_uom_qty': self.quantity or 1.0,
                 'price_unit': self.total_price if self.total_price else self.price,
             })],
         })

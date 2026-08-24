@@ -153,19 +153,6 @@ class ResPartner(models.Model):
 
     @api.model
     def _infer_partner_kind(self, vals):
-        """Work out the Account Type for a record created without one.
-
-        The menu actions pass default_partner_kind in their context, but that
-        only reaches a record through default_get -- which the import wizard
-        and the quick-create on a PO/SO partner field both bypass. Without a
-        fallback, an imported supplier is stored untagged and vanishes from
-        the very list it was imported into.
-
-        Inference runs at creation only, from the values being written. Odoo
-        pushes supplier_rank/customer_rank upwards later as documents get
-        confirmed, and that must never silently re-file an existing record --
-        which is why partner_kind exists as its own column in the first place.
-        """
         kind = self.env.context.get('default_partner_kind')
         if kind:
             return kind
@@ -177,6 +164,11 @@ class ResPartner(models.Model):
         # A child address inherits whichever book its parent sits in.
         if vals.get('parent_id'):
             return self.browse(vals['parent_id']).partner_kind
+
+        if self.env.user.has_group('contact_stage_bar.group_lgd_procurement'):
+            return 'supplier'
+        if self.env.user.has_group('contact_stage_bar.group_lgd_sales'):
+            return 'buyer'
         return False
 
     @api.model_create_multi
@@ -209,8 +201,3 @@ class ResPartner(models.Model):
     def name_create(self, name):
         return super(ResPartner, self.sudo()).name_create(name)
                 
-    # @api.depends_context('uid')
-    # def _compute_can_see_all(self):
-    #     admin_group = self.env.ref('base.group_system')
-    #     for rec in self:
-    #         rec.can_see_all = admin_group in self.env.user.groups_id
