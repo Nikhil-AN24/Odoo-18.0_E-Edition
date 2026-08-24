@@ -70,11 +70,7 @@
             <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
         </record>
 
-        <!-- ================= Export restricted to administrators =============
-             Odoo grants the export UI through base.group_allow_export, which in
-             this database was handed to all 25 internal users directly. Admins
-             now receive it by implication instead, and the function below
-             revokes the direct grant from everyone else. -->
+        <!-- ================= Export restricted to administrators ============= -->
         <record id="base.group_system" model="res.groups">
             <field name="implied_ids" eval="[(4, ref('base.group_allow_export'))]"/>
         </record>
@@ -92,13 +88,28 @@
             <field name="name">LGD Sales Own Partner Read</field>
             <field name="model_id" ref="base.model_res_partner"/>
 
-            <field name="domain_force">['|', '|',
+            <!-- Customer side = "not a supplier", NOT "tagged buyer". partner_kind
+                 is only set when the record is created from a tagged menu or
+                 inherits one from a parent, so the overwhelming majority of
+                 contacts carry no kind at all. Requiring 'buyer' hid them from
+                 the very reps who own them - including contacts a rep had just
+                 created. '!=' matches NULL in Odoo domains, so untagged records
+                 fall on the customer side while suppliers stay hidden.
+
+                 The user_ids branch keeps colleagues' own partner records
+                 readable. Followers on a shared order are internal users, and
+                 without it the chatter raises AccessError on any order a
+                 colleague follows. -->
+            <field name="domain_force">['|', '|', '|',
                                         ('id', '=', user.partner_id.id),
                                         ('id', '=', user.company_id.partner_id.id),
+                                        ('user_ids', '!=', False),
                                         '&amp;',
+                                        '&amp;',
+                                        ('partner_kind', '!=', 'supplier'),
                                         '|',
-                                        ('partner_kind', '=', 'buyer'),
-                                        ('parent_id.partner_kind', '=', 'buyer'),
+                                        ('parent_id', '=', False),
+                                        ('parent_id.partner_kind', '!=', 'supplier'),
                                         '|', '|', '|',
                                         ('create_uid', '=', user.id),
                                         ('user_id', '=', user.id),
@@ -147,13 +158,18 @@
         <record id="lgd_sales_manager_partner_read_rule" model="ir.rule">
             <field name="name">LGD Sales Manager Partner Read Bypass (Restricted)</field>
             <field name="model_id" ref="base.model_res_partner"/>
-            <field name="domain_force">['|', '|',
+            <!-- Same customer-side test as the rep rule above, for the same
+                 reason: 'tagged buyer' hid nearly every contact. -->
+            <field name="domain_force">['|', '|', '|',
                                         ('id', '=', user.partner_id.id),
                                         ('id', '=', user.company_id.partner_id.id),
+                                        ('user_ids', '!=', False),
                                         '&amp;',
+                                        '&amp;',
+                                        ('partner_kind', '!=', 'supplier'),
                                         '|',
-                                        ('partner_kind', '=', 'buyer'),
-                                        ('parent_id.partner_kind', '=', 'buyer'),
+                                        ('parent_id', '=', False),
+                                        ('parent_id.partner_kind', '!=', 'supplier'),
                                         '|',
                                         ('user_id', '=', False),
                                         ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
