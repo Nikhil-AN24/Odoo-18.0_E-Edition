@@ -30,7 +30,8 @@
                 <field name="state" widget="badge"
                        decoration-info="state == 'draft'"
                        decoration-warning="state == 'sent_to_procurement'"
-                       decoration-success="state == 'sent_back_to_sales'"/>
+                       decoration-success="state == 'sent_back_to_sales'"
+                       decoration-danger="state == 'cancel'"/>
             </list>
         </field>
     </record>
@@ -59,14 +60,34 @@
                     string="Create Offline Order" type="object" class="btn-primary" 
                     invisible="state != 'sent_back_to_sales'" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
 
+                    <!-- Cancel: available at any point before an Offline Order
+                         exists. Always goes through the reason wizard. -->
+                    <button name="action_open_cancel_wizard"
+                            string="Cancel" type="object"
+                            invisible="state in ('cancel', 'offline_order_created')"/>
+
                     <field name="state" widget="statusbar" statusbar_visible="draft,sent_to_procurement,sent_back_to_sales,offline_order_created"/>
                 </header>
                 <sheet>
+                    <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-danger"
+                            invisible="state != 'cancel'"/>
                     <div class="oe_title">
                         <h1>
                             <field name="name" readonly="1"/>
                         </h1>
                     </div>
+                    <!-- Read-only record of why this quote was dropped. -->
+                    <group string="Cancellation" invisible="state != 'cancel'">
+                        <group>
+                            <field name="cancel_reason_ids" widget="many2many_tags" readonly="1"/>
+                            <field name="cancelled_by_id" readonly="1"/>
+                            <field name="cancelled_on" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="cancel_comment" readonly="1"
+                                   invisible="not cancel_comment"/>
+                        </group>
+                    </group>
                     <group>
                         <group>
 
@@ -80,8 +101,10 @@
                   
                             <field name="stone_certification_type" widget="radio" options="{'horizontal': true}"
                                    invisible="not stone_type" required="stone_type" readonly="state != 'draft'"/>
+                            <!-- Shapes are user-maintained (Sales > Configuration >
+                                 Shapes), so a missing one can also be added inline. -->
                             <field name="shape_ids" widget="many2many_tags" required="1"
-                                   options="{'no_create': True, 'no_create_edit': True}"
+                                   options="{'no_quick_create': False}"
                                    readonly="state != 'draft'"/>
                             <field name="carat" required="1" readonly="state != 'draft'"/>
                             <field name="color" required="1" readonly="state != 'draft'"/>
@@ -141,6 +164,9 @@
                 <filter string="Draft" name="draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="Sent to Procurement" name="sent_to_procurement" domain="[('state', '=', 'sent_to_procurement')]"/>
                 <filter string="Sent back to Sales" name="sent_back_to_sales" domain="[('state', '=', 'sent_back_to_sales')]"/>
+                <filter string="Cancelled" name="cancelled" domain="[('state', '=', 'cancel')]"/>
+                <separator/>
+                <filter string="Cancellation Reason" name="by_cancel_reason" context="{'group_by': 'cancel_reason_ids'}"/>
                 <group expand="0" string="Group By">
                     <filter string="Status" name="by_state" context="{'group_by': 'state'}"/>
                     <filter string="Availability" name="by_availability" context="{'group_by': 'availability_status'}"/>
@@ -275,4 +301,81 @@ action = action_vals
     </record>
  
     <menuitem id="menu_cfq_orders_procurement" name="Online Orders" parent="purchase.menu_purchase_root" action="action_dynamic_cfq_orders_procurement" sequence="-2" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+
+    <!-- CANCELLATION WIZARD -->
+    <record id="view_customer_rfq_cancel_wizard_form" model="ir.ui.view">
+        <field name="name">customer.rfq.cancel.wizard.form</field>
+        <field name="model">customer.rfq.cancel.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Cancel Customer RFQ">
+                <field name="rfq_id" invisible="1"/>
+                <group>
+                    <field name="reason_ids" widget="many2many_tags"
+                           options="{'no_quick_create': False}"
+                           placeholder="Why is this quotation not going ahead?"/>
+                    <field name="comment" placeholder="Add any detail worth keeping..."/>
+                </group>
+                <footer>
+                    <button name="action_confirm_cancel" type="object"
+                            string="Cancel RFQ" class="btn-primary"/>
+                    <button string="Discard" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- CONFIGURATION: SHAPES -->
+    <record id="view_customer_rfq_shape_list" model="ir.ui.view">
+        <field name="name">customer.rfq.shape.list</field>
+        <field name="model">customer.rfq.shape</field>
+        <field name="arch" type="xml">
+            <list string="Shapes" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_customer_rfq_shape" model="ir.actions.act_window">
+        <field name="name">Shapes</field>
+        <field name="res_model">customer.rfq.shape</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Add a shape</p>
+            <p>Shapes listed here are what Sales can pick on a Customer RFQ.</p>
+        </field>
+    </record>
+
+    <!-- CONFIGURATION: CANCELLATION REASONS -->
+    <record id="view_customer_rfq_cancel_reason_list" model="ir.ui.view">
+        <field name="name">customer.rfq.cancel.reason.list</field>
+        <field name="model">customer.rfq.cancel.reason</field>
+        <field name="arch" type="xml">
+            <list string="Cancellation Reasons" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_customer_rfq_cancel_reason" model="ir.actions.act_window">
+        <field name="name">Cancellation Reasons</field>
+        <field name="res_model">customer.rfq.cancel.reason</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Add a cancellation reason</p>
+            <p>These are the tags offered when a Customer RFQ is cancelled.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_customer_rfq_config" name="Configuration" parent="menu_sales_3"
+              sequence="90" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+    <menuitem id="menu_customer_rfq_shape" name="Shapes" parent="menu_customer_rfq_config"
+              action="action_customer_rfq_shape" sequence="10"
+              groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+    <menuitem id="menu_customer_rfq_cancel_reason" name="Cancellation Reasons"
+              parent="menu_customer_rfq_config" action="action_customer_rfq_cancel_reason"
+              sequence="20" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+
 </odoo>

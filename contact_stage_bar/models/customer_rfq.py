@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
+from markupsafe import Markup
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -15,6 +16,39 @@ class CustomerRfqShape(models.Model):
     _sql_constraints = [
         ('name_unique', 'UNIQUE(name)', 'Shape name must be unique.'),
     ]
+
+
+class CustomerRfqCancelReason(models.Model):
+    _name = 'customer.rfq.cancel.reason'
+    _description = 'Customer RFQ Cancellation Reason'
+    _order = 'sequence, name'
+
+    name = fields.Char(string='Reason', required=True, translate=True)
+    sequence = fields.Integer(string='Sequence', default=10)
+    active = fields.Boolean(string='Active', default=True)
+
+    _sql_constraints = [
+        ('name_unique', 'UNIQUE(name)', 'Cancellation reason must be unique.'),
+    ]
+
+
+class CustomerRfqCancelWizard(models.TransientModel):
+    _name = 'customer.rfq.cancel.wizard'
+    _description = 'Cancel Customer RFQ'
+
+    rfq_id = fields.Many2one('customer.rfq', string='Customer RFQ', required=True, ondelete='cascade')
+    reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason', string='Cancellation Reason', required=True,
+        help='Pick every reason that applies.')
+    comment = fields.Text(
+        string='Comment',
+        help='Describe what happened, for whoever reviews lost quotes later.')
+
+    def action_confirm_cancel(self):
+        self.ensure_one()
+        self.rfq_id._apply_cancellation(self.reason_ids, self.comment)
+        return {'type': 'ir.actions.act_window_close'}
+
 
 class CustomerRfq(models.Model):
     _name = 'customer.rfq'
@@ -329,12 +363,23 @@ class CustomerRfq(models.Model):
             ('sent_to_procurement', 'Sent to Procurement'),
             ('sent_back_to_sales', 'Sent back to Sales'),
             ('offline_order_created', 'Offline Order Created'),
+            ('cancel', 'Cancelled'),
         ],
         string='Status',
         default='draft',
         required=True,
         tracking=True,
     )
+
+    # ── Cancellation ──────────────────────────────────────────────────────────
+    cancel_reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason',
+        'customer_rfq_cancel_reason_rel', 'rfq_id', 'reason_id',
+        string='Cancellation Reason', readonly=True, copy=False, tracking=True,
+    )
+    cancel_comment = fields.Text(string='Cancellation Comment', readonly=True, copy=False)
+    cancelled_by_id = fields.Many2one('res.users', string='Cancelled By', readonly=True, copy=False)
+    cancelled_on = fields.Datetime(string='Cancelled On', readonly=True, copy=False)
 
     # Set by Procurement to mark whether the stone needs certification.
     stone_certification = fields.Selection(
@@ -387,6 +432,8 @@ class CustomerRfq(models.Model):
 
     def action_send_to_procurement(self):
         for rec in self:
+            if rec.state == 'cancel':
+                raise UserError(_("This Customer RFQ is cancelled."))
             if rec.state != 'draft':
                 raise UserError(_("Only draft Customer RFQs can be sent to Procurement."))
             rec.sudo().write({'state': 'sent_to_procurement'})
@@ -424,6 +471,50 @@ class CustomerRfq(models.Model):
         if not product.name:
             product.name = self.name
         return product
+
+    def action_open_cancel_wizard(self):
+        """Open the reason prompt. Cancelling always goes through it, so an RFQ can never end up cancelled with no explanation recorded."""
+        self.ensure_one()
+        if self.state == 'cancel':
+            raise UserError(_("This Customer RFQ is already cancelled."))
+        if self.state == 'offline_order_created':
+            raise UserError(_(
+                "An Offline Order was already created from this RFQ. "
+                "Cancel the order instead."
+            ))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Cancel Customer RFQ'),
+            'res_model': 'customer.rfq.cancel.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_rfq_id': self.id},
+        }
+
+    def _apply_cancellation(self, reasons, comment):
+        """Record the cancellation. Called by the wizard, not from the UI."""
+        self.ensure_one()
+        if self.state == 'cancel':
+            raise UserError(_("This Customer RFQ is already cancelled."))
+        if self.state == 'offline_order_created':
+            raise UserError(_(
+                "An Offline Order was already created from this RFQ. "
+                "Cancel the order instead."
+            ))
+        if not reasons:
+            raise UserError(_("Select at least one cancellation reason."))
+        self.sudo().write({
+            'state': 'cancel',
+            'cancel_reason_ids': [(6, 0, reasons.ids)],
+            'cancel_comment': comment or False,
+            'cancelled_by_id': self.env.uid,
+            'cancelled_on': fields.Datetime.now(),
+        })
+        body = _("Cancelled - %s") % ', '.join(reasons.mapped('name'))
+        if comment:
+            body += Markup("<br/>") + comment
+        self.sudo().message_post(body=body)
+        return True
 
     def action_create_offline_order(self):
         self.ensure_one()
