@@ -98,16 +98,27 @@ class CustomerRfq(models.Model):
     )
     notes = fields.Text(string='Notes')
 
-    # Procurement (or Admin) can optionally select applicable taxes here.
+    RFQ_FIXED_TAX_NAME = '1.5% GST'
+
+    @api.model
+    def _default_tax_ids(self):
+        # Every RFQ is taxed at 1.5% GST -- see the field comment below.
+        return self.env['account.tax'].sudo().search([
+            ('name', '=', self.RFQ_FIXED_TAX_NAME),
+            ('type_tax_use', 'in', ['sale', 'all']),
+            ('company_id', 'in', self.env.companies.ids),
+        ], limit=1)
+
     tax_ids = fields.Many2many(
         comodel_name='account.tax',
         relation='customer_rfq_tax_rel',
         column1='rfq_id',
         column2='tax_id',
         string='Taxes',
+        default=lambda self: self._default_tax_ids(),
         domain=[('type_tax_use', 'in', ['sale', 'all'])],
-        help='Select the taxes that apply to this RFQ.  '
-             'Tax amounts are calculated on the base price (Price/carat × Carat).',
+        help='Fixed at 1.5% GST. Tax is calculated on the base price '
+             '(Price/carat × Carat) plus margin.',
     )
 
     # ── Computed pricing fields ───────────────────────────────────────────────
@@ -333,14 +344,31 @@ class CustomerRfq(models.Model):
     )
 
 
-    @api.constrains('shape_ids')
-    def _check_shape_required(self):
+    @api.constrains('shape_ids', 'stone_type', 'stone_certification_type',
+                    'carat', 'color', 'clarity', 'size', 'quantity')
+    def _check_required_specs(self):
         for rec in self:
+            missing = []
             if not rec.shape_ids:
+                missing.append(_('Shape'))
+            if not rec.stone_type:
+                missing.append(_('Type of Stone'))
+            if not rec.stone_certification_type:
+                missing.append(_('Certification'))
+            if not rec.carat:
+                missing.append(_('Carat'))
+            if not rec.color:
+                missing.append(_('Color'))
+            if not rec.clarity:
+                missing.append(_('Clarity'))
+            if rec.stone_certification_type == 'non_certified' and not rec.size:
+                missing.append(_('Size'))
+            if rec.stone_certification_type == 'certified' and not rec.quantity:
+                missing.append(_('Quantity'))
+            if missing:
                 raise ValidationError(_(
-                    "The 'Shape' field is mandatory. "
-                    "Please select at least one shape before saving."
-                ))
+                    "These fields are mandatory on a Customer RFQ: %s."
+                ) % ', '.join(missing))
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -350,6 +378,11 @@ class CustomerRfq(models.Model):
         return super(CustomerRfq, self.sudo()).create(vals_list)
 
     def write(self, vals):
+        # The form makes Taxes readonly, which stops the UI but not RPC or an
+        # import. Admins keep the ability to correct a record whose tax predates
+        # the fixed-rate rule; nobody else can move it.
+        if 'tax_ids' in vals and not self.env.user.has_group('base.group_system'):
+            vals = {k: v for k, v in vals.items() if k != 'tax_ids'}
         return super(CustomerRfq, self.sudo()).write(vals)
 
     def action_send_to_procurement(self):

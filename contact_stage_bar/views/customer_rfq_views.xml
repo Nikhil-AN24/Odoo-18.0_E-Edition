@@ -71,18 +71,28 @@
                         <group>
 
                             <!-- Price: visibility + readonly computed based on user group/state -->
-                            <field name="partner_id" string="Company Name" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
-                            <field name="customer_phone" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
-                            <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1"/>
-                            <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1"/>
-                            <field name="stone_type" widget="radio" options="{'horizontal': true}"/>
-                            <field name="stone_certification_type" widget="radio" options="{'horizontal': true}" invisible="not stone_type"/>
-                            <field name="shape_ids" widget="many2many_tags" required="1" options="{'no_create': True, 'no_create_edit': True}"/>
-                            <field name="carat"/>
-                            <field name="color"/>
-                            <field name="clarity"/>
-                            <field name="size" invisible="stone_certification_type == 'certified'"/>
-                            <field name="quantity" invisible="stone_certification_type == 'non_certified'"/>
+                            <field name="partner_id" string="Company Name" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" readonly="state != 'draft'"/>
+                            <field name="customer_phone" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" readonly="state != 'draft'"/>
+                            <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1" readonly="state != 'draft'"/>
+                            <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1" readonly="state != 'draft'"/>
+                            <field name="stone_type" widget="radio" options="{'horizontal': true}"
+                                   required="1" readonly="state != 'draft'"/>
+                  
+                            <field name="stone_certification_type" widget="radio" options="{'horizontal': true}"
+                                   invisible="not stone_type" required="stone_type" readonly="state != 'draft'"/>
+                            <field name="shape_ids" widget="many2many_tags" required="1"
+                                   options="{'no_create': True, 'no_create_edit': True}"
+                                   readonly="state != 'draft'"/>
+                            <field name="carat" required="1" readonly="state != 'draft'"/>
+                            <field name="color" required="1" readonly="state != 'draft'"/>
+                            <field name="clarity" required="1" readonly="state != 'draft'"/>
+          
+                            <field name="size" invisible="stone_certification_type == 'certified'"
+                                   required="stone_certification_type == 'non_certified'"
+                                   readonly="state != 'draft'"/>
+                            <field name="quantity" invisible="stone_certification_type == 'non_certified'"
+                                   required="stone_certification_type == 'certified'"
+                                   readonly="state != 'draft'"/>
 
                             <!-- Procurement sets whether the stone needs certification -->
                             <field name="stone_certification" readonly="is_price_readonly" invisible="1"/>
@@ -100,23 +110,20 @@
                                    invisible="not is_price_visible_for_user"
                                    readonly="is_price_readonly"/>
 
+                            <!-- Fixed to 1.5% GST by _default_tax_ids() and never editable by anyone, Procurement included. -->
                             <field name="tax_ids"
                                    widget="many2many_tags"
                                    domain="[('type_tax_use', 'in', ['sale', 'all'])]"
                                    invisible="not is_price_visible_for_user"
-                                   readonly="is_price_readonly"
+                                   readonly="1"
                                    options="{'no_create': True}"/>
 
                             <!-- Owner: defaults to the record creator, editable so the record can be reassigned -->
-                            <field name="owner_id" string="Owner" options="{'no_create': True}"/>
+                            <field name="owner_id" string="Owner" options="{'no_create': True}"
+                                   readonly="state != 'draft'"/>
                         </group>
                     </group>
 
-                    <notebook>
-                        <page string="Notes" name="notes">
-                            <field name="notes"/>
-                        </page>
-                    </notebook>
                 </sheet>
                 <chatter/>
             </form>
