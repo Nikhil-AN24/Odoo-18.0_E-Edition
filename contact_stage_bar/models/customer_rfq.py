@@ -121,7 +121,9 @@ class CustomerRfq(models.Model):
     quantity = fields.Float(string='Quantity', tracking=True)
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
-    price = fields.Float(string='Price/carat', tracking=True)
+    # No tracking: a tracked change writes "Procurement Price/carat 0.00 -> 1.00"
+    # into the chatter, which Sales can read. The cost would leak there regardless of how the field itself is restricted on the form.
+    price = fields.Float(string='Procurement Price/carat')
     is_price_visible_for_user = fields.Boolean(
         string='Price Visible',
         compute='_compute_is_price_visible_for_user',
@@ -132,27 +134,15 @@ class CustomerRfq(models.Model):
     )
     notes = fields.Text(string='Notes')
 
-    RFQ_FIXED_TAX_NAME = '1.5% GST'
-
-    @api.model
-    def _default_tax_ids(self):
-        # Every RFQ is taxed at 1.5% GST -- see the field comment below.
-        return self.env['account.tax'].sudo().search([
-            ('name', '=', self.RFQ_FIXED_TAX_NAME),
-            ('type_tax_use', 'in', ['sale', 'all']),
-            ('company_id', 'in', self.env.companies.ids),
-        ], limit=1)
-
+    # Not used in pricing and not on the form any more. Kept as a column so the RFQs that already carry a tax do not lose it; tax belongs on the sale
+    # order, where account.tax handles customer and fiscal position properly.
     tax_ids = fields.Many2many(
         comodel_name='account.tax',
         relation='customer_rfq_tax_rel',
         column1='rfq_id',
         column2='tax_id',
         string='Taxes',
-        default=lambda self: self._default_tax_ids(),
         domain=[('type_tax_use', 'in', ['sale', 'all'])],
-        help='Fixed at 1.5% GST. Tax is calculated on the base price '
-             '(Price/carat × Carat) plus margin.',
     )
 
     # ── Computed pricing fields ───────────────────────────────────────────────
@@ -198,11 +188,12 @@ class CustomerRfq(models.Model):
     )
 
     total_price = fields.Monetary(
-        string='Total',
+        string='Sales Price/carat',
         currency_field='currency_id',
         compute='_compute_pricing_totals',
         store=False,
-        help='(Price/carat × Carat)  +  Margin Amount  +  Tax Amount',
+        help='What Sales quotes the customer: '
+             '(Procurement Price/carat × Carat) + Margin. No tax.',
     )
 
     @staticmethod
@@ -263,42 +254,39 @@ class CustomerRfq(models.Model):
         MarginLine = self.env['lgd.margin.line'].sudo()
         margin_singleton = self.env['lgd.margin'].sudo().search([], limit=1)
         margin_singleton_id = margin_singleton.id if margin_singleton else False
+        default_margin_pct = margin_singleton.default_margin_percentage if margin_singleton else 0.0
 
         for rec in self:
             # ── 1. Base price ────────────────────────────────────────────────
             rec_base_price = rec.price * rec.carat
 
-            # ── 2. Margin percentage from Carat–Margin Table ─────────────────
+            # ── 2. Margin percentage ─────────────────────────────────────────
+            # A carat band configured in the Carat–Margin Table wins for the
+            # weights it covers; the Default Margin (%) on the same Margins
+            # screen covers everything else. Without the fallback a stone under
+            # 1 carat -- which _carat_to_band() maps to None -- and any weight
+            # the table has no row for would silently be sold at cost.
             band = self._carat_to_band(rec.carat) if rec.carat else None
-            rec_margin_pct = 0.0
+            rec_margin_pct = default_margin_pct
             if band and margin_singleton_id:
                 margin_line = MarginLine.search([
                     ('margin_id',   '=', margin_singleton_id),
                     ('carat_range', '=', band),
                 ], limit=1)
-                rec_margin_pct = margin_line.percentage if margin_line else 0.0
+                if margin_line:
+                    rec_margin_pct = margin_line.percentage
 
             # ── 3. Margin amount ─────────────────────────────────────────────
             rec_margin_amount = rec_base_price * (rec_margin_pct / 100.0)
 
-            # ── 4. Tax amount (using Odoo's compute_all for multi-tax support) ─
+            # ── 4. Tax ───────────────────────────────────────────────────────
+            # Deliberately excluded from the RFQ price: the quote is cost plus
+            # margin only. Tax is applied downstream on the sale order, where
+            # account.tax resolves it against the customer's fiscal position.
+            # tax_amount stays on the model, always 0.00, so nothing that reads
+            # it breaks.
             taxable_amount = rec_base_price + rec_margin_amount
             rec_tax_amount = 0.0
-            if rec.tax_ids and taxable_amount:
-                # compute_all returns a dict with 'taxes' list & 'total_included'
-                # sudo() on the partner for the same reason as the margin
-                # table above: compute_all() reads the partner to resolve its
-                # fiscal position, and a Sales user has no read access to most
-                # res.partner records. The partner is only an input to the tax
-                # calculation here -- nothing about it is exposed to the user.
-                tax_result = rec.tax_ids.sudo().compute_all(
-                    price_unit=taxable_amount,
-                    currency=rec.currency_id,
-                    quantity=1.0,
-                    partner=rec.partner_id.sudo() or False,
-                )
-                # Sum the individual tax amounts from all tax lines
-                rec_tax_amount = sum(t['amount'] for t in tax_result.get('taxes', []))
 
             # ── 5. Assign back ───────────────────────────────────────────────
             rec.base_price        = rec_base_price
@@ -423,11 +411,6 @@ class CustomerRfq(models.Model):
         return super(CustomerRfq, self.sudo()).create(vals_list)
 
     def write(self, vals):
-        # The form makes Taxes readonly, which stops the UI but not RPC or an
-        # import. Admins keep the ability to correct a record whose tax predates
-        # the fixed-rate rule; nobody else can move it.
-        if 'tax_ids' in vals and not self.env.user.has_group('base.group_system'):
-            vals = {k: v for k, v in vals.items() if k != 'tax_ids'}
         return super(CustomerRfq, self.sudo()).write(vals)
 
     def action_send_to_procurement(self):
@@ -450,9 +433,9 @@ class CustomerRfq(models.Model):
                     "Sales cannot see pricing until a valid amount is set."
                 ))
             rec.state = 'sent_back_to_sales'
-            rec.message_post(body=_(
-                "Sent back to Sales team with price: %s | Total: %s"
-            ) % (rec.price, rec.total_price))
+            # No figures in the body, for the same reason price is not tracked:
+            # the chatter is readable by Sales.
+            rec.message_post(body=_("Sent back to Sales team."))
 
     def _create_requested_stone(self, unit_price):
         vals = {

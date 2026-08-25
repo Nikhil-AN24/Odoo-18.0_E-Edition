@@ -8,6 +8,9 @@
         <field name="arch" type="xml">
             <form string="Margin Configuration">
                 <sheet>
+                    <group>
+                        <field name="default_margin_percentage"/>
+                    </group>
                     <separator string="Carat – Margin Table"/>
                     <field name="line_ids">
                         <list string="Carat Margin Lines" editable="bottom">
@@ -51,10 +54,15 @@
     </record>
 
 
+    <!-- Parented to our own Sales > Configuration, not sale.sale_menu_root:
+         _reparent_customer_rfq() archives the standard Sales root, and a menu
+         hanging off an archived parent never renders, so this screen was
+         unreachable in the UI. base.group_system keeps it admin-only even
+         though the Configuration parent is visible to Sales. -->
     <menuitem
         id="menu_lgd_margin_admin"
         name="Margins"
-        parent="sale.sale_menu_root"
+        parent="contact_stage_bar.menu_customer_rfq_config"
         action="action_lgd_margin_admin_server"
         sequence="50"
         groups="base.group_system"

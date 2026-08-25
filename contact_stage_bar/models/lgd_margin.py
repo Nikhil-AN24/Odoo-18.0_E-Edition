@@ -24,6 +24,34 @@ class LgdMargin(models.Model):
         copy=True,
     )
 
+    default_margin_percentage = fields.Float(
+        string='Default Margin (%)',
+        digits=(5, 2),
+        default=2.0,
+        help='Markup added to the cost Procurement quotes on a Customer RFQ.\n\n'
+             'Applies to every RFQ whose carat weight has no entry in the '
+             'Carat-Margin Table below. A band listed there wins for that band; '
+             'this value covers everything else, including stones under 1 carat, '
+             'which no band covers.',
+    )
+
+    @api.constrains('default_margin_percentage')
+    def _check_default_margin_percentage(self):
+        for rec in self:
+            if rec.default_margin_percentage < 0:
+                raise ValidationError(_('Default margin percentage cannot be negative.'))
+
+    @api.model
+    def _get_default_margin_percentage(self):
+        """The house markup, or 0.0 when Margins has never been opened.
+
+        sudo() because Sales and Procurement price RFQs but cannot read
+        lgd.margin -- the same reason _compute_pricing_totals already sudoes
+        its lookup of the carat table.
+        """
+        config = self.sudo().search([], limit=1)
+        return config.default_margin_percentage if config else 0.0
+
     @api.model
     def create(self, vals):
         """Prevent a second lgd.margin record from being created."""
