@@ -143,9 +143,26 @@
         <record id="lgd_procurement_partner_rule" model="ir.rule">
             <field name="name">LGD Procurement Partner Access (Suppliers Only)</field>
             <field name="model_id" ref="base.model_res_partner"/>
-            <field name="domain_force">['|', '|', '|',
+            <!-- The user_ids branch keeps colleagues' own partner records
+                 readable, for the same reason the LGD Sales rule carries it:
+                 followers on a shared order are internal users, and without it
+                 the chatter raises AccessError on any order a colleague
+                 follows.
+
+                 sale_order_ids covers the customer on an order Procurement can
+                 already open. The Customer field itself is stripped from their
+                 arch (see views/sale_order.xml), but Odoo re-injects partner_id
+                 as an invisible dependency because the delivery/invoice address
+                 fields name it in their context, and the client reads it. Read
+                 access here is what stops that read raising AccessError; it does
+                 not put the customer back on their screen. It also covers the
+                 handful of partners that both buy and sell, which cannot be
+                 tagged 'supplier' without hiding them from LGD Sales. -->
+            <field name="domain_force">['|', '|', '|', '|', '|',
                                         ('id', '=', user.partner_id.id),
                                         ('id', '=', user.company_id.partner_id.id),
+                                        ('user_ids', '!=', False),
+                                        ('sale_order_ids', '!=', False),
                                         ('partner_kind', '=', 'supplier'),
                                         ('parent_id.partner_kind', '=', 'supplier')]</field>
             <field name="groups" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement')])]"/>
@@ -190,6 +207,11 @@
             <field name="perm_create" eval="True"/>
             <field name="perm_unlink" eval="True"/>
         </record>
+
+        <!-- Tag line vendors that predate the bifurcation, so the procurement
+             rule above can actually match them. Idempotent: it only touches
+             partners with no kind set. -->
+        <function model="res.partner" name="_lgd_backfill_vendor_partner_kind"/>
 
         <function name="write" model="ir.model.data">
             <function name="search" model="ir.model.data">

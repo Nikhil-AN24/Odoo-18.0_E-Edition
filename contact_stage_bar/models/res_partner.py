@@ -1,6 +1,5 @@
 from odoo import models, fields, api
 
-
 class ResPartner(models.Model):
     _inherit = "res.partner"
 
@@ -200,4 +199,26 @@ class ResPartner(models.Model):
     @api.model
     def name_create(self, name):
         return super(ResPartner, self.sudo()).name_create(name)
+
+    @api.model
+    def _lgd_backfill_vendor_partner_kind(self):
+        """Tag partners used as a line vendor as 'supplier'.
+
+        partner_kind is only set at creation, from the menu the record was
+        created in. Vendors that arrived through the website API or before the
+        bifurcation carry no kind at all, so lgd_procurement_partner_rule -
+        which matches on partner_kind = 'supplier' - hid every one of them from
+        the role that exists to work with them.
+
+        Partners that are also the customer on a sale order are skipped: the
+        LGD Sales rules treat 'supplier' as "not mine", so tagging a partner
+        that trades in both directions would hide it from Sales instead.
+        """
+        vendors = self.env['sale.order.line'].sudo().search(
+            [('vendor_id', '!=', False)]).mapped('vendor_id')
+        customers = self.env['sale.order'].sudo().search([]).mapped('partner_id')
+        to_tag = vendors.filtered(lambda p: not p.partner_kind) - customers
+        if to_tag:
+            to_tag.sudo().write({'partner_kind': 'supplier'})
+        return len(to_tag)
                 

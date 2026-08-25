@@ -2206,6 +2206,9 @@ class SaleOrderLine(models.Model):
     vendor_sku = fields.Char(string="Vendor SKU", related='product_template_id.stock_number')
     vendor_per_carat_price = fields.Float(string="Vendor Per Carat Price", related='product_template_id.price_per_carat')
 
+    # ── Added for the "Sale Price per carat" export column ──
+    sale_price_per_carat = fields.Float(string="Sale Price per carat", related='product_id.lst_price')
+
     # ─────────────────────────────────────────────────────────────────────────
     # MELEE (Non-Certified / Parcel) line fields
     # Used when the website sends orders with lineType = "MELEE".
