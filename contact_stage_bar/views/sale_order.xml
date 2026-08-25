@@ -58,7 +58,7 @@
             </xpath>
 
             <xpath expr="//header" position="inside">
-                <button name="action_export_order_lines_csv" string="Export to Excel" type="object" class="btn-secondary" invisible="not order_line"/>
+                <button name="action_export_order_lines_csv" string="Export Order Lines" type="object" class="btn-secondary" invisible="not order_line"/>
             </xpath>
 
             <!-- Cancel button: draft only. Marks 'Not available' lines as Cancelled. -->
