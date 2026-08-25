@@ -5,8 +5,6 @@ from odoo.http import request
 import requests
 from odoo import _
 import re
-
-
 import tempfile
 
 import logging
@@ -14,9 +12,7 @@ _logger = logging.getLogger(__name__)
 
 
 class ProductTemplate(models.Model):
-    _inherit = "product.template"
-
-    
+    _inherit = "product.template" 
 
     labs = fields.Char(string='LAB')
     website_product_id = fields.Char()
@@ -228,13 +224,6 @@ class ProductTemplate(models.Model):
         default['name'] = '[DUPLICATE]'  
         return super().copy(default)
 
-    @api.depends('weight_carat','list_price')
-    def _compute_final_price(self):
-        for record in self:
-            if record.weight_carat and record.list_price:
-                record.final_price = record.list_price * float(record.weight_carat)
-            else:
-                record.final_price = record.list_price or 0.0
                 
 
     def action_fetch_certificate_data(self):

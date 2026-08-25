@@ -18,11 +18,15 @@ access_res_partner_lgd_accounting,res.partner.lgd.accounting,model_res_partner,c
 access_res_partner_lgd_hr,res.partner.lgd.hr,model_res_partner,contact_stage_bar.group_lgd_hr,1,1,1,0
 access_res_partner_lgd_marketing,res.partner.lgd.marketing,model_res_partner,contact_stage_bar.group_lgd_marketing,1,1,1,0
 access_customer_rfq_base_user,customer.rfq.base.user,model_customer_rfq,base.group_user,1,1,1,1
-access_customer_rfq_shape_user,customer.rfq.shape.user,model_customer_rfq_shape,base.group_user,1,0,0,0
+access_customer_rfq_shape_user,customer.rfq.shape.user,model_customer_rfq_shape,base.group_user,1,1,1,0
 access_customer_rfq_shape_admin,customer.rfq.shape.admin,model_customer_rfq_shape,base.group_system,1,1,1,1
 access_sale_order_lgd_procurement,sale.order.lgd.procurement,sale.model_sale_order,contact_stage_bar.group_lgd_procurement,1,1,0,0
 access_sale_order_line_lgd_procurement,sale.order.line.lgd.procurement,sale.model_sale_order_line,contact_stage_bar.group_lgd_procurement,1,1,0,0
 access_lgd_margin_admin,lgd.margin.admin,model_lgd_margin,base.group_system,1,1,1,1
 access_lgd_margin_line_admin,lgd.margin.line.admin,model_lgd_margin_line,base.group_system,1,1,1,1
 access_lgd_margin_procurement,lgd.margin.procurement,model_lgd_margin,contact_stage_bar.group_lgd_procurement,1,0,0,0
-access_lgd_margin_line_procurement,lgd.margin.line.procurement,model_lgd_margin_line,contact_stage_bar.group_lgd_procurement,1,0,0,0
+access_lgd_margin_line_procurement,lgd.margin.line.procurement,model_lgd_margin_line,contact_stage_bar.group_lgd_procurement,1,0,0,0
+access_customer_rfq_cancel_reason_user,customer.rfq.cancel.reason.user,model_customer_rfq_cancel_reason,base.group_user,1,0,0,0
+access_customer_rfq_cancel_reason_manager,customer.rfq.cancel.reason.manager,model_customer_rfq_cancel_reason,contact_stage_bar.group_lgd_sales_manager,1,1,1,0
+access_customer_rfq_cancel_reason_admin,customer.rfq.cancel.reason.admin,model_customer_rfq_cancel_reason,base.group_system,1,1,1,1
+access_customer_rfq_cancel_wizard_user,customer.rfq.cancel.wizard.user,model_customer_rfq_cancel_wizard,base.group_user,1,1,1,1

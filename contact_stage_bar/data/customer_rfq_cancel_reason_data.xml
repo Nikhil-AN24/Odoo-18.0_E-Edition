@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Starter list only. Sales Managers and Admins maintain it from
+         Sales > Configuration > Cancellation Reasons, so new reasons never
+         need a code change. noupdate so edits survive a module upgrade. -->
+    <data noupdate="1">
+        <record id="cancel_reason_too_expensive" model="customer.rfq.cancel.reason">
+            <field name="name">Too Expensive</field>
+            <field name="sequence">1</field>
+        </record>
+        <record id="cancel_reason_not_available" model="customer.rfq.cancel.reason">
+            <field name="name">Not Available</field>
+            <field name="sequence">2</field>
+        </record>
+        <record id="cancel_reason_not_interested" model="customer.rfq.cancel.reason">
+            <field name="name">Not Interested</field>
+            <field name="sequence">3</field>
+        </record>
+        <record id="cancel_reason_quality_mismatch" model="customer.rfq.cancel.reason">
+            <field name="name">Quality Mismatch</field>
+            <field name="sequence">4</field>
+        </record>
+        <record id="cancel_reason_customer_unresponsive" model="customer.rfq.cancel.reason">
+            <field name="name">Customer Unresponsive</field>
+            <field name="sequence">5</field>
+        </record>
+        <record id="cancel_reason_delivery_timeline" model="customer.rfq.cancel.reason">
+            <field name="name">Delivery Timeline Too Long</field>
+            <field name="sequence">6</field>
+        </record>
+        <record id="cancel_reason_bought_elsewhere" model="customer.rfq.cancel.reason">
+            <field name="name">Bought Elsewhere</field>
+            <field name="sequence">7</field>
+        </record>
+        <record id="cancel_reason_duplicate" model="customer.rfq.cancel.reason">
+            <field name="name">Duplicate Request</field>
+            <field name="sequence">8</field>
+        </record>
+        <record id="cancel_reason_other" model="customer.rfq.cancel.reason">
+            <field name="name">Other</field>
+            <field name="sequence">99</field>
+        </record>
+    </data>
+</odoo>

@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
+from markupsafe import Markup
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -15,6 +16,39 @@ class CustomerRfqShape(models.Model):
     _sql_constraints = [
         ('name_unique', 'UNIQUE(name)', 'Shape name must be unique.'),
     ]
+
+
+class CustomerRfqCancelReason(models.Model):
+    _name = 'customer.rfq.cancel.reason'
+    _description = 'Customer RFQ Cancellation Reason'
+    _order = 'sequence, name'
+
+    name = fields.Char(string='Reason', required=True, translate=True)
+    sequence = fields.Integer(string='Sequence', default=10)
+    active = fields.Boolean(string='Active', default=True)
+
+    _sql_constraints = [
+        ('name_unique', 'UNIQUE(name)', 'Cancellation reason must be unique.'),
+    ]
+
+
+class CustomerRfqCancelWizard(models.TransientModel):
+    _name = 'customer.rfq.cancel.wizard'
+    _description = 'Cancel Customer RFQ'
+
+    rfq_id = fields.Many2one('customer.rfq', string='Customer RFQ', required=True, ondelete='cascade')
+    reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason', string='Cancellation Reason', required=True,
+        help='Pick every reason that applies.')
+    comment = fields.Text(
+        string='Comment',
+        help='Describe what happened, for whoever reviews lost quotes later.')
+
+    def action_confirm_cancel(self):
+        self.ensure_one()
+        self.rfq_id._apply_cancellation(self.reason_ids, self.comment)
+        return {'type': 'ir.actions.act_window_close'}
+
 
 class CustomerRfq(models.Model):
     _name = 'customer.rfq'
@@ -87,7 +121,9 @@ class CustomerRfq(models.Model):
     quantity = fields.Float(string='Quantity', tracking=True)
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
-    price = fields.Float(string='Price/carat', tracking=True)
+    # No tracking: a tracked change writes "Procurement Price/carat 0.00 -> 1.00"
+    # into the chatter, which Sales can read. The cost would leak there regardless of how the field itself is restricted on the form.
+    price = fields.Float(string='Procurement Price/carat')
     is_price_visible_for_user = fields.Boolean(
         string='Price Visible',
         compute='_compute_is_price_visible_for_user',
@@ -98,7 +134,8 @@ class CustomerRfq(models.Model):
     )
     notes = fields.Text(string='Notes')
 
-    # Procurement (or Admin) can optionally select applicable taxes here.
+    # Not used in pricing and not on the form any more. Kept as a column so the RFQs that already carry a tax do not lose it; tax belongs on the sale
+    # order, where account.tax handles customer and fiscal position properly.
     tax_ids = fields.Many2many(
         comodel_name='account.tax',
         relation='customer_rfq_tax_rel',
@@ -106,8 +143,6 @@ class CustomerRfq(models.Model):
         column2='tax_id',
         string='Taxes',
         domain=[('type_tax_use', 'in', ['sale', 'all'])],
-        help='Select the taxes that apply to this RFQ.  '
-             'Tax amounts are calculated on the base price (Price/carat × Carat).',
     )
 
     # ── Computed pricing fields ───────────────────────────────────────────────
@@ -153,11 +188,12 @@ class CustomerRfq(models.Model):
     )
 
     total_price = fields.Monetary(
-        string='Total',
+        string='Sales Price/carat',
         currency_field='currency_id',
         compute='_compute_pricing_totals',
         store=False,
-        help='(Price/carat × Carat)  +  Margin Amount  +  Tax Amount',
+        help='What Sales quotes the customer: '
+             '(Procurement Price/carat × Carat) + Margin. No tax.',
     )
 
     @staticmethod
@@ -218,42 +254,39 @@ class CustomerRfq(models.Model):
         MarginLine = self.env['lgd.margin.line'].sudo()
         margin_singleton = self.env['lgd.margin'].sudo().search([], limit=1)
         margin_singleton_id = margin_singleton.id if margin_singleton else False
+        default_margin_pct = margin_singleton.default_margin_percentage if margin_singleton else 0.0
 
         for rec in self:
             # ── 1. Base price ────────────────────────────────────────────────
             rec_base_price = rec.price * rec.carat
 
-            # ── 2. Margin percentage from Carat–Margin Table ─────────────────
+            # ── 2. Margin percentage ─────────────────────────────────────────
+            # A carat band configured in the Carat–Margin Table wins for the
+            # weights it covers; the Default Margin (%) on the same Margins
+            # screen covers everything else. Without the fallback a stone under
+            # 1 carat -- which _carat_to_band() maps to None -- and any weight
+            # the table has no row for would silently be sold at cost.
             band = self._carat_to_band(rec.carat) if rec.carat else None
-            rec_margin_pct = 0.0
+            rec_margin_pct = default_margin_pct
             if band and margin_singleton_id:
                 margin_line = MarginLine.search([
                     ('margin_id',   '=', margin_singleton_id),
                     ('carat_range', '=', band),
                 ], limit=1)
-                rec_margin_pct = margin_line.percentage if margin_line else 0.0
+                if margin_line:
+                    rec_margin_pct = margin_line.percentage
 
             # ── 3. Margin amount ─────────────────────────────────────────────
             rec_margin_amount = rec_base_price * (rec_margin_pct / 100.0)
 
-            # ── 4. Tax amount (using Odoo's compute_all for multi-tax support) ─
+            # ── 4. Tax ───────────────────────────────────────────────────────
+            # Deliberately excluded from the RFQ price: the quote is cost plus
+            # margin only. Tax is applied downstream on the sale order, where
+            # account.tax resolves it against the customer's fiscal position.
+            # tax_amount stays on the model, always 0.00, so nothing that reads
+            # it breaks.
             taxable_amount = rec_base_price + rec_margin_amount
             rec_tax_amount = 0.0
-            if rec.tax_ids and taxable_amount:
-                # compute_all returns a dict with 'taxes' list & 'total_included'
-                # sudo() on the partner for the same reason as the margin
-                # table above: compute_all() reads the partner to resolve its
-                # fiscal position, and a Sales user has no read access to most
-                # res.partner records. The partner is only an input to the tax
-                # calculation here -- nothing about it is exposed to the user.
-                tax_result = rec.tax_ids.sudo().compute_all(
-                    price_unit=taxable_amount,
-                    currency=rec.currency_id,
-                    quantity=1.0,
-                    partner=rec.partner_id.sudo() or False,
-                )
-                # Sum the individual tax amounts from all tax lines
-                rec_tax_amount = sum(t['amount'] for t in tax_result.get('taxes', []))
 
             # ── 5. Assign back ───────────────────────────────────────────────
             rec.base_price        = rec_base_price
@@ -318,12 +351,23 @@ class CustomerRfq(models.Model):
             ('sent_to_procurement', 'Sent to Procurement'),
             ('sent_back_to_sales', 'Sent back to Sales'),
             ('offline_order_created', 'Offline Order Created'),
+            ('cancel', 'Cancelled'),
         ],
         string='Status',
         default='draft',
         required=True,
         tracking=True,
     )
+
+    # ── Cancellation ──────────────────────────────────────────────────────────
+    cancel_reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason',
+        'customer_rfq_cancel_reason_rel', 'rfq_id', 'reason_id',
+        string='Cancellation Reason', readonly=True, copy=False, tracking=True,
+    )
+    cancel_comment = fields.Text(string='Cancellation Comment', readonly=True, copy=False)
+    cancelled_by_id = fields.Many2one('res.users', string='Cancelled By', readonly=True, copy=False)
+    cancelled_on = fields.Datetime(string='Cancelled On', readonly=True, copy=False)
 
     # Set by Procurement to mark whether the stone needs certification.
     stone_certification = fields.Selection(
@@ -333,14 +377,31 @@ class CustomerRfq(models.Model):
     )
 
 
-    @api.constrains('shape_ids')
-    def _check_shape_required(self):
+    @api.constrains('shape_ids', 'stone_type', 'stone_certification_type',
+                    'carat', 'color', 'clarity', 'size', 'quantity')
+    def _check_required_specs(self):
         for rec in self:
+            missing = []
             if not rec.shape_ids:
+                missing.append(_('Shape'))
+            if not rec.stone_type:
+                missing.append(_('Type of Stone'))
+            if not rec.stone_certification_type:
+                missing.append(_('Certification'))
+            if not rec.carat:
+                missing.append(_('Carat'))
+            if not rec.color:
+                missing.append(_('Color'))
+            if not rec.clarity:
+                missing.append(_('Clarity'))
+            if rec.stone_certification_type == 'non_certified' and not rec.size:
+                missing.append(_('Size'))
+            if rec.stone_certification_type == 'certified' and not rec.quantity:
+                missing.append(_('Quantity'))
+            if missing:
                 raise ValidationError(_(
-                    "The 'Shape' field is mandatory. "
-                    "Please select at least one shape before saving."
-                ))
+                    "These fields are mandatory on a Customer RFQ: %s."
+                ) % ', '.join(missing))
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -354,6 +415,8 @@ class CustomerRfq(models.Model):
 
     def action_send_to_procurement(self):
         for rec in self:
+            if rec.state == 'cancel':
+                raise UserError(_("This Customer RFQ is cancelled."))
             if rec.state != 'draft':
                 raise UserError(_("Only draft Customer RFQs can be sent to Procurement."))
             rec.sudo().write({'state': 'sent_to_procurement'})
@@ -370,9 +433,9 @@ class CustomerRfq(models.Model):
                     "Sales cannot see pricing until a valid amount is set."
                 ))
             rec.state = 'sent_back_to_sales'
-            rec.message_post(body=_(
-                "Sent back to Sales team with price: %s | Total: %s"
-            ) % (rec.price, rec.total_price))
+            # No figures in the body, for the same reason price is not tracked:
+            # the chatter is readable by Sales.
+            rec.message_post(body=_("Sent back to Sales team."))
 
     def _create_requested_stone(self, unit_price):
         vals = {
@@ -391,6 +454,50 @@ class CustomerRfq(models.Model):
         if not product.name:
             product.name = self.name
         return product
+
+    def action_open_cancel_wizard(self):
+        """Open the reason prompt. Cancelling always goes through it, so an RFQ can never end up cancelled with no explanation recorded."""
+        self.ensure_one()
+        if self.state == 'cancel':
+            raise UserError(_("This Customer RFQ is already cancelled."))
+        if self.state == 'offline_order_created':
+            raise UserError(_(
+                "An Offline Order was already created from this RFQ. "
+                "Cancel the order instead."
+            ))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Cancel Customer RFQ'),
+            'res_model': 'customer.rfq.cancel.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_rfq_id': self.id},
+        }
+
+    def _apply_cancellation(self, reasons, comment):
+        """Record the cancellation. Called by the wizard, not from the UI."""
+        self.ensure_one()
+        if self.state == 'cancel':
+            raise UserError(_("This Customer RFQ is already cancelled."))
+        if self.state == 'offline_order_created':
+            raise UserError(_(
+                "An Offline Order was already created from this RFQ. "
+                "Cancel the order instead."
+            ))
+        if not reasons:
+            raise UserError(_("Select at least one cancellation reason."))
+        self.sudo().write({
+            'state': 'cancel',
+            'cancel_reason_ids': [(6, 0, reasons.ids)],
+            'cancel_comment': comment or False,
+            'cancelled_by_id': self.env.uid,
+            'cancelled_on': fields.Datetime.now(),
+        })
+        body = _("Cancelled - %s") % ', '.join(reasons.mapped('name'))
+        if comment:
+            body += Markup("<br/>") + comment
+        self.sudo().message_post(body=body)
+        return True
 
     def action_create_offline_order(self):
         self.ensure_one()
