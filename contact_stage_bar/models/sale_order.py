@@ -85,35 +85,22 @@ class SaleOrder(models.Model):
                         sp.name, order.partner_id.name
                     )
 
-    # CONDITIONAL INVOICE PRINTING
-    def action_print_invoice(self):
-        """
-        Print the correct invoice PDF based on the selected Country Code:
+    def action_print_the_invoice(self):
+        """Create the invoice (if not already created) and hand back the
+        Augmont Tax Invoice PDF, in one click.
 
-        • Country Code = India (ISO code 'IN')
-              → Downloads the Augmont Tax Invoice
-                (report: contact_stage_bar.action_report_augmont_sale_invoice)
-
-        • Country Code = anything else (or not set)
-              → Downloads the Astreylla Memorandum
-                (report: contact_stage_bar.action_report_forever_grown_memo)
-
-        This method is called by the "Print Invoice" button in the sale.order form view (views/sale_order.xml).
+        Replaces the standard "Create Invoice" button, which is hidden on this
+        view: the business wants a single "Print an Invoice" action rather
+        than the advance-payment wizard's regular/down-payment choice.
         """
         self.ensure_one()
-
-        india = self.env['res.country'].search([('code', '=', 'IN')], limit=1)
-
-        if india and self.country_code == str(india.id):
-            # ── India customer: print Augmont Tax Invoice ──────────────
-            return self.env.ref(
-                'contact_stage_bar.action_report_augmont_sale_invoice'
-            ).report_action(self)
-        else:
-            # ── Non-India customer: print Astreylla Memorandum ──
-            return self.env.ref(
-                'contact_stage_bar.action_report_forever_grown_memo'
-            ).report_action(self)
+        try:
+            self._create_invoices()
+        except Exception:
+            pass
+        return self.env.ref(
+            'contact_stage_bar.action_report_augmont_tax_invoice'
+        ).report_action(self, config=False)
 
     mobile_number = fields.Char(related='partner_id.phone', string="Mobile Number")
     shipping_charges = fields.Float(string="Shipping Charges", digits=(16, 2))

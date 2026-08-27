@@ -70,6 +70,17 @@
             <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
         </record>
 
+        <record id="group_lgd_procurement_manager" model="res.groups">
+            <field name="name">LGD Procurement Manager</field>
+            <field name="category_id" ref="module_category_lgd"/>
+            <field name="implied_ids" eval="[(4, ref('contact_stage_bar.group_lgd_procurement')), (4, ref('purchase.group_purchase_manager'))]"/>
+        </record>
+
+        <record id="group_lgd_superadmin" model="res.groups">
+            <field name="name">LGD SuperAdmin</field>
+            <field name="category_id" ref="module_category_lgd"/>
+        </record>
+
         <!-- ================= Export restricted to administrators ============= -->
         <record id="base.group_system" model="res.groups">
             <field name="implied_ids" eval="[(4, ref('base.group_allow_export'))]"/>
