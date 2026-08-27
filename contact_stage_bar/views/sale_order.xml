@@ -347,7 +347,8 @@
                 <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
                 <field name="certificate" readonly="1"/>
                 <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="1"/>
-                <field name="stock_number" readonly="1" string="Vendor SKU"/>
+                <field name="stock_number" readonly="1" string="Vendor SKU"
+                       groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
                 <field name="treatments"/>
