@@ -266,19 +266,19 @@ action = action_vals
     <!-- Customer Orders menu under Purchase -->
     <menuitem id="menu_customer_orders_procurement" name="Customer Quotations" parent="purchase.menu_purchase_root" action="action_customer_orders_procurement" sequence="-1" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
     
-    <!-- Online Orders: sale.order list inside Procurement → Orders.
-         Separate server action so the breadcrumb shows "Online Orders" instead
+    <!-- Orders: sale.order list inside Procurement.
+         Separate server action so the breadcrumb shows "Orders" instead
          of "Sales" when accessed from Procurement. Same group-aware domain
-         logic as action_dynamic_sales_orders. -->    
+         logic as action_dynamic_sales_orders. -->
     <record id="action_dynamic_cfq_orders_procurement" model="ir.actions.server">
-        <field name="name">Online Orders</field>
+        <field name="name">Orders</field>
         <field name="model_id" ref="sale.model_sale_order"/>
         <field name="state">code</field>
         <field name="code"><![CDATA[
 action_vals = dict(env.ref('sale.action_orders').sudo().read()[0])
 action_vals['id'] = env.ref('contact_stage_bar.action_dynamic_cfq_orders_procurement').id
-action_vals['name'] = 'Online Orders'
-action_vals['display_name'] = 'Online Orders'
+action_vals['name'] = 'Orders'
+action_vals['display_name'] = 'Orders'
 action_vals.pop('path', None)
 action_vals.pop('xml_id', None)
 
@@ -293,7 +293,7 @@ if env.user.has_group('base.group_system'):
     # Admin sees every CFQ Order without any restriction.
     action_vals['domain'] = []
 
-# LGD Procurement users see ALL Online Orders EXCEPT those belonging to (Ankit & Aarav)
+# LGD Procurement users see ALL Orders EXCEPT those belonging to (Ankit & Aarav)
 elif env.user.has_group('contact_stage_bar.group_lgd_procurement'):
     action_vals['domain'] = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
 
@@ -308,7 +308,7 @@ action = action_vals
         ]]></field>
     </record>
  
-    <menuitem id="menu_cfq_orders_procurement" name="Online Orders" parent="purchase.menu_purchase_root" action="action_dynamic_cfq_orders_procurement" sequence="-2" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+    <menuitem id="menu_cfq_orders_procurement" name="Orders" parent="purchase.menu_purchase_root" action="action_dynamic_cfq_orders_procurement" sequence="-2" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
 
     <!-- CANCELLATION WIZARD -->
     <record id="view_customer_rfq_cancel_wizard_form" model="ir.ui.view">

@@ -62,7 +62,9 @@
                             type="object" class="btn-primary"
                             invisible="sale_state not in ('draft', 'sent')"
                             groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
-                    <button name="action_cancel_offline_order" string="Cancel"
+                    <!-- Cancel always goes through the reason wizard — same
+                         validation as the Customer RFQ cancellation. -->
+                    <button name="action_open_cancel_wizard" string="Cancel"
                             type="object"
                             invisible="sale_state == 'cancel'"/>
                     <button name="action_set_to_quotation" string="Set to Quotation"
@@ -94,6 +96,20 @@
                             <field name="name"/>
                         </h1>
                     </div>
+                    <!-- Read-only record of why this order was dropped. -->
+                    <group string="Cancellation" invisible="sale_state != 'cancel'">
+                        <group>
+                            <field name="cancel_reason_ids" widget="many2many_tags" readonly="1"/>
+                            <field name="cancelled_by_id" readonly="1"/>
+                            <field name="cancelled_on" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="cancel_comment" readonly="1"
+                                   invisible="not cancel_comment"/>
+                            <field name="cancel_reason" string="Reason (legacy)" readonly="1"
+                                   invisible="not cancel_reason"/>
+                        </group>
+                    </group>
                     <group>
                         <group>
                             <field name="partner_id" widget="res_partner_many2one"
@@ -101,7 +117,6 @@
                                    options='{"always_reload": True, "no_quick_create": True}'/>
                             <field name="shipping_address" readonly="state != 'draft'"/>
                             <field name="billing_address" readonly="state != 'draft'"/>
-                            <field name="cancel_reason" invisible="state != 'cancel'" readonly="1"/>
 
 <!--                            <field name="gst_treatment" readonly="state != 'draft'"/>-->
 <!--                            <field name="location" readonly="state != 'draft'"/>-->
@@ -236,6 +251,7 @@
                     <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"/>
                     <filter string="Order Date" name="order_month" context="{'group_by': 'date_order'}"/>
                     <filter string="Status" name="status" context="{'group_by': 'state'}"/>
+                    <filter string="Cancellation Reason" name="by_cancel_reason" context="{'group_by': 'cancel_reason_ids'}"/>
                 </group>
             </search>
         </field>

@@ -30,3 +30,5 @@ access_customer_rfq_cancel_reason_user,customer.rfq.cancel.reason.user,model_cus
 access_customer_rfq_cancel_reason_manager,customer.rfq.cancel.reason.manager,model_customer_rfq_cancel_reason,contact_stage_bar.group_lgd_sales_manager,1,1,1,0
 access_customer_rfq_cancel_reason_admin,customer.rfq.cancel.reason.admin,model_customer_rfq_cancel_reason,base.group_system,1,1,1,1
 access_customer_rfq_cancel_wizard_user,customer.rfq.cancel.wizard.user,model_customer_rfq_cancel_wizard,base.group_user,1,1,1,1
+access_sale_order_cancel_request_wizard,sale.order.cancel.request.wizard,model_sale_order_cancel_request_wizard,base.group_user,1,1,1,1
+access_sale_order_cancel_reject_wizard,sale.order.cancel.reject.wizard,model_sale_order_cancel_reject_wizard,base.group_user,1,1,1,1

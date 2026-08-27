@@ -67,9 +67,9 @@
                 <!-- Amount in words: whole units only, currency nouns and the
                      connective "and" stripped, matching the design's
                      "Fourteen Thousand Eight Hundred Only". -->
-                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(int(doc.amount_total))"/>
+                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(doc.amount_total)"/>
                 <t t-set="words"
-                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','dollar','dollars','rupee','rupees','cent','cents','paisa','paise','only','zero')]).title() + ' Only'"/>
+                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','rupee','rupees','paisa','paise','only','zero')]).title() + ' Only'"/>
 
                 <div class="article aug-sheet" t-att-data-oe-model="doc._name" t-att-data-oe-id="doc.id">
                     <style>
@@ -211,7 +211,7 @@
                                              style="width:165pt; height:auto; display:block;"
                                              alt="AUGMONT"/>
                                         <div class="masthead" style="margin-top:5pt;">
-                                            <span t-field="company.name"/>
+                                            ANIRATH OVERSEAS LIMITED
                                         </div>
                                     </td>
                                     <td style="width:42%;" class="r">
@@ -241,13 +241,13 @@
                                     <td style="width:46.67%;">
                                         <div class="lbl">From</div>
                                         <div class="rule" style="margin-top:7pt;"/>
-                                        <div class="party" style="margin-top:12pt;">
-                                            <span t-field="company.name"/>
+                                        <div style="margin-top:12pt; padding-bottom:6pt;">
+                                            <div style="color:#191C1E; font-size:11.7pt; font-weight:700; text-transform:uppercase; line-height:17.6pt;">ANIRATH OVERSEAS LIMITED</div>
                                         </div>
-                                        <div style="margin-top:8pt;">
-                                            <div><span class="lab">GSTIN: </span><span class="val" t-esc="company.vat or ''"/></div>
-                                            <div><span class="lab">PAN: </span><span class="val" t-esc="company.l10n_in_pan or ''"/></div>
-                                            <div><span class="lab">State: </span><span class="val" t-esc="company.state_id.name if company.state_id else ''"/></div>
+                                        <div>
+                                            <div><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">GSTIN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">27AADCA8955F1Z2</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">PAN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">AADCA8955F</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">State: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">Maharashtra</span></div>
                                         </div>
                                     </td>
                                     <td style="width:6.66%;"/>
@@ -385,13 +385,13 @@
                                     <td style="width:46.67%;">
                                         <div class="lbl-sec">Bank Details</div>
                                         <div class="rule" style="margin-top:6pt; width:56pt;"/>
-                                        <div class="sm" style="margin-top:10pt;">
-                                            <div><span class="lab">Bank: </span><span class="val">HDFC BANK LTD</span></div>
-                                            <div><span class="lab">A/C: </span><span class="val">50200114382193</span></div>
-                                            <div><span class="lab">IFSC: </span><span class="val">HDFC0000542</span></div>
+                                        <div style="margin-top:1pt; padding-bottom:24pt; font-size:8pt; line-height:10.2pt;">
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">Bank: </span><span style="color:#191C1E; font-weight:500;">HDFC BANK LTD</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C: </span><span style="color:#191C1E; font-weight:500;">50200114382193</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">IFSC: </span><span style="color:#191C1E; font-weight:500;">HDFC0000542</span></div>
                                         </div>
 
-                                        <div class="lbl-sec" style="margin-top:26pt;">Diamond Authenticity &amp; Compliance</div>
+                                        <div class="lbl-sec" style="margin-top:40pt;">Diamond Authenticity &amp; Compliance</div>
                                         <div class="rule" style="margin-top:6pt; width:162pt;"/>
                                         <div class="prose" style="margin-top:10pt;">
                                             Laboratory Grown Diamond. Conflict-Free Declaration.
@@ -411,15 +411,15 @@
                                             <div>E. &amp; O.E.</div>
                                         </div>
 
-                                        <div style="margin-top:40pt;">
+                                        <div style="margin-top:80pt;">
                                             <table>
-                                                <tr><td style="width:22%;"/><td><div class="rule"/></td></tr>
+                                                <tr><td style="width:44%;"/><td><div class="rule"/></td></tr>
                                             </table>
                                             <!-- design: signatory and company are both
                                                  #5F5E5E; the name is w600, not ink. -->
                                             <div class="sm r" style="margin-top:8pt; color:#5F5E5E; font-weight:400; text-transform:uppercase;">Authorised Signatory</div>
                                             <div class="sm r" style="color:#5F5E5E;">
-                                                <span style="font-weight:400;">For </span><span style="font-weight:600;" t-field="company.name"/>
+                                                <span style="font-weight:400;">For </span><span style="font-weight:600;">Anirath Overseas Limited</span>
                                             </div>
                                         </div>
                                     </td>

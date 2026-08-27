@@ -34,6 +34,39 @@ class SaleOrder(models.Model):
     _inherit = 'sale.order'
     email = fields.Char(related='partner_id.email', string="Email")
 
+    # ── Cancellation-approval workflow ────────────────────────────────────────
+    # LGD Sales cannot hard-cancel a sale.order — the cancel cascade hits
+    # purchase.order (an ACL they do not have). Instead they file a request
+    # here, and LGD Sales Manager approves or rejects; approval runs the real
+    # cancel under sudo so the purchase.order side effects go through.
+    cancel_request_state = fields.Selection(
+        [('none', 'None'),
+         ('pending', 'Pending Approval'),
+         ('approved', 'Approved'),
+         ('rejected', 'Rejected')],
+        string='Cancellation Request',
+        default='none', copy=False, tracking=True,
+    )
+    cancel_reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason',
+        'sale_order_cancel_reason_rel', 'order_id', 'reason_id',
+        string='Cancellation Reason', copy=False, tracking=True,
+    )
+    cancel_comment = fields.Text(string='Cancellation Comment', copy=False)
+    cancel_requested_by_id = fields.Many2one(
+        'res.users', string='Cancellation Requested By',
+        readonly=True, copy=False)
+    cancel_requested_on = fields.Datetime(
+        string='Cancellation Requested On', readonly=True, copy=False)
+    cancel_approved_by_id = fields.Many2one(
+        'res.users', string='Cancellation Approved By',
+        readonly=True, copy=False,
+        help='Set on approval OR rejection — this is who acted on the request.')
+    cancel_approved_on = fields.Datetime(
+        string='Cancellation Decided On', readonly=True, copy=False)
+    cancel_rejection_reason = fields.Text(
+        string='Rejection Reason', readonly=True, copy=False)
+
 # Dynamic Selection field to show Flag + Name + Code
     @api.model
     def _get_country_code_selection(self):
@@ -977,7 +1010,178 @@ class SaleOrder(models.Model):
         
         return result
 
-    
+    def _cancellation_can_be_requested(self):
+        self.ensure_one()
+        if self.state == 'cancel':
+            raise UserError(_("This order is already cancelled."))
+        if self.cancel_request_state == 'pending':
+            raise UserError(_(
+                "A cancellation request is already pending approval for this "
+                "order. Ask a Sales Manager to review it."))
+        if self.cancel_request_state == 'approved':
+            raise UserError(_(
+                "This order's cancellation was already approved."))
+
+    def action_open_cancel_request_wizard(self):
+        """Sales button: open the reasons-and-comment prompt."""
+        self.ensure_one()
+        self._cancellation_can_be_requested()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Request Cancellation'),
+            'res_model': 'sale.order.cancel.request.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_order_id': self.id},
+        }
+
+    def _apply_cancel_request(self, reasons, comment):
+        """Record the request and notify the Sales Manager group.
+        Called by the request wizard; not from the UI directly."""
+        self.ensure_one()
+        self._cancellation_can_be_requested()
+        if not reasons:
+            raise UserError(_("Select at least one cancellation reason."))
+        self.sudo().write({
+            'cancel_request_state': 'pending',
+            'cancel_reason_ids': [(6, 0, reasons.ids)],
+            'cancel_comment': comment or False,
+            'cancel_requested_by_id': self.env.uid,
+            'cancel_requested_on': fields.Datetime.now(),
+            # Wipe any previous decision fields so a rejected-then-refiled
+            # request does not still show the old approver/rejection.
+            'cancel_approved_by_id': False,
+            'cancel_approved_on': False,
+            'cancel_rejection_reason': False,
+        })
+        body = _("Cancellation requested - %s") % ', '.join(reasons.mapped('name'))
+        if comment:
+            body += Markup("<br/>") + comment
+        self.sudo().message_post(body=body)
+        self._notify_cancel_approvers(reasons, comment)
+        return True
+
+    def _notify_cancel_approvers(self, reasons, comment):
+        """Send a chatter message + activity to LGD Sales Manager users so a
+        pending request never sits unseen."""
+        self.ensure_one()
+        manager_group = self.env.ref(
+            'contact_stage_bar.group_lgd_sales_manager',
+            raise_if_not_found=False)
+        if not manager_group:
+            return
+        managers = manager_group.users
+        if not managers:
+            return
+        partners = managers.mapped('partner_id')
+        body = Markup(
+            "<p>Cancellation approval requested for <strong>%s</strong>.</p>"
+            "<p><strong>Reasons:</strong> %s</p>"
+        ) % (self.name, ', '.join(reasons.mapped('name')))
+        if comment:
+            body += Markup("<p><strong>Comment:</strong> %s</p>") % comment
+        self.sudo().message_post(
+            body=body,
+            subject=_("Cancellation approval requested — %s") % self.name,
+            message_type='notification',
+            subtype_xmlid='mail.mt_comment',
+            partner_ids=partners.ids,
+        )
+        activity_type = self.env.ref('mail.mail_activity_data_todo',
+                                     raise_if_not_found=False)
+        if not activity_type:
+            return
+        summary = _("Review cancellation request from %s") % (
+            self.cancel_requested_by_id.name or self.env.user.name)
+        note = Markup(
+            "<p>Reasons: %s</p>"
+        ) % ', '.join(reasons.mapped('name'))
+        if comment:
+            note += Markup("<p>Comment: %s</p>") % comment
+        for mgr in managers:
+            self.sudo().activity_schedule(
+                'mail.mail_activity_data_todo',
+                summary=summary,
+                note=note,
+                user_id=mgr.id,
+            )
+
+    def _check_cancel_approver(self):
+        """Approve/Reject are Sales-Manager-or-admin only."""
+        self.ensure_one()
+        u = self.env.user
+        if u.has_group('base.group_system') \
+           or u.has_group('contact_stage_bar.group_lgd_sales_manager'):
+            return
+        raise UserError(_(
+            "Only LGD Sales Manager (or an administrator) can act on a "
+            "cancellation request."))
+
+    def action_approve_cancellation(self):
+        """Manager button: approve → hard cancel under sudo."""
+        self.ensure_one()
+        self._check_cancel_approver()
+        if self.cancel_request_state != 'pending':
+            raise UserError(_("No pending cancellation request to approve."))
+        self.sudo().write({
+            'cancel_request_state': 'approved',
+            'cancel_approved_by_id': self.env.uid,
+            'cancel_approved_on': fields.Datetime.now(),
+            'cancel_rejection_reason': False,
+        })
+        self.sudo().message_post(body=_("Cancellation approved by %s.")
+                                 % self.env.user.name)
+        # Close the manager's pending Todo, if any.
+        self._close_cancel_approval_activities()
+
+        self.sudo().with_context(
+            skip_availability_check=True,
+        ).action_cancel()
+        return True
+
+    def action_open_cancel_reject_wizard(self):
+        """Manager button: open the reject prompt."""
+        self.ensure_one()
+        self._check_cancel_approver()
+        if self.cancel_request_state != 'pending':
+            raise UserError(_("No pending cancellation request to reject."))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Reject Cancellation Request'),
+            'res_model': 'sale.order.cancel.reject.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_order_id': self.id},
+        }
+
+    def _apply_cancel_rejection(self, rejection_reason):
+        """Record the rejection. Called by the reject wizard; not from the UI."""
+        self.ensure_one()
+        self._check_cancel_approver()
+        if self.cancel_request_state != 'pending':
+            raise UserError(_("No pending cancellation request to reject."))
+        if not (rejection_reason or '').strip():
+            raise UserError(_("Enter a rejection reason."))
+        self.sudo().write({
+            'cancel_request_state': 'rejected',
+            'cancel_approved_by_id': self.env.uid,
+            'cancel_approved_on': fields.Datetime.now(),
+            'cancel_rejection_reason': rejection_reason,
+        })
+        body = Markup(_("Cancellation request rejected by %s.")) % self.env.user.name
+        body += Markup("<br/>") + rejection_reason
+        self.sudo().message_post(body=body)
+        self._close_cancel_approval_activities()
+        return True
+
+    def _close_cancel_approval_activities(self):
+        """Mark the Sales Manager Todo activities as done once we act."""
+        self.ensure_one()
+        acts = self.sudo().activity_ids.filtered(
+            lambda a: a.summary and a.summary.startswith('Review cancellation request'))
+        if acts:
+            acts.action_feedback(feedback=_("Handled by %s") % self.env.user.name)
+
     @api.depends('payment_ids')
     def _compute_payment_count(self):
         for order in self:
@@ -2182,7 +2386,7 @@ class SaleOrderLine(models.Model):
     fluorescence_intensity = fields.Char(string="Fluorescence Intensity",related='product_template_id.fluorescence_intensity')
     treatments = fields.Char(string='Treatments',related='product_template_id.treatments')
 
-    # Added for the Order Lines CSV export (Procurement > Online Orders)
+    # Added for the Order Lines CSV export (Procurement > Orders)
     # These already existed on product.template but were not yet related onto the order line, so they're added here.
     labs = fields.Char(string="Lab", related='product_template_id.labs')
     measurements = fields.Char(string="Measurement", related='product_template_id.measurements')
@@ -2789,9 +2993,10 @@ class SaleOrderLine(models.Model):
                     if (old_status not in ('cancelled', 'not_available')
                             and line.availability_status in ('cancelled', 'not_available')
                             and line.order_id):
+
                         line.with_context(
                             skip_auto_procurement=True,
-                        )._cancel_or_reduce_related_rfq()
+                        ).sudo()._cancel_or_reduce_related_rfq()
 
             # ── Auto-QC sync: mark QC moves as pass/fail when SO line status changes ──
             for line in self:

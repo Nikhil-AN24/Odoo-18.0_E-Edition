@@ -257,8 +257,19 @@
                 <xpath expr="//field[@name='type']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 </xpath>
+                <!-- Cost field: hidden for BOTH LGD Procurement and LGD Sales.
+                     Sales Manager inherits Sales, so it is hidden for them too. -->
                 <xpath expr="//field[@name='standard_price']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+                <!-- Stock Number (Vendor SKU) on the product form: hide from LGD Sales. -->
+                <xpath expr="//field[@name='stock_number']" position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                </xpath>
+                <!-- "Update Quantity" header button + stat button: hide from LGD Sales. -->
+                <xpath expr="//button[@name='action_update_quantity_on_hand']"
+                       position="attributes">
+                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
                 </xpath>
                 <xpath expr="//field[@name='is_storable']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
