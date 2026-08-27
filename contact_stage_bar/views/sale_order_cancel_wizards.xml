@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- LGD Sales cancellation-request wizard.
+         Same shape as the Customer RFQ cancel wizard (many2many reasons +
+         free-text comment). Submitting flips the sale.order into
+         cancel_request_state='pending' and notifies Sales Managers. -->
+    <record id="view_sale_order_cancel_request_wizard_form" model="ir.ui.view">
+        <field name="name">sale.order.cancel.request.wizard.form</field>
+        <field name="model">sale.order.cancel.request.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Request Cancellation">
+                <field name="order_id" invisible="1"/>
+                <group>
+                    <field name="reason_ids" widget="many2many_tags"
+                           options="{'no_quick_create': True}"
+                           placeholder="Why is this order being cancelled?"/>
+                    <field name="comment" placeholder="Add any detail worth keeping..."/>
+                </group>
+                <footer>
+                    <button name="action_confirm_request" type="object"
+                            string="Submit for Approval" class="btn-primary"/>
+                    <button string="Discard" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- LGD Sales Manager rejection prompt. -->
+    <record id="view_sale_order_cancel_reject_wizard_form" model="ir.ui.view">
+        <field name="name">sale.order.cancel.reject.wizard.form</field>
+        <field name="model">sale.order.cancel.reject.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Reject Cancellation Request">
+                <field name="order_id" invisible="1"/>
+                <group>
+                    <field name="rejection_reason"
+                           placeholder="Explain why the cancellation request is being turned down..."/>
+                </group>
+                <footer>
+                    <button name="action_confirm_reject" type="object"
+                            string="Reject Request" class="btn-primary"/>
+                    <button string="Discard" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

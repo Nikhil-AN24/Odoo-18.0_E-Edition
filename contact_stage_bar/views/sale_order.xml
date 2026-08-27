@@ -61,12 +61,52 @@
                 <button name="action_export_order_lines_csv" string="Export Order Lines" type="object" class="btn-secondary" invisible="not order_line"/>
             </xpath>
 
-            <!-- Cancel button: draft only. Marks 'Not available' lines as Cancelled. -->
+            <!-- Cancel button: draft only, direct-cancel path.
+                 Restricted to admin/non-LGD-Sales roles — LGD Sales  -->
             <xpath expr="//header" position="inside">
                 <button name="action_cancel_unavailable_lines" string="Cancel" type="object"
                         class="btn-secondary" invisible="state != 'draft'"
-                        groups="!contact_stage_bar.group_lgd_procurement"
+                        groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
                         confirm="Mark all 'Not available' order lines as Cancelled?"/>
+            </xpath>
+
+            <xpath expr="//header" position="inside">
+                <button name="action_open_cancel_request_wizard"
+                        string="Cancel" type="object" class="btn-secondary"
+                        invisible="state == 'cancel' or cancel_request_state in ('pending', 'approved')"
+                        groups="contact_stage_bar.group_lgd_sales"/>
+                <button name="action_approve_cancellation"
+                        string="Approve Cancellation" type="object" class="btn-primary"
+                        invisible="cancel_request_state != 'pending'"
+                        groups="contact_stage_bar.group_lgd_sales_manager,base.group_system"
+                        confirm="Approve this cancellation? The order will be hard cancelled."/>
+                <button name="action_open_cancel_reject_wizard"
+                        string="Reject Cancellation" type="object" class="btn-secondary"
+                        invisible="cancel_request_state != 'pending'"
+                        groups="contact_stage_bar.group_lgd_sales_manager,base.group_system"/>
+            </xpath>
+
+            <!-- Cancellation-request audit block. -->
+            <xpath expr="//sheet" position="inside">
+                <group string="Cancellation Request"
+                       invisible="cancel_request_state == 'none'">
+                    <group>
+                        <field name="cancel_request_state" readonly="1"/>
+                        <field name="cancel_requested_by_id" readonly="1"/>
+                        <field name="cancel_requested_on" readonly="1"/>
+                        <field name="cancel_reason_ids" widget="many2many_tags" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="cancel_comment" readonly="1"
+                               invisible="not cancel_comment"/>
+                        <field name="cancel_approved_by_id" readonly="1"
+                               invisible="cancel_request_state not in ('approved', 'rejected')"/>
+                        <field name="cancel_approved_on" readonly="1"
+                               invisible="cancel_request_state not in ('approved', 'rejected')"/>
+                        <field name="cancel_rejection_reason" readonly="1"
+                               invisible="cancel_request_state != 'rejected'"/>
+                    </group>
+                </group>
             </xpath>
 
             <!-- Hide the "Other Info" notebook page for LGD Procurement users -->
@@ -293,7 +333,9 @@
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="before">
-                <field name="availability_status" string="Availability" groups="contact_stage_bar.group_lgd_sales" readonly="1" force_save="1"/>
+                <field name="availability_status" string="Availability"
+                       groups="contact_stage_bar.group_lgd_sales"
+                       readonly="availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled'] or parent.state in ('sale', 'cancel')"/>
                 <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement"/>
                 <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement" readonly="availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled'] or parent.state in ('sale', 'cancel')"/>
                 <field name="order_number" readonly="1"/>
