@@ -67,9 +67,9 @@
                 <!-- Amount in words: whole units only, currency nouns and the
                      connective "and" stripped, matching the design's
                      "Fourteen Thousand Eight Hundred Only". -->
-                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(int(doc.amount_total))"/>
+                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(doc.amount_total)"/>
                 <t t-set="words"
-                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','dollar','dollars','rupee','rupees','cent','cents','paisa','paise','only','zero')]).title() + ' Only'"/>
+                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','rupee','rupees','paisa','paise','only','zero')]).title() + ' Only'"/>
 
                 <div class="article aug-sheet" t-att-data-oe-model="doc._name" t-att-data-oe-id="doc.id">
                     <style>

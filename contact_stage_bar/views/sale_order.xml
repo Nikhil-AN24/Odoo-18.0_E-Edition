@@ -16,6 +16,7 @@
             </xpath>
             <xpath expr="//field[@name='user_id']" position="attributes">
                 <attribute name="readonly">0</attribute>
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
             </xpath>
             <xpath expr="//field[@name='name']" position="attributes">
                 <attribute name="optional">hide</attribute>
@@ -229,7 +230,8 @@
             
             <xpath expr="//field[@name='payment_term_id']" position="after">
                 <field name="sdk_augmont_status" readonly="1"/>
-                <field name="user_id" string="Salesperson" widget="many2one_avatar_user"/>
+                <field name="user_id" string="Salesperson" widget="many2one_avatar_user"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
                 <field name="is_website" invisible="1"/>
                 <field name="all_lines_final" invisible="1"/>
                 
