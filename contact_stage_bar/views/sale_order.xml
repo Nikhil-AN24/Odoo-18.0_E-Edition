@@ -65,6 +65,7 @@
             <xpath expr="//header" position="inside">
                 <button name="action_cancel_unavailable_lines" string="Cancel" type="object"
                         class="btn-secondary" invisible="state != 'draft'"
+                        groups="!contact_stage_bar.group_lgd_procurement"
                         confirm="Mark all 'Not available' order lines as Cancelled?"/>
             </xpath>
 
@@ -463,31 +464,30 @@
             <!-- {Confirm} calls action_confirm_wrapper.
                  {Save}    calls action_save_statuses. -->
             <xpath expr="//button[@name='action_confirm']" position="replace">
-                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" />
+                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_procurement" />
                 <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" groups="!contact_stage_bar.group_lgd_procurement" />
             </xpath>
 
+            <!-- Standard "Create Invoice" is hidden for every user: this
+                 business wants a single "Print an Invoice" action instead of
+                 the advance-payment wizard's regular/down-payment choice. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="attributes">
-                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                <attribute name="invisible">1</attribute>
             </xpath>
 
-            <!-- ─────────────────────────────────────────────────────────────
-                 PRINT INVOICE BUTTON  (conditional by Country Code field)
-                 Calls SaleOrder.action_print_invoice() in models/sale_order.py.
-                   • Country Code = India (IN)  → Augmont Tax Invoice PDF
-                   • Country Code ≠ India        → Astreylla Memo PDF
-            ───────────────────────────────────────────────────────────── -->
-            <xpath expr="//button[@name='action_confirm_wrapper']" position="after">
+            <!-- PRINT AN INVOICE BUTTON
+                 Calls SaleOrder.action_print_the_invoice() in models/sale_order.py:
+                 creates the invoice (if needed) and downloads the Augmont Tax Invoice PDF in one click. -->
+            <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="after">
                 <button
-                    name="action_print_invoice"
-                    string="Print Invoice"
+                    name="action_print_the_invoice"
+                    string="Print an Invoice"
                     type="object"
-                    class="btn-secondary"
-                    invisible="not sdk_augmont_number"
-                    groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_sales_manager,!contact_stage_bar.group_lgd_procurement"
-                    title="India customers: Augmont Tax Invoice. All other countries: Forever Grown Diamonds Memo."
+                    class="btn-primary"
+                    invisible="state != 'sale'"
+                    groups="!contact_stage_bar.group_lgd_procurement"
                 />
-            </xpath>            
+            </xpath>
 
             <!-- Hide {Cancel} button completely from the Procurement module. Only {Confirm} and {Save} should be visible. -->
             <xpath expr="//header/button[@name='action_cancel']" position="attributes">
@@ -557,44 +557,5 @@
             </xpath>
         </field>
     </record>
-
-    <!-- <record id="view_order_form_inherit_add_product" model="ir.ui.view">
-        <field name="name">sale.order.form.inherit.add.product</field>
-        <field name="model">sale.order</field>
-        <field name="inherit_id" ref="sale.view_order_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='order_line']/form//header" position="inside">
-                <button name="action_open_product_popup"
-                        type="object"
-                        string="Add New Product"
-                        class="btn-primary"
-                        context="{'default_order_id': active_id}"
-                />
-            </xpath>
-        </field>
-    </record> -->
-      <!-- <record id="view_order_line_form_inherit_extra_fields" model="ir.ui.view">
-        <field name="name">sale.order.line.form.inherit.extra.fields</field>
-        <field name="model">sale.order.line</field>
-        <field name="inherit_id" ref="sale.view_order_line_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='product_id']" position="after">
-                <field name="availability_status" string="Availability"
-                       class="black-box"
-                       readonly="parent.state != 'draft'"
-                       required="1"/>
-                <field name="certificate" readonly="1"/>
-                <field name="stock_number" readonly="1" string="Vendor SKU"/>
-                <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                <field name="shapes" readonly="1"/>
-                <field name="carat_weight" readonly="1"/>
-                <field name="color" readonly="1"/>
-                <field name="clarity" readonly="1"/>
-                <field name="vendor_id"/>
-                <field name="vendor_city"/>
-                <field name="final_price"/>
-            </xpath>
-        </field>
-    </record> -->    
 
 </odoo>

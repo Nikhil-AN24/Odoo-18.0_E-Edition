@@ -1,0 +1,452 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="paperformat_augmont_tax_invoice" model="report.paperformat">
+        <field name="name">Augmont Tax Invoice A4</field>
+        <field name="default" eval="False"/>
+        <field name="format">A4</field>
+        <field name="orientation">Portrait</field>
+        <!-- Margins are 0 so the cream reaches the sheet edge; padding is CSS. -->
+        <field name="margin_top">0</field>
+        <field name="margin_bottom">0</field>
+        <field name="margin_left">0</field>
+        <field name="margin_right">0</field>
+        <field name="header_line" eval="False"/>
+        <field name="header_spacing">0</field>
+        <field name="dpi">96</field>
+    </record>
+
+    <record id="action_report_augmont_tax_invoice" model="ir.actions.report">
+        <field name="name">Augmont Tax Invoice</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">contact_stage_bar.report_augmont_tax_invoice_document</field>
+        <field name="report_file">contact_stage_bar.report_augmont_tax_invoice_document</field>
+        <field name="print_report_name">'Tax Invoice - %s' % (object.sdk_augmont_number or object.name)</field>
+        <!-- Bound so it also appears in the Print menu wherever that menu is
+             available. Note the Sales Orders server action sets
+             hide_cog_menu=True in its context, so on THAT action the cog (and
+             therefore Print) is suppressed by design and the Create Invoice
+             button is the only route. -->
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_type">report</field>
+        <field name="paperformat_id" ref="contact_stage_bar.paperformat_augmont_tax_invoice"/>
+    </record>
+
+    <template id="report_augmont_tax_invoice_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+
+                <!-- ── Data preparation ─────────────────────────────────── -->
+
+                <!-- Cancelled / unavailable lines never appear on the invoice. -->
+                <t t-set="lines"
+                   t-value="doc.order_line.filtered(lambda l: l.availability_status not in ('cancelled', 'not_available') and not l.display_type)"/>
+
+                <t t-set="company" t-value="doc.company_id"/>
+                <t t-set="customer" t-value="doc.partner_id"/>
+                <t t-set="commercial" t-value="customer.commercial_partner_id"/>
+                <t t-set="sym" t-value="doc.currency_id.symbol or ''"/>
+
+                <!-- GST split. within_maharashtra gives CGST + SGST, else IGST.
+                     The halves are derived, not rounded independently: rounding
+                     each half loses a paisa on odd tax amounts and the totals
+                     column then fails to foot against TOTAL PAYABLE. -->
+                <t t-set="intra" t-value="doc.gst_treatment == 'within_maharashtra'"/>
+                <t t-set="cgst" t-value="round(doc.amount_tax / 2.0, 2) if intra else 0.0"/>
+                <t t-set="sgst" t-value="(doc.amount_tax - cgst) if intra else 0.0"/>
+                <t t-set="igst" t-value="0.0 if intra else doc.amount_tax"/>
+
+                <t t-set="tax_pct"
+                   t-value="round(doc.amount_tax / doc.amount_untaxed * 100, 2) if doc.amount_untaxed else 0.0"/>
+                <t t-set="half_pct" t-value="round(tax_pct / 2.0, 2)"/>
+
+                <t t-set="round_off"
+                   t-value="doc.amount_total - doc.amount_untaxed - doc.amount_tax"/>
+
+                <!-- Amount in words: whole units only, currency nouns and the
+                     connective "and" stripped, matching the design's
+                     "Fourteen Thousand Eight Hundred Only". -->
+                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(int(doc.amount_total))"/>
+                <t t-set="words"
+                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','dollar','dollars','rupee','rupees','cent','cents','paisa','paise','only','zero')]).title() + ' Only'"/>
+
+                <div class="article aug-sheet" t-att-data-oe-model="doc._name" t-att-data-oe-id="doc.id">
+                    <style>
+                        /* The design specifies Gilroy, which is a commercial
+                           face: not shipped with Odoo and not installed here.
+                           Montserrat is the closest available substitute and is
+                           what actually renders today. To switch to the real
+                           thing, drop the Gilroy .ttf files into
+                           contact_stage_bar/static/src/fonts/ and repoint the
+                           four src URLs below; nothing else changes, because
+                           'Gilroy' already leads the font stack. */
+                        @font-face { font-family: 'AugSans'; font-weight: 400; font-style: normal;
+                            src: url('/web/static/fonts/google/Montserrat/Montserrat-Regular.ttf') format('truetype'); }
+                        @font-face { font-family: 'AugSans'; font-weight: 500; font-style: normal;
+                            src: url('/web/static/fonts/google/Montserrat/Montserrat-Medium.ttf') format('truetype'); }
+                        @font-face { font-family: 'AugSans'; font-weight: 600; font-style: normal;
+                            src: url('/web/static/fonts/google/Montserrat/Montserrat-SemiBold.ttf') format('truetype'); }
+                        @font-face { font-family: 'AugSans'; font-weight: 700; font-style: normal;
+                            src: url('/web/static/fonts/google/Montserrat/Montserrat-Bold.ttf') format('truetype'); }
+
+                        html  { height: 100% !important; }
+                        body  { height: 100% !important; overflow: visible !important;
+                                margin: 0 !important; padding: 0 !important;
+                                max-width: none !important; background: #FBFBF9; }
+                        main     { height: 100% !important; }
+                        .article { height: 100% !important; }
+
+                        .aug-sheet {
+                            height: 100%;
+                            background: #FBFBF9;
+                            /* design 48px / 40px padding, scaled to A4 */
+                            padding: 35pt 34pt 35pt 34pt;
+                            box-sizing: border-box;
+                        }
+
+                        .aug {
+                            color: #191C1E;
+                            font-family: 'Gilroy', 'AugSans', 'Montserrat', 'Liberation Sans', sans-serif;
+                            font-size: 8.8pt;      /* design 12px */
+                            font-weight: 400;
+                            line-height: 13.2pt;   /* design 18px */
+                            width: 100%;
+                        }
+                        /* web.report_assets_common (Bootstrap + Odoo report
+                           SCSS) is injected into every report and paints a
+                           border on every table cell. Without this reset the
+                           whole invoice renders as a spreadsheet grid. The
+                           reset has to be !important because the bundle loads
+                           after this inline style block. */
+                        .aug table, .aug thead, .aug tbody, .aug tr,
+                        .aug td, .aug th {
+                            border: 0 !important;
+                            background: transparent !important;
+                        }
+                        .aug table { border-collapse: collapse; width: 100%; }
+                        .aug td, .aug th { padding: 0; vertical-align: top; }
+
+                        /* Neither a height:100% table row nor an absolutely
+                           positioned block resolves against the sheet in Qt 4.8
+                           WebKit, so the closing band is pushed to the foot by a
+                           min-height on the block above it. It degrades
+                           correctly: a long invoice exceeds it and flows on. */
+                        .aug-top { min-height: 750pt; }
+
+                        /* Every rule in the design: #E2E8F0, exactly 1px. */
+                        .rule { border-top: 1pt solid #E2E8F0; font-size: 0; line-height: 0; }
+
+                        /* Labels are #5F5E5E w400; the values beside them are
+                           #191C1E w500. That pairing is the whole document. */
+                        .lab { color: #5F5E5E; font-weight: 400; }
+                        .val { color: #191C1E; font-weight: 500; }
+                        .r   { text-align: right; }
+                        .c   { text-align: center; }
+
+                        /* 11px/700/0.55px tracked caps: FROM, BILL TO,
+                           Diamond Details, table headers, AMOUNT IN WORDS */
+                        .lbl { font-size: 8pt; font-weight: 700; letter-spacing: 0.40pt;
+                               line-height: 11.7pt; color: #5F5E5E; text-transform: uppercase; }
+
+                        /* 11px/700/1.10px gold: TAX INVOICE and TOTAL PAYABLE */
+                        .lbl-gold { font-size: 8pt; font-weight: 700; letter-spacing: 0.81pt;
+                                    line-height: 11.7pt; color: #CD942B; text-transform: uppercase; }
+
+                        /* 10px/700/1px ink: BANK DETAILS, DECLARATION,
+                           DIAMOND AUTHENTICITY and COMPLIANCE */
+                        .lbl-sec { font-size: 7.3pt; font-weight: 700; letter-spacing: 0.73pt;
+                                   line-height: 10.2pt; color: #191C1E; text-transform: uppercase; }
+
+                        /* 14px/700/1.40px grey caps under the logo */
+                        .masthead { font-size: 10.2pt; font-weight: 700; letter-spacing: 1.02pt;
+                                    line-height: 16.1pt; color: #5F5E5E; text-transform: uppercase; }
+
+                        /* 20px/700/0.20px: invoice number and total payable */
+                        .num-lg { font-size: 14.6pt; font-weight: 700; letter-spacing: 0.15pt;
+                                  line-height: 20.5pt; color: #191C1E; }
+
+                        /* 16px/700 caps: party names */
+                        .party { font-size: 11.7pt; font-weight: 700; line-height: 17.6pt;
+                                 color: #191C1E; text-transform: uppercase; }
+
+                        /* 16px/500: Lab Grown Diamond */
+                        .sect { font-size: 11.7pt; font-weight: 500; line-height: 17.6pt; color: #191C1E; }
+
+                        /* 14px/500: amount in words value */
+                        .words { font-size: 10.2pt; font-weight: 500; line-height: 16.1pt; color: #191C1E; }
+
+                        /* 12px/500/19.50px: the customer address block */
+                        .addr { font-size: 8.8pt; font-weight: 500; line-height: 14.3pt; color: #5F5E5E; }
+
+                        /* 11px/400/17.88px: declaration and compliance copy */
+                        .prose { font-size: 8pt; font-weight: 400; line-height: 13.1pt; color: #5F5E5E; }
+
+                        /* 11px/14px: bank rows and the signatory block */
+                        .sm { font-size: 8pt; line-height: 10.2pt; }
+
+                        /* 9px/13.50px: footer strip, all #5F5E5E */
+                        .foot { font-size: 6.6pt; line-height: 9.9pt; color: #5F5E5E; }
+
+                        .items th { font-size: 8pt; font-weight: 700; letter-spacing: 0.40pt;
+                                    line-height: 11.7pt; color: #5F5E5E; padding-bottom: 12pt; }
+                        .items td { font-size: 8.8pt; line-height: 13.2pt; padding: 12pt 0;
+                                    border-top: 1pt solid #E2E8F0 !important; }
+                        .tot td   { font-size: 8.8pt; line-height: 13.2pt; padding-bottom: 8pt; }
+                    </style>
+
+                    <div class="aug">
+                        <div class="aug-top">
+
+                            <!-- ══ HEADER ══════════════════════════════════ -->
+                            <table>
+                                <tr>
+                                    <td style="width:58%;">
+                                        <!-- Wordmark + tagline only. The supplied
+                                             logo_file.svg also carries a hardcoded
+                                             "ANIRATH OVERSEAS LIMITED" masthead;
+                                             that is cropped out here so the company
+                                             name below stays driven by the record. -->
+                                        <img src="/contact_stage_bar/static/src/img/augmont_wordmark.svg"
+                                             style="width:165pt; height:auto; display:block;"
+                                             alt="AUGMONT"/>
+                                        <div class="masthead" style="margin-top:5pt;">
+                                            <span t-field="company.name"/>
+                                        </div>
+                                    </td>
+                                    <td style="width:42%;" class="r">
+                                        <div class="lbl-gold">Tax Invoice</div>
+                                        <div class="num-lg" style="margin-top:4pt;">
+                                            <span t-esc="doc.sdk_augmont_number or doc.name"/>
+                                        </div>
+                                        <div style="margin-top:8pt;">
+                                            <span class="lab">Date: </span>
+                                            <span class="val" style="text-transform:uppercase;"
+                                                  t-esc="doc.date_order"
+                                                  t-options="{'widget': 'date', 'format': 'dd MMM yyyy'}"/>
+                                            <span style="display:inline-block; width:18pt;"/>
+                                            <span class="lab">Payment Terms: </span>
+                                            <span class="val" t-esc="doc.payment_term_id.name or 'Advance'"/>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div class="rule" style="margin-top:23pt;"/>
+
+                            <!-- ══ FROM / BILL TO ══════════════════════════
+                                 design columns 336 | 48 gutter | 336 of 720 -->
+                            <table style="margin-top:23pt;">
+                                <tr>
+                                    <td style="width:46.67%;">
+                                        <div class="lbl">From</div>
+                                        <div class="rule" style="margin-top:7pt;"/>
+                                        <div class="party" style="margin-top:12pt;">
+                                            <span t-field="company.name"/>
+                                        </div>
+                                        <div style="margin-top:8pt;">
+                                            <div><span class="lab">GSTIN: </span><span class="val" t-esc="company.vat or ''"/></div>
+                                            <div><span class="lab">PAN: </span><span class="val" t-esc="company.l10n_in_pan or ''"/></div>
+                                            <div><span class="lab">State: </span><span class="val" t-esc="company.state_id.name if company.state_id else ''"/></div>
+                                        </div>
+                                    </td>
+                                    <td style="width:6.66%;"/>
+                                    <td style="width:46.67%;">
+                                        <div class="lbl">Bill To</div>
+                                        <div class="rule" style="margin-top:7pt;"/>
+                                        <div class="party" style="margin-top:12pt;">
+                                            <span t-field="commercial.name"/>
+                                        </div>
+                                        <div style="margin-top:8pt;">
+                                            <div t-if="customer.id != commercial.id">
+                                                <span class="lab">Contact: </span><span class="val" t-field="customer.name"/>
+                                            </div>
+                                            <div class="addr" t-if="customer.street or customer.city or customer.zip">
+                                                <div t-if="customer.street"><span t-field="customer.street"/></div>
+                                                <div t-if="customer.street2"><span t-field="customer.street2"/></div>
+                                                <div t-if="customer.city or customer.zip">
+                                                    <span t-esc="customer.city or ''"/><t t-if="customer.city and customer.zip"> - </t><span t-esc="customer.zip or ''"/>
+                                                </div>
+                                            </div>
+                                            <div><span class="lab">GSTIN: </span><span class="val" t-esc="customer.vat or ''"/></div>
+                                            <div><span class="lab">PAN: </span><span class="val" t-esc="customer.l10n_in_pan or ''"/></div>
+                                            <div><span class="lab">State: </span><span class="val" t-esc="customer.state_id.name if customer.state_id else ''"/></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- ══ LINE ITEMS ══════════════════════════════ -->
+                            <table style="margin-top:40pt;">
+                                <tr>
+                                    <td class="sect" style="vertical-align:bottom;">Lab Grown Diamond</td>
+                                    <td style="width:30%; vertical-align:bottom;">
+                                        <div class="lbl r">Diamond Details</div>
+                                        <div class="rule" style="margin-top:6pt;"/>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div class="rule" style="margin-top:14pt;"/>
+
+                            <!-- Column widths put each anchor on its design x:
+                                 Cert L 0%, SHAPE L 16.85%, COL C 28.94%,
+                                 CLA C 37.36%, HSN C 50%, QTY R 66.30%,
+                                 CTS R 74.72%, RATE R 83.15%, AMOUNT R 100%. -->
+                            <table class="items" style="margin-top:15pt;">
+                                <thead>
+                                    <tr>
+                                        <th style="width:16.85%; text-align:left; letter-spacing:0.15pt; text-transform:none;">Certificate No.</th>
+                                        <th style="width:7.15%;  text-align:left;">SHAPE</th>
+                                        <th style="width:9.90%;  text-align:center;">COL</th>
+                                        <th style="width:6.90%;  text-align:center;">CLA</th>
+                                        <th style="width:18.40%; text-align:center;">HSN/SAC</th>
+                                        <th style="width:7.10%;  text-align:right;">QTY</th>
+                                        <th style="width:8.42%;  text-align:right;">CTS</th>
+                                        <th style="width:8.43%;  text-align:right;">RATE</th>
+                                        <th style="width:16.85%; text-align:right;">AMOUNT</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Per the design CSS: certificate, CTS and
+                                         AMOUNT are w500; shape/col/cla/qty/rate are
+                                         w400; HSN is w400 AND muted #5F5E5E. -->
+                                    <tr t-foreach="lines" t-as="line">
+                                        <td style="font-weight:500;"><span t-esc="line.certificate or ''"/></td>
+                                        <td><span t-esc="(line.shapes or '').upper()"/></td>
+                                        <td class="c"><span t-esc="line.color or ''"/></td>
+                                        <td class="c"><span t-esc="line.clarity or ''"/></td>
+                                        <td class="c" style="color:#5F5E5E;"><span t-esc="line.product_id.l10n_in_hsn_code or ''"/></td>
+                                        <td class="r"><span t-esc="'%.2f' % line.product_uom_qty"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="line.carat_weight or ''"/></td>
+                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.0f}'.format(line.price_unit)"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.price_subtotal)"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <div class="rule"/>
+
+                            <!-- ══ WORDS + TOTALS ══════════════════════════
+                                 Totals column is design x 760..1000 = right 33.33% -->
+                            <table style="margin-top:30pt;">
+                                <tr>
+                                    <td style="width:66.67%; padding-right:30pt;">
+                                        <div class="lbl">Amount in Words</div>
+                                        <div class="words" style="margin-top:11pt;"><span t-esc="words"/></div>
+                                    </td>
+                                    <td style="width:33.33%;">
+                                        <table class="tot">
+                                            <tr>
+                                                <td class="lab">Subtotal</td>
+                                                <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(doc.amount_untaxed)"/></td>
+                                            </tr>
+                                            <t t-if="intra">
+                                                <tr>
+                                                    <td class="lab">CGST (<span t-esc="'%g' % half_pct"/>%)</td>
+                                                    <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(cgst)"/></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="lab">SGST (<span t-esc="'%g' % half_pct"/>%)</td>
+                                                    <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(sgst)"/></td>
+                                                </tr>
+                                            </t>
+                                            <tr t-else="">
+                                                <td class="lab">IGST (<span t-esc="'%g' % tax_pct"/>%)</td>
+                                                <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(igst)"/></td>
+                                            </tr>
+                                            <tr t-if="abs(round_off) &gt;= 0.005">
+                                                <td class="lab">Round Off</td>
+                                                <td class="r val">
+                                                    <t t-if="round_off &lt; 0">-</t><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(abs(round_off))"/>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="2" style="padding:0;"><div class="rule" style="margin-top:8pt;"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="lbl-gold" style="padding-top:16pt; vertical-align:middle;">Total Payable</td>
+                                                <td class="r num-lg" style="padding-top:12pt;">
+                                                    <span t-esc="sym"/><span t-esc="'{:,.2f}'.format(doc.amount_total)"/>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div class="aug-bottom">
+                            <div class="rule"/>
+
+                            <!-- ══ BANK / DECLARATION ══════════════════════ -->
+                            <table style="margin-top:26pt;">
+                                <tr>
+                                    <td style="width:46.67%;">
+                                        <div class="lbl-sec">Bank Details</div>
+                                        <div class="rule" style="margin-top:6pt; width:56pt;"/>
+                                        <div class="sm" style="margin-top:10pt;">
+                                            <div><span class="lab">Bank: </span><span class="val">HDFC BANK LTD</span></div>
+                                            <div><span class="lab">A/C: </span><span class="val">50200114382193</span></div>
+                                            <div><span class="lab">IFSC: </span><span class="val">HDFC0000542</span></div>
+                                        </div>
+
+                                        <div class="lbl-sec" style="margin-top:26pt;">Diamond Authenticity &amp; Compliance</div>
+                                        <div class="rule" style="margin-top:6pt; width:162pt;"/>
+                                        <div class="prose" style="margin-top:10pt;">
+                                            Laboratory Grown Diamond. Conflict-Free Declaration.
+                                            Guarantees are based on personal knowledge and written
+                                            guarantees from suppliers. WDC SoW. WFDB Guidelines
+                                            compliant.
+                                        </div>
+                                    </td>
+                                    <td style="width:6.66%;"/>
+                                    <td style="width:46.67%;">
+                                        <div class="lbl-sec">Declaration</div>
+                                        <div class="rule" style="margin-top:6pt; width:56pt;"/>
+                                        <div class="prose" style="margin-top:10pt;">
+                                            <div>We declare that this invoice shows the actual price of the goods described.</div>
+                                            <div>Goods once sold will not be taken back.</div>
+                                            <div>Subject to Mumbai Jurisdiction.</div>
+                                            <div>E. &amp; O.E.</div>
+                                        </div>
+
+                                        <div style="margin-top:40pt;">
+                                            <table>
+                                                <tr><td style="width:22%;"/><td><div class="rule"/></td></tr>
+                                            </table>
+                                            <!-- design: signatory and company are both
+                                                 #5F5E5E; the name is w600, not ink. -->
+                                            <div class="sm r" style="margin-top:8pt; color:#5F5E5E; font-weight:400; text-transform:uppercase;">Authorised Signatory</div>
+                                            <div class="sm r" style="color:#5F5E5E;">
+                                                <span style="font-weight:400;">For </span><span style="font-weight:600;" t-field="company.name"/>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- ══ FOOTER ══════════════════════════════════ -->
+                            <div class="rule" style="margin-top:22pt;"/>
+                            <table style="margin-top:11pt;">
+                                <tr>
+                                    <td class="foot" style="width:23%;">
+                                        <span style="font-weight:400;">CIN: </span><span style="font-weight:500;">U36999MH2012PLC238210</span>
+                                    </td>
+                                    <td class="foot" style="width:54%; text-align:center;">
+                                        <span style="font-weight:400;">Registered Address: </span>
+                                        <span style="font-weight:500;">201, 2nd Floor, Building No. 2, Solitaire Corporate Park, Andheri East, Mumbai 400093</span>
+                                    </td>
+                                    <td class="foot r" style="width:23%;">
+                                        <span style="font-weight:400;">GSTIN: </span><span style="font-weight:500;">27AADCA8955F1Z2</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+
+</odoo>

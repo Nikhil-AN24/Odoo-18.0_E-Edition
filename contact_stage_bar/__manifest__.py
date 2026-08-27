@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.82",
+    "version": "18.0.1.7.9",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -25,8 +25,8 @@
         "views/crm_lead.xml",
         "views/res_partner_stage.xml",
         "views/res_partner_category_views.xml",
-        "views/sale_order_add_product_wizard.xml",
         "views/sale_order.xml",
+        "views/sale_order_add_product_wizard.xml",
         "views/product_template_views.xml",
         "views/stock_picking_wizard_view.xml",
         "views/pay_confirm_wizard_views.xml",
@@ -42,8 +42,7 @@
         "views/melee_value_views.xml",
         "views/lgd_margin_views.xml",
         "report/sale_report_inherit.xml",
-        "report/augmont_sale_invoice_report.xml",
-        "report/forever_grown_diamonds_report.xml",
+        "report/augmont_tax_invoice.xml",
         'data/augmont_retry_cron.xml',
     ],
     'assets': {
