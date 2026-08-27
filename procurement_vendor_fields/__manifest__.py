@@ -1,6 +1,6 @@
 {
     'name': 'Procurement Vendor Fields',
-    'version': '18.0.1.1.1',
+    'version': '18.0.1.1.2',
     'category': 'Purchases',
     'summary': 'Vendor-only partner fields plus a dedicated supplier form for '
                'Procurement > Suppliers > Vendors.',

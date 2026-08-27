@@ -48,7 +48,21 @@ class CustomSaleOrder(models.Model):
         ('Order Completed', 'Order Completed'),
     ], string='Order Status', tracking=True, default='Order Received',
        compute='_compute_augmont_status_from_lines', store=True, readonly=True)
+    # Legacy free-text reason, kept for records cancelled before the wizard
+    # below existed. New cancellations fill the structured fields instead.
     cancel_reason = fields.Text(string="Cancellation Reason")
+
+    # ── Cancellation ──────────────────────────────────────────────────────────
+    # Same shape as customer.rfq (contact_stage_bar), sharing its master list
+    # of reasons so both documents are cancelled with the same vocabulary.
+    cancel_reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason',
+        'custom_sale_order_cancel_reason_rel', 'order_id', 'reason_id',
+        string='Cancellation Reason', readonly=True, copy=False, tracking=True,
+    )
+    cancel_comment = fields.Text(string='Cancellation Comment', readonly=True, copy=False)
+    cancelled_by_id = fields.Many2one('res.users', string='Cancelled By', readonly=True, copy=False)
+    cancelled_on = fields.Datetime(string='Cancelled On', readonly=True, copy=False)
 
     date_order = fields.Datetime(string='Quotation Date', required=True, index=True,
                                  states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
@@ -404,17 +418,49 @@ class CustomSaleOrder(models.Model):
     def action_draft(self):
         self.write({'state': 'draft'})
 
-    def action_open_cancel(self):
-        # self.write({'state': 'cancel'})
+    def action_open_cancel_wizard(self):
+        """Open the reason prompt. Cancelling always goes through it, so an
+        offline order can never end up cancelled with no explanation recorded.
+        Mirrors customer.rfq.action_open_cancel_wizard."""
+        self.ensure_one()
+        if self.sale_state == 'cancel':
+            raise UserError(_("This Offline Order is already cancelled."))
         return {
             'type': 'ir.actions.act_window',
-            'name': 'Sale Order Cancel Reason',
-            'res_model': 'custom.sale.order',
-            'res_id': self.id,
+            'name': _('Cancel Offline Order'),
+            'res_model': 'custom.sale.order.cancel.wizard',
             'view_mode': 'form',
-            'view_id': self.env.ref('custom_sale_order.view_custom_sale_order_cancel_wizard_form').id,
             'target': 'new',
+            'context': {'default_order_id': self.id},
         }
+
+    def _apply_cancellation(self, reasons, comment):
+        """Record the cancellation. Called by the wizard, not from the UI.
+        Mirrors customer.rfq._apply_cancellation."""
+        self.ensure_one()
+        if self.sale_state == 'cancel':
+            raise UserError(_("This Offline Order is already cancelled."))
+        if not reasons:
+            raise UserError(_("Select at least one cancellation reason."))
+        self.write({
+            'cancel_reason_ids': [(6, 0, reasons.ids)],
+            'cancel_comment': comment or False,
+            'cancelled_by_id': self.env.uid,
+            'cancelled_on': fields.Datetime.now(),
+        })
+        # The state change goes through the existing primitive so inheriting
+        # modules keep firing (amplitude_integration tracks
+        # 'Offline Order Cancelled' on it).
+        self.action_cancel_offline_order()
+        body = _("Cancelled - %s") % ', '.join(reasons.mapped('name'))
+        if comment:
+            body += Markup("<br/>") + comment
+        self.message_post(body=body)
+        return True
+
+    def action_open_cancel(self):
+        # Legacy entry point — routes through the reason wizard now.
+        return self.action_open_cancel_wizard()
 
     def action_cancel(self):
         self.write({'state': 'cancel'})

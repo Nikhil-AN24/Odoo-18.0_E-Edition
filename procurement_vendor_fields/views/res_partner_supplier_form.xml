@@ -148,15 +148,27 @@
                    position="replace"/>
 
             <!-- Purchase settings live on this page; contact_stage_bar hides it
-                 for buyers, suppliers need it. -->
+                 for buyers, suppliers need it. LGD Procurement (and its
+                 manager, which implies the group) must not see it at all. -->
             <xpath expr="//page[@name='sales_purchases']" position="attributes">
                 <attribute name="invisible">0</attribute>
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
             </xpath>
 
-            <!-- ===== Discount / Payment terms matrix ===== -->
+            <!-- Internal Notes is likewise off-limits for LGD Procurement. -->
+            <xpath expr="//page[@name='internal_notes']" position="attributes">
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+            </xpath>
+
+            <!-- ===== Discount / Payment terms matrix =====
+                 Two copies of the page: LGD Procurement gets a read-only one,
+                 everyone else the editable one. The groups filter drops the
+                 copy that does not apply server-side, so each user is left
+                 with exactly one page. -->
             <xpath expr="//notebook" position="inside">
                 <page name="supplier_discount_terms"
-                      string="Discounts &amp; Payment Terms">
+                      string="Discounts &amp; Payment Terms"
+                      groups="!contact_stage_bar.group_lgd_procurement">
                     <group>
                         <group string="Discount">
                             <field name="lg_cert_discount"
@@ -177,6 +189,40 @@
                                    string="Natural &gt; Cert"/>
                             <field name="natural_non_cert_payment_days"
                                    string="Natural &gt; Non Cert"/>
+                        </group>
+                    </group>
+                </page>
+                <page name="supplier_discount_terms_readonly"
+                      string="Discounts &amp; Payment Terms"
+                      groups="contact_stage_bar.group_lgd_procurement">
+                    <group>
+                        <group string="Discount">
+                            <field name="lg_cert_discount"
+                                   string="Lab Grown &gt; Cert"
+                                   readonly="1"/>
+                            <field name="lg_non_cert_discount"
+                                   string="Lab Grown &gt; Non Cert"
+                                   readonly="1"/>
+                            <field name="natural_cert_discount"
+                                   string="Natural &gt; Cert"
+                                   readonly="1"/>
+                            <field name="natural_non_cert_discount"
+                                   string="Natural &gt; Non Cert"
+                                   readonly="1"/>
+                        </group>
+                        <group string="Payment Terms (Days)">
+                            <field name="lg_cert_payment_days"
+                                   string="Lab Grown &gt; Cert"
+                                   readonly="1"/>
+                            <field name="lg_non_cert_payment_days"
+                                   string="Lab Grown &gt; Non Cert"
+                                   readonly="1"/>
+                            <field name="natural_cert_payment_days"
+                                   string="Natural &gt; Cert"
+                                   readonly="1"/>
+                            <field name="natural_non_cert_payment_days"
+                                   string="Natural &gt; Non Cert"
+                                   readonly="1"/>
                         </group>
                     </group>
                 </page>

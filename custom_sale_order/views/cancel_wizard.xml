@@ -1,15 +1,22 @@
 <odoo>
+    <!-- Same reason prompt as the Customer RFQ cancellation wizard
+         (contact_stage_bar.view_customer_rfq_cancel_wizard_form). -->
     <record id="view_custom_sale_order_cancel_wizard_form" model="ir.ui.view">
-        <field name="name">custom.sale.order.form</field>
-        <field name="model">custom.sale.order</field>
+        <field name="name">custom.sale.order.cancel.wizard.form</field>
+        <field name="model">custom.sale.order.cancel.wizard</field>
         <field name="arch" type="xml">
-            <form string="Cancellation Reason">
+            <form string="Cancel Offline Order">
+                <field name="order_id" invisible="1"/>
                 <group>
-                    <field name="cancel_reason"/>
+                    <field name="reason_ids" widget="many2many_tags"
+                           options="{'no_quick_create': False}"
+                           placeholder="Why is this order not going ahead?"/>
+                    <field name="comment" placeholder="Add any detail worth keeping..."/>
                 </group>
                 <footer>
-                    <button string="Confirm Cancel" type="object" name="action_cancel" class="btn-primary"/>
-                    <button string="Close" class="btn-secondary" special="cancel"/>
+                    <button name="action_confirm_cancel" type="object"
+                            string="Cancel Order" class="btn-primary"/>
+                    <button string="Discard" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>
         </field>

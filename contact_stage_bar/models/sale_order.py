@@ -2182,7 +2182,7 @@ class SaleOrderLine(models.Model):
     fluorescence_intensity = fields.Char(string="Fluorescence Intensity",related='product_template_id.fluorescence_intensity')
     treatments = fields.Char(string='Treatments',related='product_template_id.treatments')
 
-    # Added for the Order Lines CSV export (Procurement > Online Orders)
+    # Added for the Order Lines CSV export (Procurement > Orders)
     # These already existed on product.template but were not yet related onto the order line, so they're added here.
     labs = fields.Char(string="Lab", related='product_template_id.labs')
     measurements = fields.Char(string="Measurement", related='product_template_id.measurements')
