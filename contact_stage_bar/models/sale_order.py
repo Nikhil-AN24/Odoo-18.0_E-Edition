@@ -1,7 +1,7 @@
 from odoo import models, fields,api,_
 from markupsafe import Markup
 from datetime import datetime, timedelta
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 import requests
 import json
 import time
@@ -2115,7 +2115,22 @@ class SaleOrder(models.Model):
                         order.name, _old, new_status, _api_err
                     )
 
+    _LGD_PROC_SO_WRITE_ALLOWLIST = {'order_line', 'sdk_augmont_status'}
+
     def write(self, vals):
+
+        if (
+            vals and not self.env.su
+            and self.env.user.has_group('contact_stage_bar.group_lgd_procurement')
+            and not self.env.user.has_group('base.group_system')
+            and not self.env.user.has_group('base.group_erp_manager')
+        ):
+            bad = set(vals) - self._LGD_PROC_SO_WRITE_ALLOWLIST
+            if bad:
+                raise AccessError(_(
+                    "Procurement users may only update availability-related fields "
+                    "on a Sale Order. Blocked fields: %s"
+                ) % ', '.join(sorted(bad)))
 
         in_compute_ctx = self.env.context.get('_in_compute_augmont_status', False)
         if in_compute_ctx:
@@ -2945,16 +2960,43 @@ class SaleOrderLine(models.Model):
                 subject="Auto QC Flow"
             )
 
+    _LGD_PROC_SOL_WRITE_ALLOWLIST = {
+        'availability_status',
+        'product_uom_qty',
+        # Odoo recomputes these when qty flips to 0 (line auto-blanks on
+        # not_available / cancelled). Included so procurement's status change
+        # can save without tripping the guard on ORM-supplied side-effects.
+        'price_unit',
+        'technical_price_unit',
+        'price_subtotal',
+        'price_tax',
+        'price_total',
+        'discount',
+    }
+
     def write(self, vals):
         """
         Override write to:
         1. Save availability_status changes
         2. Recompute order status IMMEDIATELY (UI updates)
         3. Trigger auto-confirm ONLY for draft orders becoming confirmed (NOT for status updates)
-        
+
         Prevent auto-confirm from running when updating payment_pending → payment_completed
         This was causing duplicate purchase orders to be created when UTR was entered.
         """
+        if (
+            vals and not self.env.su
+            and self.env.user.has_group('contact_stage_bar.group_lgd_procurement')
+            and not self.env.user.has_group('base.group_system')
+            and not self.env.user.has_group('base.group_erp_manager')
+        ):
+            bad = set(vals) - self._LGD_PROC_SOL_WRITE_ALLOWLIST
+            if bad:
+                raise AccessError(_(
+                    "Procurement users may only update availability-related fields "
+                    "on a Sale Order line. Blocked fields: %s"
+                ) % ', '.join(sorted(bad)))
+
         # Save the old status before write
         old_statuses = {line.id: line.availability_status for line in self if line.id}
         
