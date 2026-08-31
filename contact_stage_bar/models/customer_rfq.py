@@ -387,6 +387,14 @@ class CustomerRfq(models.Model):
     )
 
 
+    @api.constrains('shape_ids')
+    def _check_single_shape(self):
+        """A Customer RFQ describes allows exactly one Shape."""
+        for rec in self:
+            if len(rec.shape_ids) > 1:
+                raise ValidationError(_(
+                    "Please select only one Shape (got %d).") % len(rec.shape_ids))
+
     @api.constrains('shape_ids', 'stone_type', 'stone_certification_type',
                     'carat', 'color', 'clarity', 'size', 'quantity')
     def _check_required_specs(self):

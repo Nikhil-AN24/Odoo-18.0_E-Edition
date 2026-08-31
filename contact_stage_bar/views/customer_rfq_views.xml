@@ -111,8 +111,7 @@
                                    invisible="lab_type != 'other'"
                                    required="lab_type == 'other'"
                                    readonly="state != 'draft'"/>
-                            <!-- Shapes are user-maintained (Sales > Configuration >
-                                 Shapes), so a missing one can also be added inline. -->
+
                             <field name="shape_ids" widget="many2many_tags" required="1"
                                    options="{'no_quick_create': False}"
                                    readonly="state != 'draft'"/>
