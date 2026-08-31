@@ -14,7 +14,8 @@
                 </xpath>  -->
                 <xpath expr="//button[@name='action_open_label_layout']" position="attributes">
                     <attribute name="invisible">1</attribute>
-                </xpath> 
+                </xpath>
+
                 <xpath expr="//header" position="inside">
                     <button name="action_fetch_certificate_data"
                                     type="object"
@@ -31,11 +32,15 @@
                                     invisible="sdk_is_code_enabled"/> -->
                         <label for="certificate" string="Certificate Number"/>
                         <field name="certificate"/>
-                            
-                        <!-- <label for="lgd_stock_number" string="LGD Stock Number"/>
-                        <field name="lgd_stock_number" string="LGD Stock Number"/> -->
-                        
+
                     </h1>
+                    <div class="mb-2">
+                        <button name="action_fetch_igi_data"
+                                type="object"
+                                string="Fetch from IGI"
+                                class="btn-primary"
+                                invisible="not certificate"/>
+                    </div>
                 </xpath>
                 <xpath expr="//group[@name='group_general']" position="inside">
                     <field name="labs"/>
@@ -80,25 +85,6 @@
                     <field name="default_qc_requirements"/>
                 </xpath>
 
-                <!-- <xpath expr="//label[@for='list_price']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
-                </xpath>
-
-                <xpath expr="//div[@name='list_price_uom']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
-                </xpath>
-                
-                <xpath expr="//field[@name='list_price']" position="attributes">
-                    <attribute name="string">Final Price Per Carat</attribute>
-                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
-                </xpath>
-
-                <xpath expr="//div[@name='list_price_uom']" position="after">
-                    <field name="final_price_margin" string="Final Price" groups="!contact_stage_bar.group_lgd_sales"/>
-                    <field name="price_per_carat" string="Vendor Price Per Carat" groups="!contact_stage_bar.group_lgd_sales"/>
-                    <field name="final_price" string="Vendor Final Price" groups="!contact_stage_bar.group_lgd_sales"/>
-                </xpath> -->
-
                 <xpath expr="//label[@for='list_price']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 </xpath>
@@ -134,47 +120,7 @@
                     <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
                 </xpath>
 
-                <!-- <xpath expr="//field[@name='seller_ids']/list" position="inside">
-                    <field name="vendor_final_price"/>
-                    <field name="vendor_per_carat_price"/>
-                </xpath> -->
-                <!-- <xpath expr="//field[@name='barcode']" position="attributes">
-                    <attribute name="invisible">True</attribute>
-                </xpath> -->
-                <!-- <xpath expr="//field[@name='default_code']" position="attributes">
-                    <attribute name="invisible">True</attribute>
-                </xpath>
-                <xpath expr="//field[@name='l10n_in_hsn_code']" position="attributes">
-                    <attribute name="invisible">True</attribute>
-                </xpath> -->
-                 <!-- <xpath expr="//field[@name='list_price']" position="attributes">
-                    <attribute name="groups">stock.group_stock_manager,stock.group_stock_user</attribute>
-                </xpath>
-                <xpath expr="//field[@name='standard_price']" position="attributes">
-                    <attribute name="groups">stock.group_stock_manager,stock.group_stock_user</attribute>
-                </xpath>
-                <xpath expr="//field[@name='standard_price']" position="attributes">
-                    <attribute name="groups">stock.group_stock_manager,stock.group_stock_user</attribute>
-                </xpath> -->
-                <!-- <xpath expr="//header" position="inside">
-                    <button name="action_combine_sdk_fields"
-                            string="Generate Diamond Name"
-                            type="object"
-                            class="btn-primary"
-                            invisible=""/>
-                </xpath> -->
-                <!-- <xpath expr="//div[@class='oe_title']/label" position="before">
-                     <label for="barcode" string="Barcode/IGI Certificate"/>
-                    <h1>
-                            <div class="d-flex">
-                                <field class="text-break" name="barcode" options="{'line_breaks': False}" widget="text" placeholder="123456789"/>
-                                <button name="action_fetch_igi_data"
-                                    string="Generate Diamond Details"
-                                    type="object"
-                                    class="btn-primary"/>
-                            </div>
-                        </h1>
-                </xpath> -->
+
             </field>
         </record>
 
@@ -194,10 +140,6 @@
             </field>
         </record>
 
-        <!-- Product quick-edit popup (opened via the "i" internal link icon
-             on Order Lines > Product). Hides the "Sales" notebook page for
-             LGD Procurement users, as they only need the Purchase-side
-             (vendor) info. -->
         <record id="view_product_template_only_form_hide_procurement" model="ir.ui.view">
             <field name="name">product.template.only.form.hide.procurement</field>
             <field name="model">product.template</field>
@@ -284,22 +226,6 @@
                 </xpath>
             </field>
         </record>
-
-
-        <!-- <record id="product_form_view_hide_procurement_buttons" model="ir.ui.view">
-            <field name="name">product.form.hide.procurement.buttons</field>
-            <field name="model">product.product</field>
-            <field name="inherit_id" ref="stock.product_form_view_procurement_button"/>
-            <field name="arch" type="xml">
-                <xpath expr="//button[@name='action_update_quantity_on_hand']" position="attributes">
-                    <attribute name="invisible">1</attribute>
-                </xpath>
-
-                <xpath expr="//button[@name='472']" position="attributes">
-                    <attribute name="invisible">1</attribute>
-                </xpath>
-            </field>
-        </record> -->
 
     </data>
 </odoo>

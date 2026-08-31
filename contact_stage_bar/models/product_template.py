@@ -58,48 +58,7 @@ class ProductTemplate(models.Model):
     is_show_product = fields.Boolean(string="Is Show Product", default=False)
     webiste_product_id = fields.Char(string="Website Product id")
 
-    
-    
-    # sdk_labs = fields.Selection([('igi', 'IGI'), ('lg', 'LG')], string='LAB')
-    # sdk_certificate = fields.Char(string="Certificate Number")
-    # sdk_certificate_type = fields.Char(string="Certificate Type")
-    # sdk_id_number = fields.Char(string="ID Number")
-    # sdk_shapes = fields.Selection([('Round', 'Diamond Round'), ('Pear', 'Diamond Pear'), ('Oval', 'Diamond Oval'), ('Emerald', 'Diamond Emerald'),
-    #                                ('Marquise', 'Diamond Marquise'), ('Asscher', 'Diamond Asscher'), ('Marquise', 'Diamond Marquise')],
-    #                               string='Diamond Shapes')
-    # sdk_weight = fields.Float(string="Carat Weight")
-    # sdk_measurements = fields.Char(string="Measurements")
-    # sdk_weight_1 = fields.Char(string="Carat Weight")
-    # sdk_color = fields.Selection([
-    #     ('D', 'D'),
-    #     ('E', 'E'),
-    #     ('F', 'F'),
-    #     ('G', 'G'),
-    #     ('H', 'H'),
-    #     ('I', 'I'),
-    #     ('J', 'J'),
-    #     ('K', 'K'),
-    #     ('L', 'L'),
-    #     ('M', 'M'),
-    # ], string="Diamond Color")
-
-    
-    # sdk_clarity = fields.Selection([('FL', 'FL'),('VS1','VS1'), ('IF', 'IF'), ('VVS1', 'VVS1')], string='Clarity')
-    # sdk_polish = fields.Selection([('excellent', 'Excellent'), ('very_good', 'Very Good'), ('good', 'Good'),
-    #                                ('fair', 'Fair'), ('poor', 'Poor')], string='Polish')
-    # sdk_cut = fields.Selection([('excellent', 'Excellent'), ('very_good', 'Very Good'), ('good', 'Good'),
-    #                                ('fair', 'Fair'), ('poor', 'Poor')], string='Cut', required=True)
-    # sdk_symmetry = fields.Selection([('excellent', 'Excellent'), ('very_good', 'Very Good'), ('good', 'Good'),
-    #                                ('fair', 'Fair'), ('poor', 'Poor')], string='Symmetry')
-    # sdk_growth_type = fields.Selection([('CVD', 'CVD'), ('HPHT', 'HPHT'),('Natural','Natural')], string='Growth Type')
-    # sdk_treatments = fields.Selection([('CVD', 'CVD'), ('HPHT', 'HPHT'),('Natural','Natural')], string='Treatments')
-
     sdk_is_code_enabled = fields.Boolean(string="Is Code Enabled", default=False, copy=False)
-    # sdk_url_link = fields.Char(string="URL Link",compute='_compute_sdk_url_link', store=True)
-    # parsed_data = fields.Char(string="Data")
-    # sdk_igi_pdf = fields.Binary(string="IGI PDF", attachment=True)
-    # sdk_igi_pdf_filename = fields.Char(string="PDF Filename")
-    
     
     def action_combine_sdk_fields(self):
         GRADE_SHORT_NAMES = {
@@ -191,23 +150,6 @@ class ProductTemplate(models.Model):
         # Override to disable the name uniqueness check
         return
 
-    # @api.constrains('name')
-    # def _check_unique_name(self):
-    #     for product in self:
-    #         if not product.name:
-    #             raise ValidationError('Product name is required')
-    #         if self.search_count([('name', '=', product.name)]) > 1:
-    #             if product.name != '[DUPLICATE]' and product.name != '[NEW]':
-    #                 raise ValidationError(f'A product with this name "{product.name}" already exists. Please choose a unique name.')
-    #             else:
-    #                 raise ValidationError(f'A {product.name} product already exists. Please use the same to generate the product')
-                
-    # @api.onchange('sdk_certificate')
-    # def _onchange_sdk_certificate(self):
-    #     if self.sdk_certificate:
-    #         igi_url = f"https://api.igi.org/viewpdf.php?r={self.sdk_certificate}"
-    #         self.sdk_url_link = igi_url
-            
     @api.depends('certificate')
     def _compute_url_link(self):
         for record in self:
@@ -225,6 +167,77 @@ class ProductTemplate(models.Model):
         return super().copy(default)
 
                 
+
+    def action_fetch_igi_data(self):
+        from ..services import igi_service
+
+        self.ensure_one()
+        if not self.certificate:
+            raise UserError(_("Please enter a Certificate Number first."))
+
+        result = igi_service.fetch_by_report_number(self.env, self.certificate)
+
+        if not result:
+            return self._igi_notify('warning', _("IGI returned no data."))
+        if result.get('error') == 'not_found':
+            return self._igi_notify(
+                'warning',
+                _("IGI could not find report %s. Please check the number or "
+                  "enter specs manually.") % self.certificate,
+            )
+        if result.get('error') == 'unavailable':
+            return self._igi_notify(
+                'warning',
+                _("IGI is temporarily unavailable. Please enter specs "
+                  "manually; you can retry later."),
+            )
+
+        vals = self._igi_build_vals(result)
+        if vals:
+            self.write(vals)
+
+        return self._igi_notify('success', _("IGI specs applied."))
+
+    def _igi_build_vals(self, data):
+        """Map normalised IGI data → product.template field vals."""
+        vals = {}
+
+        def _set(field, val):
+            if val in (None, '', False):
+                return
+            vals[field] = val
+
+        _set('shapes',                 (data.get('shape') or '').title() or None)
+        _set('weight_carat',           str(data.get('carat_value')) if data.get('carat_value') else None)
+        _set('color',                  data.get('color'))
+        _set('clarity',                data.get('clarity_norm'))
+        _set('cut',                    data.get('cut'))
+        _set('polish',                 data.get('polish'))
+        _set('symmetry',               data.get('symmetry'))
+        _set('fluorescence_intensity', data.get('fluorescence'))
+        _set('measurements',           data.get('measurements'))
+        _set('length',                 data.get('length_mm'))
+        _set('width',                  data.get('width_mm'))
+        _set('depth',                  data.get('depth_mm'))
+        _set('labs',                   'IGI')
+        _set('certificate_type',       'IGI')
+        return vals
+
+    def _igi_notify(self, level, message):
+        # Chain a soft-reload after success so the populated fields appear without needing a manual refresh.
+        params = {
+            'title': _("IGI"),
+            'message': message,
+            'type': level,
+            'sticky': level != 'success',
+        }
+        if level == 'success':
+            params['next'] = {'type': 'ir.actions.client', 'tag': 'soft_reload'}
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': params,
+        }
 
     def action_fetch_certificate_data(self):
         """
@@ -349,133 +362,6 @@ class ProductTemplate(models.Model):
                 rec.description = f"API request failed: {str(e)}"
                 _logger.exception("API request failed for %s", url)
       
-                
-    # @api.onchange('certificate', 'stock_number', 'lgd_stock_number')
-    # def _onchange_cert_stock(self):
-    #     if self.certificate or self.stock_number or self.lgd_stock_number:
-    #         # Auto-fetch if not already fetched
-    #         if not self.measurements and not self.list_price:
-    #             try:
-    #                 self.action_fetch_certificate_data()
-    #             except Exception as e:
-    #                 _logger.warning("Auto-fetch failed: %s", e)
-
-    
-    # def action_fetch_certificate_data(self):
-    #     for rec in self:
-    #         if not rec.certificate:
-    #             raise UserError("Please enter a Certificate number first.")
-
-    #         url = f"https://lgdtest.augmont.com/igi.php?cert={rec.certificate}"
-    #         try:
-    #             response = requests.get(url, timeout=10)
-    #             if response.status_code == 200:
-    #                 try:
-    #                     data = response.json()
-    #                 except Exception:
-    #                     raise UserError("API did not return valid JSON data.")
-
-    #                 if data and isinstance(data, list) and len(data) > 0:
-    #                     record = data[0]
-
-    #                     # rec.measurements = record.get('Measurements', '')
-    #                     # parts = rec.measurements.replace(' ', '').replace('-', '|').replace('*', '|').split('|')
-    #                     # if len(parts) == 3:
-    #                     #     rec.length = float(parts[0])
-    #                     #     rec.width = float(parts[1])
-    #                     #     rec.depth = float(parts[2])
-    #                     rec.measurements = record.get('Measurements', '')
-    #                     if rec.measurements:
-    #                         # remove "mm", normalize separators
-    #                         clean = rec.measurements.lower().replace('mm', '').strip()
-    #                         # replace x, -, * with | then split
-    #                         clean = clean.replace('x', '|').replace('-', '|').replace('*', '|')
-    #                         # also remove spaces
-    #                         parts = [p.strip() for p in clean.split('|') if p.strip()]
-    #                         if len(parts) == 3:
-    #                             rec.length = float(parts[0])
-    #                             rec.width = float(parts[1])
-    #                             rec.depth = float(parts[2])
-                                
-                                
-    #                     # rec.weight_carat = record.get('CARAT WEIGHT', '')
-    #                     value = record.get('CARAT WEIGHT', '')
-    #                     match = re.search(r'\d+(\.\d+)?', value)
-
-    #                     rec.weight_carat = match.group(0) if match else ''
-    #                     rec.color = record.get('COLOR GRADE', '')
-    #                     rec.clarity = record.get('CLARITY GRADE', '')
-    #                     rec.polish = record.get('POLISH', '')
-    #                     rec.cut = record.get('SYMMETRY', '')
-    #                     rec.symmetry = record.get('SYMMETRY', '')
-    #                     rec.shapes = record.get('SHAPE AND CUT', '')
-    #                     rec.treatments = record.get('COMMENTS', '')
-    #                     if rec.treatments:
-    #                         text = rec.treatments.replace('\r\n', '\n').replace('\r', '\n')
-    #                         # Split lines
-    #                         lines = [line.strip() for line in text.split('\n') if line.strip()]
-    #                         # If first word is "treatment", take the rest
-    #                         if lines and lines[0].lower().startswith("treatment"):
-    #                             rec.treatments = " ".join(lines[1:])
-    #                     # rec.treatments = record.get('COMMENTS', '')
-    #                     self.action_combine_sdk_fields()
-    #                     # rec.description = "Certificate data fetched successfully."
-    #                 else:
-    #                     rec.description = "No data found in the API response."
-    #             else:
-    #                 rec.description = f"API error: {response.status_code}"
-    #         except requests.RequestException as e:
-    #             rec.description = f"API request failed: {str(e)}"
-
-    
-    
-    
-    
-    # @api.onchange('certificate')
-    # def _onchange_certificate_number(self):
-    #     if self.certificate:
-    #         url = f"https://lgdtest.augmont.com/igi.php?cert={self.certificate}"
-    #         print(f"Fetching data from URL: {url}")  # Debug
-
-    #         try:
-    #             response = requests.get(url, timeout=10)
-    #             print(f"Response status code: {response.status_code}")  # Debug
-
-    #             if response.status_code == 200:
-    #                 data = response.json()
-    #                 print(f"Response JSON data: {data}")  # Debug
-
-    #                 if data and isinstance(data, list) and len(data) > 0:
-    #                     record = data[0]
-    #                     print(f"Parsed record: {record}")  # Debug
-
-    #                     # self.name = record.get('DESCRIPTION', '')
-    #                     self.measurements = record.get('Measurements', '')
-    #                     parts = self.measurements.replace(' ', '').replace('-', '|').replace('*', '|').split('|')
-    #                     if len(parts) == 3:
-    #                         self.length = float(parts[0])
-    #                         self.width = float(parts[1])
-    #                         self.depth = float(parts[2])
-    #                     # self.weight = record.get('CARAT WEIGHT', '')
-    #                     self.weight_carat = record.get('CARAT WEIGHT', '')
-    #                     self.color = record.get('COLOR GRADE', '')
-    #                     self.clarity = record.get('CLARITY GRADE', '')
-    #                     self.polish = record.get('POLISH', '')
-    #                     self.cut = record.get('CUT GRADE', '')
-    #                     self.symmetry = record.get('SYMMETRY', '')
-    #                     self.shapes = record.get('SHAPE AND CUT', '')
-    #                     self.treatments = record.get('COMMENTS', '')
-    #                     self.action_combine_sdk_fields()
-    #                 else:
-    #                     self.description = "No data found in the API response."
-    #                     print("No valid data in API response.")  # Debug
-    #             else:
-    #                 self.description = f"API error: {response.status_code}"
-    #                 print(f"API returned error code: {response.status_code}")  # Debug
-    #         except requests.RequestException as e:
-    #             self.description = f"API request failed: {str(e)}"
-    #             print(f"API request exception: {str(e)}")  # Debug
-
 
 class ProductProduct(models.Model):
     _inherit = "product.product"
@@ -494,8 +380,12 @@ class ProductProduct(models.Model):
         )
         return
 
+    def action_fetch_igi_data(self):
+        self.ensure_one()
+        return self.product_tmpl_id.action_fetch_igi_data()
 
-        
+
+
 class ProductSupplierinfo(models.Model):
     _inherit = 'product.supplierinfo'
 
