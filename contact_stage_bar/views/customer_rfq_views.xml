@@ -11,8 +11,7 @@
                 <field name="partner_id"
                        string="Company Name"
                        groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
-                <field name="customer_phone"
-                       groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
+                <field name="customer_phone" invisible="1"/>
                 <field name="customer_email"
                        groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
                 <field name="customer_address"
@@ -94,7 +93,8 @@
 
                             <!-- Price: visibility + readonly computed based on user group/state -->
                             <field name="partner_id" string="Company Name" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" readonly="state != 'draft'"/>
-                            <field name="customer_phone" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" readonly="state != 'draft'"/>
+                            <!-- customer_phone hidden from every user. -->
+                            <field name="customer_phone" invisible="1"/>
                             <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1" readonly="state != 'draft'"/>
                             <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1" readonly="state != 'draft'"/>
                             <field name="stone_type" widget="radio" options="{'horizontal': true}"
@@ -102,6 +102,15 @@
                   
                             <field name="stone_certification_type" widget="radio" options="{'horizontal': true}"
                                    invisible="not stone_type" required="stone_type" readonly="state != 'draft'"/>
+                            <!-- Lab Type — bullet selection; free-text appears only when Other is chosen. -->
+                            <field name="lab_type" widget="radio" options="{'horizontal': true}"
+                                   readonly="state != 'draft'"/>
+                            <field name="lab_type_other"
+                                   string="Other Lab"
+                                   placeholder="e.g. HRD, GCAL, EGL..."
+                                   invisible="lab_type != 'other'"
+                                   required="lab_type == 'other'"
+                                   readonly="state != 'draft'"/>
                             <!-- Shapes are user-maintained (Sales > Configuration >
                                  Shapes), so a missing one can also be added inline. -->
                             <field name="shape_ids" widget="many2many_tags" required="1"

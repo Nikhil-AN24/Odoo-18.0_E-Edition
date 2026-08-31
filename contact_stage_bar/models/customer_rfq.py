@@ -104,6 +104,16 @@ class CustomerRfq(models.Model):
         string='Certification',
         tracking=True,
     )
+    lab_type = fields.Selection(
+        [('igi', 'IGI'), ('gia', 'GIA'), ('other', 'Other')],
+        string='Lab Type',
+        tracking=True,
+    )
+    lab_type_other = fields.Char(
+        string='Other Lab',
+        tracking=True,
+        help="Free-text lab name when Lab Type is 'Other'.",
+    )
 
     shape_ids = fields.Many2many(
         'customer.rfq.shape',
