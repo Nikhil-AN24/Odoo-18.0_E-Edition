@@ -102,14 +102,16 @@
                   
                             <field name="stone_certification_type" widget="radio" options="{'horizontal': true}"
                                    invisible="not stone_type" required="stone_type" readonly="state != 'draft'"/>
-                            <!-- Lab Type — bullet selection; free-text appears only when Other is chosen. -->
+                            <!-- Lab Type — only relevant for Certified stones. Hidden
+                                 (and dropped from required) when Non-Certified. -->
                             <field name="lab_type" widget="radio" options="{'horizontal': true}"
+                                   invisible="stone_certification_type != 'certified'"
                                    readonly="state != 'draft'"/>
                             <field name="lab_type_other"
                                    string="Other Lab"
                                    placeholder="e.g. HRD, GCAL, EGL..."
-                                   invisible="lab_type != 'other'"
-                                   required="lab_type == 'other'"
+                                   invisible="stone_certification_type != 'certified' or lab_type != 'other'"
+                                   required="stone_certification_type == 'certified' and lab_type == 'other'"
                                    readonly="state != 'draft'"/>
 
                             <field name="shape_ids" widget="many2many_tags" required="1"
