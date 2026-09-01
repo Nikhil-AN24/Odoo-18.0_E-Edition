@@ -35,11 +35,11 @@
 
                     </h1>
                     <div class="mb-2">
+                        <!-- Always visible; the Python action raises a clear UserError if certificate is empty when clicked. -->
                         <button name="action_fetch_igi_data"
                                 type="object"
                                 string="Fetch from IGI"
-                                class="btn-primary"
-                                invisible="not certificate"/>
+                                class="btn-primary"/>
                     </div>
                 </xpath>
                 <xpath expr="//group[@name='group_general']" position="inside">
@@ -208,10 +208,10 @@
                 <xpath expr="//field[@name='stock_number']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
                 </xpath>
-                <!-- "Update Quantity" header button + stat button: hide from LGD Sales. -->
+                <!-- "Update Quantity" header + stat buttons: hidden from every user. -->
                 <xpath expr="//button[@name='action_update_quantity_on_hand']"
                        position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                    <attribute name="invisible">1</attribute>
                 </xpath>
                 <xpath expr="//field[@name='is_storable']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
