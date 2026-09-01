@@ -49,10 +49,10 @@
                     <field name="certificate_type" groups="!contact_stage_bar.group_lgd_procurement"/>
                     <field name="website_product_id" readonly="1"/>
                     <field name="url_link" readonly="1" widget="url"/>
-                    <field name="shapes"/>
-                    <field name="weight_carat"/>
-                    <field name="clarity"/>
-                    <field name="color"/>
+                    <field name="shapes" required="1"/>
+                    <field name="weight_carat" required="1"/>
+                    <field name="clarity" required="1"/>
+                    <field name="color" required="1"/>
                     <field name="luster"/>
                     <field name="shade"/>
                     <field name="fluorescence_color"/>
@@ -69,16 +69,16 @@
                     <field name="width"/>
                     <field name="depth"/>
                     <field name="eye_clean"/>
-                    <field name="polish"/>
+                    <field name="polish" required="1"/>
+                    <!-- Cut is intentionally NOT required — fancy shapes (Marquise,
+                         Princess, etc.) don't receive a cut grade and IGI returns
+                         it empty. Enforcing required=1 would block saving those. -->
                     <field name="cut"/>
-                    <field name="symmetry"/>
+                    <field name="symmetry" required="1"/>
                     <field name="treatments"/>
                     <field name="video_360" readonly="1" widget="url"/>
                     <field name="image_augmont" readonly="1" widget="url"/>
                     <field name="country_id"/>
-                    <!-- <field name="final_price"/> -->
-                    <!-- <field name="final_price_margin"/> -->
-                    <!-- <field name="price_per_carat"/> -->
                     <field name="order_specific"/>
                     <field name="item_notes" widget="text" placeholder="Enter general order notes..." style="height:80px; white-space:normal;"/>
                     <field name="customer_reference_note" widget="text" placeholder="Enter Custom Reference notes..." style="height:40px; white-space:normal;"/>

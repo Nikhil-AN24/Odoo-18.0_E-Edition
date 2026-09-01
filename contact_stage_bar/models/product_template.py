@@ -4,6 +4,7 @@ from odoo.exceptions import ValidationError,UserError
 from odoo.http import request
 import requests
 from odoo import _
+from markupsafe import Markup
 import re
 import tempfile
 
@@ -21,15 +22,19 @@ class ProductTemplate(models.Model):
     
     measurements = fields.Char(string="Measurements")
     weight = fields.Char(string="Carat Weight")
-    weight_carat = fields.Char(string="Carat Weight")
-    color = fields.Char(string="Color")
-    clarity = fields.Char(string="Clarity")
-    polish = fields.Char(string='Polish')
-    cut = fields.Char(string='Cut')
+    # ── Diamond spec fields ──────────────────────────────────────────────────
+    # tracking=True writes a chatter entry with who/when on every change.
+    # Any edit to one of these seven feeds through _onchange_spec_fields (live)
+    # AND write()/create() (persisted paths) to recompose product name.
+    weight_carat = fields.Char(string="Carat Weight", tracking=True)
+    color = fields.Char(string="Color", tracking=True)
+    clarity = fields.Char(string="Clarity", tracking=True)
+    polish = fields.Char(string='Polish', tracking=True)
+    cut = fields.Char(string='Cut', tracking=True)
     luster = fields.Char(string="Luster Grade")
-    symmetry = fields.Char(string='Symmetry')
+    symmetry = fields.Char(string='Symmetry', tracking=True)
     treatments = fields.Char(string='Treatments')
-    shapes = fields.Char(string="Shapes")
+    shapes = fields.Char(string="Shapes", tracking=True)
     shade = fields.Char(string="Shade")
     url_link = fields.Char(string="URL Link",compute='_compute_url_link', store=True)
     image_augmont = fields.Char(string="Image")
@@ -221,7 +226,152 @@ class ProductTemplate(models.Model):
         _set('depth',                  data.get('depth_mm'))
         _set('labs',                   'IGI')
         _set('certificate_type',       'IGI')
+
+        # Auto-generate product name in the diamond trade nomenclature:
+        #   "<Shape> <W>ct <Color> <Clarity> - <Cut> <Polish> <Symmetry>"
+        # Cut is dropped when empty (fancy shapes like Marquise/Princess don't
+        # get a cut grade — IGI returns "" and the trade convention leaves the
+        # slot empty rather than typing "-- -- --").
+        name = self._igi_compose_name(data)
+        if name:
+            _set('name', name)
+
         return vals
+
+    _IGI_GRADE_SHORT = {
+        'EXCELLENT': 'EX', 'VERY GOOD': 'VG', 'GOOD': 'G',
+        'FAIR': 'F', 'POOR': 'P', 'IDEAL': 'ID',
+    }
+
+    # Fields that feed the trade-format product name.
+    _NAME_SPEC_FIELDS = (
+        'shapes', 'weight_carat', 'color', 'clarity',
+        'cut', 'polish', 'symmetry',
+    )
+
+    def _compose_trade_name(self, shape=None, weight_carat=None, color=None,
+                            clarity=None, cut=None, polish=None, symmetry=None):
+        def _short(val):
+            if not val:
+                return None
+            return self._IGI_GRADE_SHORT.get(str(val).strip().upper(), str(val))
+
+        def _carat(val):
+            if val in (None, '', False):
+                return None
+            import re as _re
+            m = _re.search(r'([\d.]+)', str(val))
+            if not m:
+                return None
+            try:
+                return f"{float(m.group(1)):.2f}ct"
+            except ValueError:
+                return None
+
+        parts_4c = []
+        if shape:
+            parts_4c.append(str(shape).split()[0].capitalize())
+        c = _carat(weight_carat)
+        if c:
+            parts_4c.append(c)
+        if color:
+            parts_4c.append(str(color).upper())
+        if clarity:
+            parts_4c.append(str(clarity))
+
+        parts_grades = [g for g in (_short(cut), _short(polish), _short(symmetry)) if g]
+
+        if not parts_4c:
+            return None
+        if parts_grades:
+            return " ".join(parts_4c) + " - " + " ".join(parts_grades)
+        return " ".join(parts_4c)
+
+    def _igi_compose_name(self, data):
+        """Compose the trade name from a normalised IGI dict."""
+        return self._compose_trade_name(
+            shape=data.get('shape'),
+            weight_carat=data.get('carat_value'),
+            color=data.get('color'),
+            clarity=data.get('clarity_norm'),
+            cut=data.get('cut'),
+            polish=data.get('polish'),
+            symmetry=data.get('symmetry'),
+        )
+
+    def _name_from_self(self):
+        """Compose the trade name from the record's own field values."""
+        self.ensure_one()
+        return self._compose_trade_name(
+            shape=self.shapes, weight_carat=self.weight_carat,
+            color=self.color, clarity=self.clarity,
+            cut=self.cut, polish=self.polish, symmetry=self.symmetry,
+        )
+
+    @api.onchange(*_NAME_SPEC_FIELDS)
+    def _onchange_spec_fields_update_name(self):
+        """Live-update Name in the UI as the user edits any of the 7 spec fields."""
+        for rec in self:
+            new_name = rec._name_from_self()
+            if new_name and new_name != rec.name:
+                rec.name = new_name
+
+    def write(self, vals):
+        touched = [f for f in self._NAME_SPEC_FIELDS if f in vals]
+        old_snapshot = {}
+        if touched:
+            for rec in self:
+                old_snapshot[rec.id] = {f: rec[f] for f in touched}
+
+        result = super().write(vals)
+
+        # Recompose Name.
+        if touched and 'name' not in vals:
+            for rec in self:
+                new_name = rec._name_from_self()
+                if new_name and new_name != rec.name:
+                    super(ProductTemplate, rec).write({'name': new_name})
+
+        # Mirror to any Sale Order that has a line for this product.
+        if touched:
+            self._mirror_spec_change_to_sale_orders(old_snapshot, touched)
+
+        return result
+
+    # ── Field-name → human label (matches the strings shown on the form) ────
+    _SPEC_FIELD_LABELS = {
+        'shapes': 'Shape', 'weight_carat': 'Carat Weight', 'color': 'Color',
+        'clarity': 'Clarity', 'cut': 'Cut', 'polish': 'Polish',
+        'symmetry': 'Symmetry',
+    }
+
+    def _mirror_spec_change_to_sale_orders(self, old_snapshot, touched):
+
+        SaleOrder = self.env['sale.order'].sudo()
+        for rec in self:
+            diffs = []
+            for f in touched:
+                old = old_snapshot.get(rec.id, {}).get(f)
+                new = rec[f]
+                if (old or '') == (new or ''):
+                    continue
+                label = self._SPEC_FIELD_LABELS.get(f, f)
+                diffs.append(
+                    Markup("<li><b>%s:</b> %s → %s</li>") % (
+                        label, old or '(empty)', new or '(empty)')
+                )
+            if not diffs:
+                continue
+            orders = SaleOrder.search([
+                ('order_line.product_template_id', '=', rec.id),
+            ])
+            if not orders:
+                continue
+            body = Markup(
+                "<p>Product <b>%s</b> updated:</p><ul>%s</ul>"
+            ) % (rec.name or '', Markup('').join(diffs))
+            for order in orders:
+                order.message_post(body=body)
 
     def _igi_notify(self, level, message):
         # Chain a soft-reload after success so the populated fields appear without needing a manual refresh.
@@ -241,8 +391,7 @@ class ProductTemplate(models.Model):
 
     def action_fetch_certificate_data(self):
         """
-        Fetch certificate/vendor product data from Augmont API
-        and update record fields accordingly.
+        Fetch certificate/vendor product data from Augmont API and update record fields accordingly.
         """
         for rec in self:
             number_id = rec.certificate or rec.stock_number or rec.lgd_stock_number
