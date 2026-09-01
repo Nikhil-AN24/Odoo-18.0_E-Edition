@@ -4,6 +4,7 @@ from odoo.exceptions import ValidationError,UserError
 from odoo.http import request
 import requests
 from odoo import _
+from markupsafe import Markup
 import re
 import tempfile
 
@@ -21,15 +22,19 @@ class ProductTemplate(models.Model):
     
     measurements = fields.Char(string="Measurements")
     weight = fields.Char(string="Carat Weight")
-    weight_carat = fields.Char(string="Carat Weight")
-    color = fields.Char(string="Color")
-    clarity = fields.Char(string="Clarity")
-    polish = fields.Char(string='Polish')
-    cut = fields.Char(string='Cut')
+    # ── Diamond spec fields ──────────────────────────────────────────────────
+    # tracking=True writes a chatter entry with who/when on every change.
+    # Any edit to one of these seven feeds through _onchange_spec_fields (live)
+    # AND write()/create() (persisted paths) to recompose product name.
+    weight_carat = fields.Char(string="Carat Weight", tracking=True)
+    color = fields.Char(string="Color", tracking=True)
+    clarity = fields.Char(string="Clarity", tracking=True)
+    polish = fields.Char(string='Polish', tracking=True)
+    cut = fields.Char(string='Cut', tracking=True)
     luster = fields.Char(string="Luster Grade")
-    symmetry = fields.Char(string='Symmetry')
+    symmetry = fields.Char(string='Symmetry', tracking=True)
     treatments = fields.Char(string='Treatments')
-    shapes = fields.Char(string="Shapes")
+    shapes = fields.Char(string="Shapes", tracking=True)
     shade = fields.Char(string="Shade")
     url_link = fields.Char(string="URL Link",compute='_compute_url_link', store=True)
     image_augmont = fields.Char(string="Image")
@@ -58,48 +63,7 @@ class ProductTemplate(models.Model):
     is_show_product = fields.Boolean(string="Is Show Product", default=False)
     webiste_product_id = fields.Char(string="Website Product id")
 
-    
-    
-    # sdk_labs = fields.Selection([('igi', 'IGI'), ('lg', 'LG')], string='LAB')
-    # sdk_certificate = fields.Char(string="Certificate Number")
-    # sdk_certificate_type = fields.Char(string="Certificate Type")
-    # sdk_id_number = fields.Char(string="ID Number")
-    # sdk_shapes = fields.Selection([('Round', 'Diamond Round'), ('Pear', 'Diamond Pear'), ('Oval', 'Diamond Oval'), ('Emerald', 'Diamond Emerald'),
-    #                                ('Marquise', 'Diamond Marquise'), ('Asscher', 'Diamond Asscher'), ('Marquise', 'Diamond Marquise')],
-    #                               string='Diamond Shapes')
-    # sdk_weight = fields.Float(string="Carat Weight")
-    # sdk_measurements = fields.Char(string="Measurements")
-    # sdk_weight_1 = fields.Char(string="Carat Weight")
-    # sdk_color = fields.Selection([
-    #     ('D', 'D'),
-    #     ('E', 'E'),
-    #     ('F', 'F'),
-    #     ('G', 'G'),
-    #     ('H', 'H'),
-    #     ('I', 'I'),
-    #     ('J', 'J'),
-    #     ('K', 'K'),
-    #     ('L', 'L'),
-    #     ('M', 'M'),
-    # ], string="Diamond Color")
-
-    
-    # sdk_clarity = fields.Selection([('FL', 'FL'),('VS1','VS1'), ('IF', 'IF'), ('VVS1', 'VVS1')], string='Clarity')
-    # sdk_polish = fields.Selection([('excellent', 'Excellent'), ('very_good', 'Very Good'), ('good', 'Good'),
-    #                                ('fair', 'Fair'), ('poor', 'Poor')], string='Polish')
-    # sdk_cut = fields.Selection([('excellent', 'Excellent'), ('very_good', 'Very Good'), ('good', 'Good'),
-    #                                ('fair', 'Fair'), ('poor', 'Poor')], string='Cut', required=True)
-    # sdk_symmetry = fields.Selection([('excellent', 'Excellent'), ('very_good', 'Very Good'), ('good', 'Good'),
-    #                                ('fair', 'Fair'), ('poor', 'Poor')], string='Symmetry')
-    # sdk_growth_type = fields.Selection([('CVD', 'CVD'), ('HPHT', 'HPHT'),('Natural','Natural')], string='Growth Type')
-    # sdk_treatments = fields.Selection([('CVD', 'CVD'), ('HPHT', 'HPHT'),('Natural','Natural')], string='Treatments')
-
     sdk_is_code_enabled = fields.Boolean(string="Is Code Enabled", default=False, copy=False)
-    # sdk_url_link = fields.Char(string="URL Link",compute='_compute_sdk_url_link', store=True)
-    # parsed_data = fields.Char(string="Data")
-    # sdk_igi_pdf = fields.Binary(string="IGI PDF", attachment=True)
-    # sdk_igi_pdf_filename = fields.Char(string="PDF Filename")
-    
     
     def action_combine_sdk_fields(self):
         GRADE_SHORT_NAMES = {
@@ -191,23 +155,6 @@ class ProductTemplate(models.Model):
         # Override to disable the name uniqueness check
         return
 
-    # @api.constrains('name')
-    # def _check_unique_name(self):
-    #     for product in self:
-    #         if not product.name:
-    #             raise ValidationError('Product name is required')
-    #         if self.search_count([('name', '=', product.name)]) > 1:
-    #             if product.name != '[DUPLICATE]' and product.name != '[NEW]':
-    #                 raise ValidationError(f'A product with this name "{product.name}" already exists. Please choose a unique name.')
-    #             else:
-    #                 raise ValidationError(f'A {product.name} product already exists. Please use the same to generate the product')
-                
-    # @api.onchange('sdk_certificate')
-    # def _onchange_sdk_certificate(self):
-    #     if self.sdk_certificate:
-    #         igi_url = f"https://api.igi.org/viewpdf.php?r={self.sdk_certificate}"
-    #         self.sdk_url_link = igi_url
-            
     @api.depends('certificate')
     def _compute_url_link(self):
         for record in self:
@@ -226,10 +173,225 @@ class ProductTemplate(models.Model):
 
                 
 
+    def action_fetch_igi_data(self):
+        from ..services import igi_service
+
+        self.ensure_one()
+        if not self.certificate:
+            raise UserError(_("Please enter a Certificate Number first."))
+
+        result = igi_service.fetch_by_report_number(self.env, self.certificate)
+
+        if not result:
+            return self._igi_notify('warning', _("IGI returned no data."))
+        if result.get('error') == 'not_found':
+            return self._igi_notify(
+                'warning',
+                _("IGI could not find report %s. Please check the number or "
+                  "enter specs manually.") % self.certificate,
+            )
+        if result.get('error') == 'unavailable':
+            return self._igi_notify(
+                'warning',
+                _("IGI is temporarily unavailable. Please enter specs "
+                  "manually; you can retry later."),
+            )
+
+        vals = self._igi_build_vals(result)
+        if vals:
+            self.write(vals)
+
+        return self._igi_notify('success', _("IGI specs applied."))
+
+    def _igi_build_vals(self, data):
+        """Map normalised IGI data → product.template field vals."""
+        vals = {}
+
+        def _set(field, val):
+            if val in (None, '', False):
+                return
+            vals[field] = val
+
+        _set('shapes',                 (data.get('shape') or '').title() or None)
+        _set('weight_carat',           str(data.get('carat_value')) if data.get('carat_value') else None)
+        _set('color',                  data.get('color'))
+        _set('clarity',                data.get('clarity_norm'))
+        _set('cut',                    data.get('cut'))
+        _set('polish',                 data.get('polish'))
+        _set('symmetry',               data.get('symmetry'))
+        _set('fluorescence_intensity', data.get('fluorescence'))
+        _set('measurements',           data.get('measurements'))
+        _set('length',                 data.get('length_mm'))
+        _set('width',                  data.get('width_mm'))
+        _set('depth',                  data.get('depth_mm'))
+        _set('labs',                   'IGI')
+        _set('certificate_type',       'IGI')
+
+        # Auto-generate product name in the diamond trade nomenclature:
+        #   "<Shape> <W>ct <Color> <Clarity> - <Cut> <Polish> <Symmetry>"
+        # Cut is dropped when empty (fancy shapes like Marquise/Princess don't
+        # get a cut grade — IGI returns "" and the trade convention leaves the
+        # slot empty rather than typing "-- -- --").
+        name = self._igi_compose_name(data)
+        if name:
+            _set('name', name)
+
+        return vals
+
+    _IGI_GRADE_SHORT = {
+        'EXCELLENT': 'EX', 'VERY GOOD': 'VG', 'GOOD': 'G',
+        'FAIR': 'F', 'POOR': 'P', 'IDEAL': 'ID',
+    }
+
+    # Fields that feed the trade-format product name.
+    _NAME_SPEC_FIELDS = (
+        'shapes', 'weight_carat', 'color', 'clarity',
+        'cut', 'polish', 'symmetry',
+    )
+
+    def _compose_trade_name(self, shape=None, weight_carat=None, color=None,
+                            clarity=None, cut=None, polish=None, symmetry=None):
+        def _short(val):
+            if not val:
+                return None
+            return self._IGI_GRADE_SHORT.get(str(val).strip().upper(), str(val))
+
+        def _carat(val):
+            if val in (None, '', False):
+                return None
+            import re as _re
+            m = _re.search(r'([\d.]+)', str(val))
+            if not m:
+                return None
+            try:
+                return f"{float(m.group(1)):.2f}ct"
+            except ValueError:
+                return None
+
+        parts_4c = []
+        if shape:
+            parts_4c.append(str(shape).split()[0].capitalize())
+        c = _carat(weight_carat)
+        if c:
+            parts_4c.append(c)
+        if color:
+            parts_4c.append(str(color).upper())
+        if clarity:
+            parts_4c.append(str(clarity))
+
+        parts_grades = [g for g in (_short(cut), _short(polish), _short(symmetry)) if g]
+
+        if not parts_4c:
+            return None
+        if parts_grades:
+            return " ".join(parts_4c) + " - " + " ".join(parts_grades)
+        return " ".join(parts_4c)
+
+    def _igi_compose_name(self, data):
+        """Compose the trade name from a normalised IGI dict."""
+        return self._compose_trade_name(
+            shape=data.get('shape'),
+            weight_carat=data.get('carat_value'),
+            color=data.get('color'),
+            clarity=data.get('clarity_norm'),
+            cut=data.get('cut'),
+            polish=data.get('polish'),
+            symmetry=data.get('symmetry'),
+        )
+
+    def _name_from_self(self):
+        """Compose the trade name from the record's own field values."""
+        self.ensure_one()
+        return self._compose_trade_name(
+            shape=self.shapes, weight_carat=self.weight_carat,
+            color=self.color, clarity=self.clarity,
+            cut=self.cut, polish=self.polish, symmetry=self.symmetry,
+        )
+
+    @api.onchange(*_NAME_SPEC_FIELDS)
+    def _onchange_spec_fields_update_name(self):
+        """Live-update Name in the UI as the user edits any of the 7 spec fields."""
+        for rec in self:
+            new_name = rec._name_from_self()
+            if new_name and new_name != rec.name:
+                rec.name = new_name
+
+    def write(self, vals):
+        touched = [f for f in self._NAME_SPEC_FIELDS if f in vals]
+        old_snapshot = {}
+        if touched:
+            for rec in self:
+                old_snapshot[rec.id] = {f: rec[f] for f in touched}
+
+        result = super().write(vals)
+
+        # Recompose Name.
+        if touched and 'name' not in vals:
+            for rec in self:
+                new_name = rec._name_from_self()
+                if new_name and new_name != rec.name:
+                    super(ProductTemplate, rec).write({'name': new_name})
+
+        # Mirror to any Sale Order that has a line for this product.
+        if touched:
+            self._mirror_spec_change_to_sale_orders(old_snapshot, touched)
+
+        return result
+
+    # ── Field-name → human label (matches the strings shown on the form) ────
+    _SPEC_FIELD_LABELS = {
+        'shapes': 'Shape', 'weight_carat': 'Carat Weight', 'color': 'Color',
+        'clarity': 'Clarity', 'cut': 'Cut', 'polish': 'Polish',
+        'symmetry': 'Symmetry',
+    }
+
+    def _mirror_spec_change_to_sale_orders(self, old_snapshot, touched):
+
+        SaleOrder = self.env['sale.order'].sudo()
+        for rec in self:
+            diffs = []
+            for f in touched:
+                old = old_snapshot.get(rec.id, {}).get(f)
+                new = rec[f]
+                if (old or '') == (new or ''):
+                    continue
+                label = self._SPEC_FIELD_LABELS.get(f, f)
+                diffs.append(
+                    Markup("<li><b>%s:</b> %s → %s</li>") % (
+                        label, old or '(empty)', new or '(empty)')
+                )
+            if not diffs:
+                continue
+            orders = SaleOrder.search([
+                ('order_line.product_template_id', '=', rec.id),
+            ])
+            if not orders:
+                continue
+            body = Markup(
+                "<p>Product <b>%s</b> updated:</p><ul>%s</ul>"
+            ) % (rec.name or '', Markup('').join(diffs))
+            for order in orders:
+                order.message_post(body=body)
+
+    def _igi_notify(self, level, message):
+        # Chain a soft-reload after success so the populated fields appear without needing a manual refresh.
+        params = {
+            'title': _("IGI"),
+            'message': message,
+            'type': level,
+            'sticky': level != 'success',
+        }
+        if level == 'success':
+            params['next'] = {'type': 'ir.actions.client', 'tag': 'soft_reload'}
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': params,
+        }
+
     def action_fetch_certificate_data(self):
         """
-        Fetch certificate/vendor product data from Augmont API
-        and update record fields accordingly.
+        Fetch certificate/vendor product data from Augmont API and update record fields accordingly.
         """
         for rec in self:
             number_id = rec.certificate or rec.stock_number or rec.lgd_stock_number
@@ -349,133 +511,6 @@ class ProductTemplate(models.Model):
                 rec.description = f"API request failed: {str(e)}"
                 _logger.exception("API request failed for %s", url)
       
-                
-    # @api.onchange('certificate', 'stock_number', 'lgd_stock_number')
-    # def _onchange_cert_stock(self):
-    #     if self.certificate or self.stock_number or self.lgd_stock_number:
-    #         # Auto-fetch if not already fetched
-    #         if not self.measurements and not self.list_price:
-    #             try:
-    #                 self.action_fetch_certificate_data()
-    #             except Exception as e:
-    #                 _logger.warning("Auto-fetch failed: %s", e)
-
-    
-    # def action_fetch_certificate_data(self):
-    #     for rec in self:
-    #         if not rec.certificate:
-    #             raise UserError("Please enter a Certificate number first.")
-
-    #         url = f"https://lgdtest.augmont.com/igi.php?cert={rec.certificate}"
-    #         try:
-    #             response = requests.get(url, timeout=10)
-    #             if response.status_code == 200:
-    #                 try:
-    #                     data = response.json()
-    #                 except Exception:
-    #                     raise UserError("API did not return valid JSON data.")
-
-    #                 if data and isinstance(data, list) and len(data) > 0:
-    #                     record = data[0]
-
-    #                     # rec.measurements = record.get('Measurements', '')
-    #                     # parts = rec.measurements.replace(' ', '').replace('-', '|').replace('*', '|').split('|')
-    #                     # if len(parts) == 3:
-    #                     #     rec.length = float(parts[0])
-    #                     #     rec.width = float(parts[1])
-    #                     #     rec.depth = float(parts[2])
-    #                     rec.measurements = record.get('Measurements', '')
-    #                     if rec.measurements:
-    #                         # remove "mm", normalize separators
-    #                         clean = rec.measurements.lower().replace('mm', '').strip()
-    #                         # replace x, -, * with | then split
-    #                         clean = clean.replace('x', '|').replace('-', '|').replace('*', '|')
-    #                         # also remove spaces
-    #                         parts = [p.strip() for p in clean.split('|') if p.strip()]
-    #                         if len(parts) == 3:
-    #                             rec.length = float(parts[0])
-    #                             rec.width = float(parts[1])
-    #                             rec.depth = float(parts[2])
-                                
-                                
-    #                     # rec.weight_carat = record.get('CARAT WEIGHT', '')
-    #                     value = record.get('CARAT WEIGHT', '')
-    #                     match = re.search(r'\d+(\.\d+)?', value)
-
-    #                     rec.weight_carat = match.group(0) if match else ''
-    #                     rec.color = record.get('COLOR GRADE', '')
-    #                     rec.clarity = record.get('CLARITY GRADE', '')
-    #                     rec.polish = record.get('POLISH', '')
-    #                     rec.cut = record.get('SYMMETRY', '')
-    #                     rec.symmetry = record.get('SYMMETRY', '')
-    #                     rec.shapes = record.get('SHAPE AND CUT', '')
-    #                     rec.treatments = record.get('COMMENTS', '')
-    #                     if rec.treatments:
-    #                         text = rec.treatments.replace('\r\n', '\n').replace('\r', '\n')
-    #                         # Split lines
-    #                         lines = [line.strip() for line in text.split('\n') if line.strip()]
-    #                         # If first word is "treatment", take the rest
-    #                         if lines and lines[0].lower().startswith("treatment"):
-    #                             rec.treatments = " ".join(lines[1:])
-    #                     # rec.treatments = record.get('COMMENTS', '')
-    #                     self.action_combine_sdk_fields()
-    #                     # rec.description = "Certificate data fetched successfully."
-    #                 else:
-    #                     rec.description = "No data found in the API response."
-    #             else:
-    #                 rec.description = f"API error: {response.status_code}"
-    #         except requests.RequestException as e:
-    #             rec.description = f"API request failed: {str(e)}"
-
-    
-    
-    
-    
-    # @api.onchange('certificate')
-    # def _onchange_certificate_number(self):
-    #     if self.certificate:
-    #         url = f"https://lgdtest.augmont.com/igi.php?cert={self.certificate}"
-    #         print(f"Fetching data from URL: {url}")  # Debug
-
-    #         try:
-    #             response = requests.get(url, timeout=10)
-    #             print(f"Response status code: {response.status_code}")  # Debug
-
-    #             if response.status_code == 200:
-    #                 data = response.json()
-    #                 print(f"Response JSON data: {data}")  # Debug
-
-    #                 if data and isinstance(data, list) and len(data) > 0:
-    #                     record = data[0]
-    #                     print(f"Parsed record: {record}")  # Debug
-
-    #                     # self.name = record.get('DESCRIPTION', '')
-    #                     self.measurements = record.get('Measurements', '')
-    #                     parts = self.measurements.replace(' ', '').replace('-', '|').replace('*', '|').split('|')
-    #                     if len(parts) == 3:
-    #                         self.length = float(parts[0])
-    #                         self.width = float(parts[1])
-    #                         self.depth = float(parts[2])
-    #                     # self.weight = record.get('CARAT WEIGHT', '')
-    #                     self.weight_carat = record.get('CARAT WEIGHT', '')
-    #                     self.color = record.get('COLOR GRADE', '')
-    #                     self.clarity = record.get('CLARITY GRADE', '')
-    #                     self.polish = record.get('POLISH', '')
-    #                     self.cut = record.get('CUT GRADE', '')
-    #                     self.symmetry = record.get('SYMMETRY', '')
-    #                     self.shapes = record.get('SHAPE AND CUT', '')
-    #                     self.treatments = record.get('COMMENTS', '')
-    #                     self.action_combine_sdk_fields()
-    #                 else:
-    #                     self.description = "No data found in the API response."
-    #                     print("No valid data in API response.")  # Debug
-    #             else:
-    #                 self.description = f"API error: {response.status_code}"
-    #                 print(f"API returned error code: {response.status_code}")  # Debug
-    #         except requests.RequestException as e:
-    #             self.description = f"API request failed: {str(e)}"
-    #             print(f"API request exception: {str(e)}")  # Debug
-
 
 class ProductProduct(models.Model):
     _inherit = "product.product"
@@ -494,8 +529,12 @@ class ProductProduct(models.Model):
         )
         return
 
+    def action_fetch_igi_data(self):
+        self.ensure_one()
+        return self.product_tmpl_id.action_fetch_igi_data()
 
-        
+
+
 class ProductSupplierinfo(models.Model):
     _inherit = 'product.supplierinfo'
 
