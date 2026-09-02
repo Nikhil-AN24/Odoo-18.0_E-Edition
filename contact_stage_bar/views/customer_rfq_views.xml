@@ -419,12 +419,12 @@ action = action_vals
     </record>
 
     <menuitem id="menu_customer_rfq_config" name="Configuration" parent="menu_sales_3"
-              sequence="90" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+              sequence="90" groups="base.group_system"/>
     <menuitem id="menu_customer_rfq_shape" name="Shapes" parent="menu_customer_rfq_config"
               action="action_customer_rfq_shape" sequence="10"
-              groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+              groups="base.group_system"/>
     <menuitem id="menu_customer_rfq_cancel_reason" name="Cancellation Reasons"
               parent="menu_customer_rfq_config" action="action_customer_rfq_cancel_reason"
-              sequence="20" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+              sequence="20" groups="base.group_system"/>
 
 </odoo>
