@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.129",
+    "version": "18.0.1.7.1301",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -40,7 +40,6 @@
         "views/customer_rfq_views.xml",
         "views/menu_security.xml",
         "views/purchase_order.xml",
-        "views/melee_value_views.xml",
         "views/lgd_margin_views.xml",
         "report/sale_report_inherit.xml",
         "report/augmont_tax_invoice.xml",
