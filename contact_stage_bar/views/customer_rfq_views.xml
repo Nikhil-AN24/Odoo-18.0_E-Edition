@@ -163,7 +163,8 @@
                                    options="{'accepted_file_extensions': '.png,.jpg,.jpeg'}"/>
                             <field name="owner_id" string="Owner"
                                    options="{'no_create': True}"
-                                   readonly="state != 'draft'"/>
+                                   readonly="state != 'draft'"
+                                   groups="!contact_stage_bar.group_lgd_procurement"/>
 
                             <field name="price" string="Procurement Price/carat"
                                    widget="monetary"

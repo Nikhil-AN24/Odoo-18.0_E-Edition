@@ -384,16 +384,19 @@ class CustomerRfq(models.Model):
             else:
                 rec.is_price_visible_for_user = (rec.state == 'sent_back_to_sales')
 
+    @api.depends('state')
     @api.depends_context('uid')
     def _compute_is_price_readonly(self):
-        """Price is editable for Procurement and Admin at any time, regardless of
-        which menu they used to open the record.  Sales always sees it readonly."""
+        """Price is editable for Procurement and Admin only while the RFQ is
+        in 'sent_to_procurement' — the one state where Procurement is meant to
+        enter it (see action_send_back_to_sales). Once sent back to Sales the
+        price is locked for everyone, so a later edit can't silently drift
+        from the value Sales already saw. Sales always sees it readonly."""
         user = self.env.user
         is_procurement = user.has_group('contact_stage_bar.group_lgd_procurement')
         is_admin = user.has_group('base.group_system')
-        # Procurement and Admin can always edit the price; Sales cannot.
-        editable = is_procurement or is_admin
         for rec in self:
+            editable = (is_procurement or is_admin) and rec.state == 'sent_to_procurement'
             rec.is_price_readonly = not editable
 
     availability_status = fields.Selection(
