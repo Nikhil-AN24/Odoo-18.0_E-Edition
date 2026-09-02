@@ -24,8 +24,6 @@ class ProductTemplate(models.Model):
     weight = fields.Char(string="Carat Weight")
     # ── Diamond spec fields ──────────────────────────────────────────────────
     # tracking=True writes a chatter entry with who/when on every change.
-    # Any edit to one of these seven feeds through _onchange_spec_fields (live)
-    # AND write()/create() (persisted paths) to recompose product name.
     weight_carat = fields.Char(string="Carat Weight", tracking=True)
     color = fields.Char(string="Color", tracking=True)
     clarity = fields.Char(string="Clarity", tracking=True)
@@ -43,7 +41,7 @@ class ProductTemplate(models.Model):
     final_price_margin = fields.Float(string="Final Price")
     price_per_carat = fields.Float(string="Vendor Price Per Carat")
     country_id = fields.Many2one('res.country',string="Country")
-    stock_number = fields.Char(string="Stock Number")
+    stock_number = fields.Char(string="Vendor Stock Number")
     lgd_stock_number = fields.Char(string="Lgd Stock Number")
     
     length = fields.Float(string="Length")
@@ -163,6 +161,22 @@ class ProductTemplate(models.Model):
                 record.barcode = record.certificate
             else:
                 record.url_link = False
+
+    @api.onchange('certificate')
+    def _onchange_certificate_autofetch(self):
+
+        from ..services import igi_service
+        if not self.certificate:
+            return
+        try:
+            result = igi_service.fetch_by_report_number(self.env, self.certificate)
+        except Exception:
+            return
+        if not result or result.get('error'):
+            return
+        vals = self._igi_build_vals(result)
+        for field_name, value in vals.items():
+            self[field_name] = value
     
     def copy(self, default=None):
         self.ensure_one()

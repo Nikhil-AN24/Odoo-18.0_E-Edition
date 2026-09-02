@@ -49,10 +49,14 @@
                     <field name="certificate_type" groups="!contact_stage_bar.group_lgd_procurement"/>
                     <field name="website_product_id" readonly="1"/>
                     <field name="url_link" readonly="1" widget="url"/>
-                    <field name="shapes" required="1"/>
-                    <field name="weight_carat" required="1"/>
-                    <field name="clarity" required="1"/>
-                    <field name="color" required="1"/>
+                    <!-- Required= dropped: the IGI fetch auto-fills these on new
+                         records, but legacy records may have blank values that
+                         would otherwise block save. Users can still leave them
+                         blank if IGI is down or the certificate is unknown. -->
+                    <field name="shapes"/>
+                    <field name="weight_carat"/>
+                    <field name="clarity"/>
+                    <field name="color"/>
                     <field name="luster"/>
                     <field name="shade"/>
                     <field name="fluorescence_color"/>
@@ -69,12 +73,11 @@
                     <field name="width"/>
                     <field name="depth"/>
                     <field name="eye_clean"/>
-                    <field name="polish" required="1"/>
-                    <!-- Cut is intentionally NOT required — fancy shapes (Marquise,
-                         Princess, etc.) don't receive a cut grade and IGI returns
-                         it empty. Enforcing required=1 would block saving those. -->
+                    <!-- Required= dropped for Polish/Symmetry too — see comment
+                         above on the 4C fields. Cut was already optional. -->
+                    <field name="polish"/>
                     <field name="cut"/>
-                    <field name="symmetry" required="1"/>
+                    <field name="symmetry"/>
                     <field name="treatments"/>
                     <field name="video_360" readonly="1" widget="url"/>
                     <field name="image_augmont" readonly="1" widget="url"/>
