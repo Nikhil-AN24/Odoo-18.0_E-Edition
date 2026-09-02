@@ -32,6 +32,20 @@ class CustomerRfqCancelReason(models.Model):
     ]
 
 
+class CustomerRfqSizeLine(models.Model):
+    _name = 'customer.rfq.size.line'
+    _description = 'Customer RFQ Size Line'
+    _order = 'sequence, id'
+
+    rfq_id = fields.Many2one('customer.rfq', string='RFQ',
+                             ondelete='cascade', required=True)
+    sequence = fields.Integer(default=10)
+    quantity = fields.Float(string='Quantity', required=True)
+    length_mm = fields.Float(string='Length (mm)', required=True)
+    width_mm = fields.Float(string='Width (mm)', required=True)
+    depth_mm = fields.Float(string='Depth (mm)')
+
+
 class CustomerRfqCancelWizard(models.TransientModel):
     _name = 'customer.rfq.cancel.wizard'
     _description = 'Cancel Customer RFQ'
@@ -114,6 +128,51 @@ class CustomerRfq(models.Model):
         tracking=True,
         help="Free-text lab name when Lab Type is 'Other'.",
     )
+
+    growth_method = fields.Selection(
+        [('hpht', 'HPHT'), ('cvd', 'CVD')],
+        string='Growth Method', tracking=True,
+        help='Only relevant for Lab-grown stones (HPHT or CVD).',
+    )
+    colour_mode = fields.Selection(
+        [('white', 'White'), ('fancy', 'Fancy')],
+        string='Colour Mode', default='white', tracking=True,
+    )
+    colour_white = fields.Selection(
+        [('def', 'D-E-F'), ('gh', 'G-H'), ('ij', 'I-J')],
+        string='Colour Range', tracking=True,
+    )
+    colour_fancy = fields.Selection(
+        [('black', 'Black'), ('yellow', 'Yellow'), ('brown', 'Brown'),
+         ('pink', 'Pink'), ('blue', 'Blue'), ('red', 'Red'),
+         ('green', 'Green'), ('purple', 'Purple'), ('orange', 'Orange'),
+         ('champagne', 'Champagne'), ('cognac', 'Cognac'),
+         ('salt_and_pepper', 'Salt and Pepper')],
+        string='Fancy Colour', tracking=True,
+    )
+    clarity_grade = fields.Selection(
+        [('IF', 'IF'), ('VVS', 'VVS'), ('VVS1', 'VVS1'), ('VVS2', 'VVS2'),
+         ('VS', 'VS'), ('VS1', 'VS1'), ('VS2', 'VS2'),
+         ('SI1', 'SI1'), ('SI2', 'SI2'), ('I1', 'I1'), ('I2', 'I2')],
+        string='Clarity', tracking=True,
+    )
+    cut_grade = fields.Selection(
+        [('3ex', '3EX'), ('excellent', 'Excellent'),
+         ('very_good', 'Very Good'), ('good', 'Good'), ('fair', 'Fair')],
+        string='Cut', tracking=True,
+    )
+    unit_type = fields.Selection(
+        [('carats', 'Carats'), ('pieces', 'Pieces')],
+        string='Unit', default='carats', tracking=True,
+    )
+    size_line_ids = fields.One2many(
+        'customer.rfq.size.line', 'rfq_id', string='Sizes',
+    )
+    reference_image = fields.Binary(
+        string='Reference Image', attachment=True,
+        help='Optional example image of the requested stone.',
+    )
+    reference_image_filename = fields.Char(string='Reference Image Filename')
 
     shape_ids = fields.Many2many(
         'customer.rfq.shape',
@@ -243,7 +302,8 @@ class CustomerRfq(models.Model):
             return '6_to_6_99'
         return '7_plus'
 
-    @api.depends('price', 'carat', 'tax_ids')
+    @api.depends('price', 'carat', 'tax_ids',
+                 'size_line_ids', 'size_line_ids.quantity')
     def _compute_pricing_totals(self):
         """Compute the full pricing breakdown for each RFQ record.
         Formula
@@ -267,16 +327,20 @@ class CustomerRfq(models.Model):
         default_margin_pct = margin_singleton.default_margin_percentage if margin_singleton else 0.0
 
         for rec in self:
+            effective_carat = 0.0
+            if rec.size_line_ids:
+                effective_carat = sum(rec.size_line_ids.mapped('quantity')) or 0.0
+            if not effective_carat and rec.carat:
+                try:
+                    effective_carat = float(rec.carat)
+                except (TypeError, ValueError):
+                    effective_carat = 0.0
+
             # ── 1. Base price ────────────────────────────────────────────────
-            rec_base_price = rec.price * rec.carat
+            rec_base_price = rec.price * effective_carat
 
             # ── 2. Margin percentage ─────────────────────────────────────────
-            # A carat band configured in the Carat–Margin Table wins for the
-            # weights it covers; the Default Margin (%) on the same Margins
-            # screen covers everything else. Without the fallback a stone under
-            # 1 carat -- which _carat_to_band() maps to None -- and any weight
-            # the table has no row for would silently be sold at cost.
-            band = self._carat_to_band(rec.carat) if rec.carat else None
+            band = self._carat_to_band(effective_carat) if effective_carat else None
             rec_margin_pct = default_margin_pct
             if band and margin_singleton_id:
                 margin_line = MarginLine.search([
@@ -395,27 +459,35 @@ class CustomerRfq(models.Model):
                 raise ValidationError(_(
                     "Please select only one Shape (got %d).") % len(rec.shape_ids))
 
-    @api.constrains('shape_ids', 'stone_type', 'stone_certification_type',
-                    'carat', 'color', 'clarity', 'size', 'quantity')
+    @api.constrains(
+        'shape_ids', 'stone_type', 'stone_certification_type', 'growth_method',
+        'colour_mode', 'colour_white', 'colour_fancy',
+        'clarity_grade', 'cut_grade', 'size_line_ids',
+    )
     def _check_required_specs(self):
+        """Guided-intake required fields. Legacy Char fields (color, clarity,
+        carat, size, quantity) are no longer required — the redesigned form
+        uses the new Selection fields + size_line_ids one2many."""
         for rec in self:
             missing = []
             if not rec.shape_ids:
                 missing.append(_('Shape'))
             if not rec.stone_type:
                 missing.append(_('Type of Stone'))
+            if rec.stone_type == 'lab_grown' and not rec.growth_method:
+                missing.append(_('Growth Method'))
             if not rec.stone_certification_type:
                 missing.append(_('Certification'))
-            if not rec.carat:
-                missing.append(_('Carat'))
-            if not rec.color:
-                missing.append(_('Color'))
-            if not rec.clarity:
+            if rec.colour_mode == 'white' and not rec.colour_white:
+                missing.append(_('Colour range'))
+            if rec.colour_mode == 'fancy' and not rec.colour_fancy:
+                missing.append(_('Fancy Colour'))
+            if not rec.clarity_grade:
                 missing.append(_('Clarity'))
-            if rec.stone_certification_type == 'non_certified' and not rec.size:
-                missing.append(_('Size'))
-            if rec.stone_certification_type == 'certified' and not rec.quantity:
-                missing.append(_('Quantity'))
+            if not rec.cut_grade:
+                missing.append(_('Cut'))
+            if not rec.size_line_ids:
+                missing.append(_('At least one Size row'))
             if missing:
                 raise ValidationError(_(
                     "These fields are mandatory on a Customer RFQ: %s."

@@ -32,3 +32,4 @@ access_customer_rfq_cancel_reason_admin,customer.rfq.cancel.reason.admin,model_c
 access_customer_rfq_cancel_wizard_user,customer.rfq.cancel.wizard.user,model_customer_rfq_cancel_wizard,base.group_user,1,1,1,1
 access_sale_order_cancel_request_wizard,sale.order.cancel.request.wizard,model_sale_order_cancel_request_wizard,base.group_user,1,1,1,1
 access_sale_order_cancel_reject_wizard,sale.order.cancel.reject.wizard,model_sale_order_cancel_reject_wizard,base.group_user,1,1,1,1
+access_customer_rfq_size_line_user,customer.rfq.size.line.user,model_customer_rfq_size_line,base.group_user,1,1,1,1
