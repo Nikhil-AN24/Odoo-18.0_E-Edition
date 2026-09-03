@@ -35,14 +35,18 @@
 
                     </h1>
                     <div class="mb-2">
-                        <!-- Always visible; the Python action raises a clear UserError if certificate is empty when clicked. -->
+                        <!-- Visible unless the record is explicitly marked as a
+                             non-IGI lab; the Python action also raises a clear
+                             UserError if certificate is empty or lab isn't IGI. -->
                         <button name="action_fetch_igi_data"
                                 type="object"
                                 string="Fetch from IGI"
-                                class="btn-primary"/>
+                                class="btn-primary"
+                                invisible="lab_id not in (False, 'igi')"/>
                     </div>
                 </xpath>
                 <xpath expr="//group[@name='group_general']" position="inside">
+                    <field name="lab_id"/>
                     <field name="labs"/>
                     <field name="lgd_stock_number"/>
                     <field name="stock_number"/>

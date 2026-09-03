@@ -16,6 +16,14 @@ class ProductTemplate(models.Model):
     _inherit = "product.template" 
 
     labs = fields.Char(string='LAB')
+    lab_id = fields.Selection(
+        [('igi', 'IGI'), ('gia', 'GIA'), ('other', 'Other')],
+        string='Lab', tracking=True,
+        help="IGI auto-fetches specs from the certificate number. GIA and "
+             "Other labs are manual entry only — left blank, auto-fetch "
+             "still applies (matches existing behaviour for records that "
+             "haven't picked a lab yet).",
+    )
     website_product_id = fields.Char()
     certificate = fields.Char(string="Certificate Number")
     certificate_type = fields.Char(string="Certificate Type")
@@ -168,6 +176,9 @@ class ProductTemplate(models.Model):
         from ..services import igi_service
         if not self.certificate:
             return
+        if self.lab_id and self.lab_id != 'igi':
+            # Lab explicitly marked non-IGI — manual entry only, never call out.
+            return
         try:
             result = igi_service.fetch_by_report_number(self.env, self.certificate)
         except Exception:
@@ -193,6 +204,11 @@ class ProductTemplate(models.Model):
         self.ensure_one()
         if not self.certificate:
             raise UserError(_("Please enter a Certificate Number first."))
+        if self.lab_id and self.lab_id != 'igi':
+            raise UserError(_(
+                "This record is marked as a non-IGI lab. IGI fetch does not "
+                "apply — please enter specs manually."
+            ))
 
         result = igi_service.fetch_by_report_number(self.env, self.certificate)
 
@@ -239,6 +255,7 @@ class ProductTemplate(models.Model):
         _set('width',                  data.get('width_mm'))
         _set('depth',                  data.get('depth_mm'))
         _set('labs',                   'IGI')
+        _set('lab_id',                 'igi')
         _set('certificate_type',       'IGI')
 
         # Auto-generate product name in the diamond trade nomenclature:
