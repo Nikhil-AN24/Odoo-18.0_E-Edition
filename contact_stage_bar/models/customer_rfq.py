@@ -138,29 +138,102 @@ class CustomerRfq(models.Model):
         [('white', 'White'), ('fancy', 'Fancy')],
         string='Colour Mode', default='white', tracking=True,
     )
+    # ── Colour ──────────────────────────────────────────────────────────
+    # colour_white covers both Natural (all 6) and Lab grown (first 3 —
+    # controlled via view invisible=). Old records with 'def'/'gh'/'ij'
+    # still round-trip through Odoo as unlabelled but valid strings; new
+    # writes go through the tokens below.
     colour_white = fields.Selection(
-        [('def', 'D-E-F'), ('gh', 'G-H'), ('ij', 'I-J')],
+        [('def', 'DEF'), ('fg', 'FG'), ('gh', 'GH'),
+         ('ij', 'IJ'), ('kl', 'KL'), ('mn', 'MN')],
         string='Colour Range', tracking=True,
     )
+    # Fancy colour: replaces the old pill grid with three dependent dropdowns.
     colour_fancy = fields.Selection(
-        [('black', 'Black'), ('yellow', 'Yellow'), ('brown', 'Brown'),
-         ('pink', 'Pink'), ('blue', 'Blue'), ('red', 'Red'),
-         ('green', 'Green'), ('purple', 'Purple'), ('orange', 'Orange'),
-         ('champagne', 'Champagne'), ('cognac', 'Cognac'),
-         ('salt_and_pepper', 'Salt and Pepper')],
+        [('yellow', 'Yellow'), ('pink', 'Pink'), ('blue', 'Blue'),
+         ('red', 'Red'), ('green', 'Green'), ('purple', 'Purple'),
+         ('orange', 'Orange'), ('violet', 'Violet'), ('grey', 'Grey'),
+         ('black', 'Black'), ('brown', 'Brown'), ('champagne', 'Champagne'),
+         ('cognac', 'Cognac'), ('chameleon', 'Chameleon'), ('white', 'White'),
+         ('salt_and_pepper', 'Salt and Pepper'), ('other', 'Other')],
         string='Fancy Colour', tracking=True,
     )
+    fancy_intensity = fields.Selection(
+        [('faint', 'Faint'), ('very_light', 'Very Light'), ('light', 'Light'),
+         ('fancy_light', 'Fancy Light'), ('fancy', 'Fancy'),
+         ('fancy_dark', 'Fancy Dark'), ('fancy_intense', 'Fancy Intense'),
+         ('fancy_vivid', 'Fancy Vivid'), ('fancy_deep', 'Fancy Deep')],
+        string='Fancy Intensity', tracking=True,
+    )
+    fancy_overtone = fields.Selection(
+        [('none', 'None'), ('yellow', 'Yellow'), ('yellowish', 'Yellowish'),
+         ('pink', 'Pink'), ('pinkish', 'Pinkish'), ('blue', 'Blue'),
+         ('blueish', 'Blueish'), ('red', 'Red'), ('reddish', 'Reddish'),
+         ('green', 'Green'), ('greenish', 'Greenish'), ('purple', 'Purple'),
+         ('purplish', 'Purplish'), ('orange', 'Orange'), ('orangey', 'Orangey'),
+         ('violet', 'Violet'), ('grey', 'Grey'), ('greyish', 'Greyish'),
+         ('black', 'Black'), ('brown', 'Brown'), ('brownish', 'Brownish'),
+         ('champagne', 'Champagne'), ('cognac', 'Cognac'),
+         ('chameleon', 'Chameleon'), ('white', 'White'), ('other', 'Other')],
+        string='Fancy Overtone', tracking=True,
+    )
+
+    # ── Clarity ─────────────────────────────────────────────────────────
+    # Certified: full IGI scale. Natural adds FL/I3 vs Lab grown's VVS/VS/I2.
     clarity_grade = fields.Selection(
-        [('IF', 'IF'), ('VVS', 'VVS'), ('VVS1', 'VVS1'), ('VVS2', 'VVS2'),
-         ('VS', 'VS'), ('VS1', 'VS1'), ('VS2', 'VS2'),
-         ('SI1', 'SI1'), ('SI2', 'SI2'), ('I1', 'I1'), ('I2', 'I2')],
+        [('FL', 'FL'), ('IF', 'IF'), ('VVS', 'VVS'), ('VVS1', 'VVS1'),
+         ('VVS2', 'VVS2'), ('VS', 'VS'), ('VS1', 'VS1'), ('VS2', 'VS2'),
+         ('SI1', 'SI1'), ('SI2', 'SI2'), ('I1', 'I1'), ('I2', 'I2'),
+         ('I3', 'I3')],
         string='Clarity', tracking=True,
     )
+    # Non-Certified: coarser grouped grades. Shown in place of clarity_grade
+    # when stone_certification_type == 'non_certified'.
+    clarity_non_cert = fields.Selection(
+        [('VVS', 'VVS'), ('VVS-VS', 'VVS-VS'), ('VS', 'VS'),
+         ('VS-SI', 'VS-SI'), ('SI', 'SI'), ('I1', 'I1')],
+        string='Clarity (Non-Cert)', tracking=True,
+    )
+
+    # ── Cut / Polish / Symmetry (Natural mode) ──────────────────────────
+    # Preset shortcuts sit above the three individual grade selectors.
+    cut_preset = fields.Selection(
+        [('3ex', '3EX'), ('ex_cut', 'EX Cut'),
+         ('3vg_plus', '3VG+'), ('heart_and_arrow', 'Heart and Arrow')],
+        string='Cut Preset', tracking=True,
+    )
     cut_grade = fields.Selection(
-        [('3ex', '3EX'), ('excellent', 'Excellent'),
-         ('very_good', 'Very Good'), ('good', 'Good'), ('fair', 'Fair')],
+        [('8x', '8x'), ('ideal', 'Ideal'), ('excellent', 'Excellent'),
+         ('very_good', 'Very Good'), ('good', 'Good'),
+         ('fair', 'Fair'), ('poor', 'Poor')],
         string='Cut', tracking=True,
     )
+    polish_grade = fields.Selection(
+        [('excellent', 'Excellent'), ('very_good', 'Very Good'),
+         ('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')],
+        string='Polish', tracking=True,
+    )
+    symmetry_grade = fields.Selection(
+        [('excellent', 'Excellent'), ('very_good', 'Very Good'),
+         ('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')],
+        string='Symmetry', tracking=True,
+    )
+
+    # ── Fluorescence (Natural mode) ─────────────────────────────────────
+    fluorescence_intensity_sel = fields.Selection(
+        [('none', 'None'), ('faint', 'Faint'), ('medium', 'Medium'),
+         ('strong', 'Strong'), ('very_strong', 'Very Strong')],
+        string='Fluorescence Intensity', tracking=True,
+    )
+    fluorescence_colour_sel = fields.Selection(
+        [('blue', 'Blue'), ('yellow', 'Yellow'), ('red', 'Red'),
+         ('green', 'Green'), ('purple', 'Purple'), ('orange', 'Orange')],
+        string='Fluorescence Colour', tracking=True,
+    )
+
+    # ── Carat range (Natural mode) ──────────────────────────────────────
+    carat_min = fields.Float(string='Carat Min', tracking=True)
+    carat_max = fields.Float(string='Carat Max', tracking=True)
     unit_type = fields.Selection(
         [('carats', 'Carats'), ('pieces', 'Pieces')],
         string='Unit', default='carats', tracking=True,
@@ -465,7 +538,7 @@ class CustomerRfq(models.Model):
     @api.constrains(
         'shape_ids', 'stone_type', 'stone_certification_type', 'growth_method',
         'colour_mode', 'colour_white', 'colour_fancy',
-        'clarity_grade', 'cut_grade', 'size_line_ids',
+        'clarity_grade', 'clarity_non_cert', 'cut_grade', 'size_line_ids',
     )
     def _check_required_specs(self):
         """Guided-intake required fields. Legacy Char fields (color, clarity,
@@ -485,7 +558,10 @@ class CustomerRfq(models.Model):
                 missing.append(_('Colour range'))
             if rec.colour_mode == 'fancy' and not rec.colour_fancy:
                 missing.append(_('Fancy Colour'))
-            if not rec.clarity_grade:
+            # Certified → clarity_grade required; Non-Certified → clarity_non_cert.
+            if rec.stone_certification_type == 'certified' and not rec.clarity_grade:
+                missing.append(_('Clarity'))
+            if rec.stone_certification_type == 'non_certified' and not rec.clarity_non_cert:
                 missing.append(_('Clarity'))
             if not rec.cut_grade:
                 missing.append(_('Cut'))

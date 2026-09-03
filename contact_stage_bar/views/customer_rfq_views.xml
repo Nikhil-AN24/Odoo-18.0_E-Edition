@@ -104,11 +104,6 @@
                                    invisible="stone_type != 'lab_grown'"
                                    required="stone_type == 'lab_grown'"
                                    readonly="state != 'draft'"/>
-                            <field name="shape_ids" widget="many2many_tags"
-                                   required="1"
-                                   options="{'no_quick_create': False}"
-                                   readonly="state != 'draft'"/>
-
                             <field name="stone_certification_type" widget="selection_badge"
                                    invisible="not stone_type" required="stone_type"
                                    readonly="state != 'draft'"/>
@@ -121,8 +116,27 @@
                                    invisible="stone_certification_type != 'certified' or lab_type != 'other'"
                                    required="stone_certification_type == 'certified' and lab_type == 'other'"
                                    readonly="state != 'draft'"/>
+                            <field name="shape_ids" widget="many2many_tags"
+                                   required="1"
+                                   options="{'no_quick_create': False}"
+                                   readonly="state != 'draft'"/>
 
-                            <!-- Colour: mode toggle + one of two sub-selectors. -->
+                            <!-- Natural-only: Carat Min/Max range. -->
+                            <label for="carat_min" string="Carat (ct)"
+                                   invisible="stone_type != 'natural'"/>
+                            <div class="o_row"
+                                 invisible="stone_type != 'natural'">
+                                <field name="carat_min" nolabel="1"
+                                       placeholder="Min"
+                                       readonly="state != 'draft'"/>
+                                <span>—</span>
+                                <field name="carat_max" nolabel="1"
+                                       placeholder="Max"
+                                       readonly="state != 'draft'"/>
+                            </div>
+
+                            <!-- Colour: mode toggle + one of two sub-selectors.
+                                 colour_white options now cover DEF/FG/GH/IJ/KL/MN. -->
                             <field name="colour_mode" widget="selection_badge"
                                    readonly="state != 'draft'"/>
                             <field name="colour_white" widget="selection_badge"
@@ -130,15 +144,52 @@
                                    invisible="colour_mode != 'white'"
                                    required="colour_mode == 'white'"
                                    readonly="state != 'draft'"/>
-                            <field name="colour_fancy" widget="selection_badge"
+                            <!-- Fancy colour: three dependent dropdowns. -->
+                            <field name="colour_fancy"
                                    invisible="colour_mode != 'fancy'"
                                    required="colour_mode == 'fancy'"
                                    readonly="state != 'draft'"/>
+                            <field name="fancy_intensity"
+                                   invisible="colour_mode != 'fancy'"
+                                   readonly="state != 'draft'"/>
+                            <field name="fancy_overtone"
+                                   invisible="colour_mode != 'fancy'"
+                                   readonly="state != 'draft'"/>
 
+                            <!-- Clarity: swaps by certification. -->
                             <field name="clarity_grade" widget="selection_badge"
-                                   required="1" readonly="state != 'draft'"/>
+                                   invisible="stone_certification_type != 'certified'"
+                                   required="stone_certification_type == 'certified'"
+                                   readonly="state != 'draft'"/>
+                            <field name="clarity_non_cert" widget="selection_badge"
+                                   string="Clarity"
+                                   invisible="stone_certification_type != 'non_certified'"
+                                   required="stone_certification_type == 'non_certified'"
+                                   readonly="state != 'draft'"/>
+
+                            <!-- Cut/Polish/Symmetry: preset shortcut + three grade selectors.
+                                 Natural mode shows all four; LG mode shows just Cut. -->
+                            <field name="cut_preset" widget="selection_badge"
+                                   invisible="stone_type != 'natural'"
+                                   readonly="state != 'draft'"/>
                             <field name="cut_grade" widget="selection_badge"
-                                   required="1" readonly="state != 'draft'"/>
+                                   readonly="state != 'draft'"/>
+                            <field name="polish_grade" widget="selection_badge"
+                                   invisible="stone_type != 'natural'"
+                                   readonly="state != 'draft'"/>
+                            <field name="symmetry_grade" widget="selection_badge"
+                                   invisible="stone_type != 'natural'"
+                                   readonly="state != 'draft'"/>
+
+                            <!-- Fluorescence: Natural mode only. -->
+                            <field name="fluorescence_intensity_sel" widget="selection_badge"
+                                   string="Fluorescence"
+                                   invisible="stone_type != 'natural'"
+                                   readonly="state != 'draft'"/>
+                            <field name="fluorescence_colour_sel" widget="selection_badge"
+                                   string="Fluorescence Colour"
+                                   invisible="stone_type != 'natural'"
+                                   readonly="state != 'draft'"/>
 
                             <!-- Legacy Char fields kept invisible for schema/history compat. -->
                             <field name="carat" invisible="1"/>
@@ -154,13 +205,9 @@
                             <field name="is_price_visible_for_user" invisible="1"/>
                             <field name="is_price_readonly" invisible="1"/>
                             <field name="currency_id" invisible="1"/>
-                            <field name="reference_image_filename" invisible="1"/>
-
-                            <field name="reference_image"
-                                   widget="binary"
-                                   filename="reference_image_filename"
-                                   readonly="state != 'draft'"
-                                   options="{'accepted_file_extensions': '.png,.jpg,.jpeg'}"/>
+                            <!-- Reference Image field removed from the form
+                                 per user request (2026-09-02). The Binary column
+                                 stays on the model for schema/history compat. -->
                             <field name="owner_id" string="Owner"
                                    options="{'no_create': True}"
                                    readonly="state != 'draft'"
@@ -183,11 +230,27 @@
                         <group colspan="2" string="Quantity &amp; Size">
                             <field name="unit_type" widget="selection_badge"
                                    readonly="state != 'draft'"/>
+                            <!-- Two size-line lists bound to the SAME one2many, only
+                                 one renders at a time (based on Unit). Only difference
+                                 is the Quantity column header: "Quantity (ct)" vs
+                                 "Quantity (pcs)". -->
                             <field name="size_line_ids" nolabel="1"
                                    context="{'default_rfq_id': id}"
-                                   readonly="state != 'draft'">
+                                   readonly="state != 'draft'"
+                                   invisible="unit_type == 'pieces'">
                                 <list editable="bottom">
-                                    <field name="quantity"/>
+                                    <field name="quantity" string="Quantity (ct)"/>
+                                    <field name="length_mm" string="Length (mm)"/>
+                                    <field name="width_mm" string="Width (mm)"/>
+                                    <field name="depth_mm" string="Depth (mm)"/>
+                                </list>
+                            </field>
+                            <field name="size_line_ids" nolabel="1"
+                                   context="{'default_rfq_id': id}"
+                                   readonly="state != 'draft'"
+                                   invisible="unit_type != 'pieces'">
+                                <list editable="bottom">
+                                    <field name="quantity" string="Quantity (pcs)"/>
                                     <field name="length_mm" string="Length (mm)"/>
                                     <field name="width_mm" string="Width (mm)"/>
                                     <field name="depth_mm" string="Depth (mm)"/>
