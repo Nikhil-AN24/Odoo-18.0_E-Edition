@@ -306,6 +306,19 @@ class CustomerRfq(models.Model):
     quantity = fields.Float(string='Quantity', tracking=True)
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
+    # Two-pill toggle Procurement uses to pick INR vs USD for the price
+    procurement_currency = fields.Selection(
+        [('inr', '₹'), ('usd', '$')],
+        string='Currency', default='usd', tracking=True,
+    )
+
+    @api.onchange('procurement_currency')
+    def _onchange_procurement_currency(self):
+        for rec in self:
+            if rec.procurement_currency == 'inr':
+                rec.currency_id = self.env.ref('base.INR', raise_if_not_found=False)
+            elif rec.procurement_currency == 'usd':
+                rec.currency_id = self.env.ref('base.USD', raise_if_not_found=False)
     # No tracking: a tracked change writes "Procurement Price/carat 0.00 -> 1.00"
     # into the chatter, which Sales can read. The cost would leak there regardless of how the field itself is restricted on the form.
     price = fields.Float(string='Procurement Price/carat')
@@ -674,6 +687,16 @@ class CustomerRfq(models.Model):
         product.action_combine_sdk_fields()
         if not product.name:
             product.name = self.name
+        # Non-Certified RFQs override the auto-composed name with a
+        # deliberately generic label so the SO line reads
+        # "Non-Certified - <shape>" rather than an IGI-style trade name.
+        if self.stone_certification_type == 'non_certified':
+            shapes = ', '.join(self.shape_ids.mapped('name'))
+            product.name = _("Non-Certified - %s") % (shapes or self.name)
+            # Marker used by product.template form to hide the Certificate
+            # Number field and the "Fetch from IGI" button for 'Non-Certified'.
+            product.certificate_type = 'Non-Certified'
+            product.is_non_certified_source = True
         return product
 
     def action_open_cancel_wizard(self):

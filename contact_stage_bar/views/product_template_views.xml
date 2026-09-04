@@ -24,25 +24,24 @@
                                     invisible="sdk_is_code_enabled"/>
                                     </xpath>
                 <xpath expr="//label[@for='name']" position="before">
-                    <h1>
-                        <!-- <button name="action_fetch_certificate_data"
+                    <!-- Loaded so is_non_certified_source is available to
+                         invisible= expressions on the elements below. -->
+                    <field name="is_non_certified_source" invisible="1"/>
+                    <div invisible="is_non_certified_source">
+                        <h1>
+                            <label for="certificate" string="Certificate Number"/>
+                            <field name="certificate"/>
+                        </h1>
+                        <div class="mb-2">
+                            <!-- Visible unless the record is explicitly marked as a
+                                 non-IGI lab; the Python action also raises a clear
+                                 UserError if certificate is empty or lab isn't IGI. -->
+                            <button name="action_fetch_igi_data"
                                     type="object"
-                                    string="Fetch Certificate Data"
+                                    string="Fetch from IGI"
                                     class="btn-primary"
-                                    invisible="sdk_is_code_enabled"/> -->
-                        <label for="certificate" string="Certificate Number"/>
-                        <field name="certificate"/>
-
-                    </h1>
-                    <div class="mb-2">
-                        <!-- Visible unless the record is explicitly marked as a
-                             non-IGI lab; the Python action also raises a clear
-                             UserError if certificate is empty or lab isn't IGI. -->
-                        <button name="action_fetch_igi_data"
-                                type="object"
-                                string="Fetch from IGI"
-                                class="btn-primary"
-                                invisible="lab_id not in (False, 'igi')"/>
+                                    invisible="lab_id not in (False, 'igi')"/>
+                        </div>
                     </div>
                 </xpath>
                 <xpath expr="//group[@name='group_general']" position="inside">

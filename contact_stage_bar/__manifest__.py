@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.13010",
+    "version": "18.0.1.7.13011",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",

@@ -27,6 +27,14 @@ class ProductTemplate(models.Model):
     website_product_id = fields.Char()
     certificate = fields.Char(string="Certificate Number")
     certificate_type = fields.Char(string="Certificate Type")
+    # Set by customer.rfq._create_requested_stone when the source RFQ is
+    # Non-Certified. Product form hides Certificate Number + Fetch from IGI
+    # when this is True.
+    is_non_certified_source = fields.Boolean(
+        string="Non-Certified Source",
+        default=False,
+        help="True when this product record was spawned from a Non-Certified RFQ.",
+    )
     
     measurements = fields.Char(string="Measurements")
     weight = fields.Char(string="Carat Weight")

@@ -154,6 +154,10 @@
                             <field name="is_price_readonly" invisible="1"/>
                             <field name="currency_id" invisible="1"/>
 
+                            <field name="procurement_currency" string="Currency"
+                                   widget="selection_badge"
+                                   readonly="is_price_readonly"
+                                   groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                             <field name="price" string="Procurement Price/carat"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"

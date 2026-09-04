@@ -116,18 +116,8 @@
                                    context="{'res_partner_search_mode': 'customer', 'show_address': 1}"
                                    options='{"always_reload": True, "no_quick_create": True}'/>
                             <field name="shipping_address" readonly="state != 'draft'"/>
-                            <field name="billing_address" readonly="state != 'draft'"/>
 
-<!--                            <field name="gst_treatment" readonly="state != 'draft'"/>-->
-<!--                            <field name="location" readonly="state != 'draft'"/>-->
 
-<!--
-    <field name="partner_invoice_id"-->
-<!--                                   context="{'default_parent_id': partner_id}"-->
-<!--                                   options='{"no_quick_create": True}'/>-->
-<!--                            <field name="partner_shipping_id"-->
-<!--                                   context="{'default_parent_id': partner_id}"-->
-<!--                                   options='{"no_quick_create": True}'/>-->
                         </group>
                         <group>
                             <field name="date_order" widget="datetime"/>
@@ -143,13 +133,6 @@
                         <page string="Order Lines" name="order_lines">
                             <field name="order_line" widget="section_and_note_one2many" mode="tree,kanban">
                                 <list string="Custom Sale Order Lines" editable="bottom">
-<!--                                    <control>-->
-<!--                                        <create name="add_product_control" string="Add a product"/>-->
-<!--                                        <create name="add_section_control" string="Add a section"-->
-<!--                                                context="{'default_display_type': 'line_section'}"/>-->
-<!--                                        <create name="add_note_control" string="Add a note"-->
-<!--                                                context="{'default_display_type': 'line_note'}"/>-->
-<!--                                    </control>-->
 
                                     <field name="sequence" widget="handle"/>
                                     <!-- Description visible in every state so Sales can
@@ -226,11 +209,7 @@
                     </notebook>
                 </sheet>
                 <chatter/>
-<!--                <div class="oe_chatter">-->
-<!--                    <field name="message_follower_ids"/>-->
-<!--                    <field name="activity_ids"/>-->
-<!--                    <field name="message_ids"/>-->
-<!--                </div>-->
+
             </form>
         </field>
     </record>
