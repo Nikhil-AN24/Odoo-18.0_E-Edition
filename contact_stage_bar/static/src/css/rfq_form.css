@@ -1,0 +1,18 @@
+/* Fluorescence: lay the many2many_checkboxes row out horizontally.
+   Scoped to the fluorescence_grade_ids field only so Cut / Polish /
+   Symmetry stay in their default vertical stack. */
+.o_form_view div[name="fluorescence_grade_ids"] {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 1.5rem;
+}
+
+.o_form_view div[name="fluorescence_grade_ids"] > .form-check,
+.o_form_view div[name="fluorescence_grade_ids"] > div {
+    display: inline-flex !important;
+    align-items: center;
+    width: auto;
+    margin: 0;
+    padding-left: 1.5rem;
+}

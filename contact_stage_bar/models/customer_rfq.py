@@ -18,6 +18,28 @@ class CustomerRfqShape(models.Model):
     ]
 
 
+class CustomerRfqGrade(models.Model):
+    _name = 'customer.rfq.grade'
+    _description = 'Customer RFQ Cut/Polish/Symmetry Grade'
+    _order = 'category, sequence, id'
+
+    name = fields.Char(string='Label', required=True, translate=True)
+    code = fields.Char(string='Code', required=True,
+                       help='Machine key used by preset auto-fill.')
+    category = fields.Selection(
+        [('cut', 'Cut'), ('polish', 'Polish'), ('symmetry', 'Symmetry'),
+         ('fluorescence', 'Fluorescence')],
+        string='Category', required=True,
+    )
+    sequence = fields.Integer(default=10)
+    active = fields.Boolean(default=True)
+
+    _sql_constraints = [
+        ('code_category_unique', 'UNIQUE(category, code)',
+         'Grade code must be unique per category.'),
+    ]
+
+
 class CustomerRfqCancelReason(models.Model):
     _name = 'customer.rfq.cancel.reason'
     _description = 'Customer RFQ Cancellation Reason'
@@ -198,8 +220,7 @@ class CustomerRfq(models.Model):
     # ── Cut / Polish / Symmetry (Natural mode) ──────────────────────────
     # Preset shortcuts sit above the three individual grade selectors.
     cut_preset = fields.Selection(
-        [('3ex', '3EX'), ('ex_cut', 'EX Cut'),
-         ('3vg_plus', '3VG+'), ('heart_and_arrow', 'Heart and Arrow')],
+        [('3ex', '3EX'), ('ex_cut', 'EX Cut'), ('3vg_plus', '3VG+')],
         string='Cut Preset', tracking=True,
     )
     cut_grade = fields.Selection(
@@ -217,6 +238,29 @@ class CustomerRfq(models.Model):
         [('excellent', 'Excellent'), ('very_good', 'Very Good'),
          ('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')],
         string='Symmetry', tracking=True,
+    )
+
+    # Multi-select variants used by the redesigned pill UI. 
+    # Preset onchange populates them from cut_preset; the user can still tick / untick any individual pill afterwards.
+    cut_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_cut_grade_rel',
+        'rfq_id', 'grade_id', string='Cut',
+        domain=[('category', '=', 'cut')], tracking=True,
+    )
+    polish_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_polish_grade_rel',
+        'rfq_id', 'grade_id', string='Polish',
+        domain=[('category', '=', 'polish')], tracking=True,
+    )
+    symmetry_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_symmetry_grade_rel',
+        'rfq_id', 'grade_id', string='Symmetry',
+        domain=[('category', '=', 'symmetry')], tracking=True,
+    )
+    fluorescence_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_fluorescence_grade_rel',
+        'rfq_id', 'grade_id', string='Fluorescence',
+        domain=[('category', '=', 'fluorescence')], tracking=True,
     )
 
     # ── Fluorescence (Natural mode) ─────────────────────────────────────
@@ -527,6 +571,30 @@ class CustomerRfq(models.Model):
     )
 
 
+    # Preset → (cut codes, polish codes, symmetry codes) mapping. 
+    _CUT_PRESET_GRADES = {
+        '3ex': (['8x', 'ideal', 'excellent'], ['excellent'], ['excellent']),
+        'ex_cut': (['excellent'], ['excellent', 'very_good'], ['excellent', 'very_good']),
+        '3vg_plus': (['excellent', 'very_good'], ['excellent', 'very_good'], ['excellent', 'very_good']),
+    }
+
+    @api.onchange('cut_preset')
+    def _onchange_cut_preset(self):
+
+        if not self.cut_preset:
+            return
+        mapping = self._CUT_PRESET_GRADES.get(self.cut_preset)
+        if not mapping:
+            return
+        cut_codes, polish_codes, sym_codes = mapping
+        Grade = self.env['customer.rfq.grade']
+        self.cut_grade_ids = Grade.search(
+            [('category', '=', 'cut'), ('code', 'in', cut_codes)])
+        self.polish_grade_ids = Grade.search(
+            [('category', '=', 'polish'), ('code', 'in', polish_codes)])
+        self.symmetry_grade_ids = Grade.search(
+            [('category', '=', 'symmetry'), ('code', 'in', sym_codes)])
+
     @api.constrains('shape_ids')
     def _check_single_shape(self):
         """A Customer RFQ describes allows exactly one Shape."""
@@ -535,38 +603,23 @@ class CustomerRfq(models.Model):
                 raise ValidationError(_(
                     "Please select only one Shape (got %d).") % len(rec.shape_ids))
 
-    @api.constrains(
-        'shape_ids', 'stone_type', 'stone_certification_type', 'growth_method',
-        'colour_mode', 'colour_white', 'colour_fancy',
-        'clarity_grade', 'clarity_non_cert', 'cut_grade', 'size_line_ids',
-    )
+    @api.constrains('shape_ids', 'stone_type', 'stone_certification_type',
+                    'color', 'clarity', 'size', 'quantity')
     def _check_required_specs(self):
-        """Guided-intake required fields. Legacy Char fields (color, clarity,
-        carat, size, quantity) are no longer required — the redesigned form
-        uses the new Selection fields + size_line_ids one2many."""
         for rec in self:
             missing = []
             if not rec.shape_ids:
                 missing.append(_('Shape'))
             if not rec.stone_type:
                 missing.append(_('Type of Stone'))
-            if rec.stone_type == 'lab_grown' and not rec.growth_method:
-                missing.append(_('Growth Method'))
             if not rec.stone_certification_type:
                 missing.append(_('Certification'))
-            if rec.colour_mode == 'white' and not rec.colour_white:
-                missing.append(_('Colour range'))
-            if rec.colour_mode == 'fancy' and not rec.colour_fancy:
-                missing.append(_('Fancy Colour'))
-            # Certified → clarity_grade required; Non-Certified → clarity_non_cert.
-            if rec.stone_certification_type == 'certified' and not rec.clarity_grade:
+            if not rec.color:
+                missing.append(_('Color'))
+            if not rec.clarity:
                 missing.append(_('Clarity'))
-            if rec.stone_certification_type == 'non_certified' and not rec.clarity_non_cert:
-                missing.append(_('Clarity'))
-            if not rec.cut_grade:
-                missing.append(_('Cut'))
-            if not rec.size_line_ids:
-                missing.append(_('At least one Size row'))
+            if rec.stone_certification_type == 'non_certified' and not rec.size:
+                missing.append(_('Size'))
             if missing:
                 raise ValidationError(_(
                     "These fields are mandatory on a Customer RFQ: %s."
