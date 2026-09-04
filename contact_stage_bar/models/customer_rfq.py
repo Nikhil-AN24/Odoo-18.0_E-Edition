@@ -668,6 +668,11 @@ class CustomerRfq(models.Model):
         self.sudo().message_post(body=body)
         return True
 
+    # Safety threshold — if a single size-line quantity is above this we ask
+    # the user to confirm before spawning that many lines (guards against
+    # typos like "1000" that would create an unmanageable sale order).
+    _OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD = 50
+
     def action_create_offline_order(self):
         self.ensure_one()
         if self.state == 'offline_order_created':
@@ -677,34 +682,38 @@ class CustomerRfq(models.Model):
         if not self.partner_id:
             raise UserError(_("Customer is required to create an Offline Order."))
 
-        description = self.name
-        if self.size:
-            description = _("%s - Size: %s") % (self.name, self.size)
-
         unit_price = self.total_price if self.total_price else self.price
         product = self._create_requested_stone(unit_price)
 
+        base_vals = {
+            'product_template_id': product.id,
+            'product_id':          product.product_variant_id.id,
+            'product_uom':         product.uom_id.id,
+            'shapes':              ', '.join(self.shape_ids.mapped('name')),
+            'color':               self.color,
+            'clarity':             self.clarity,
+            'carat_weight':        str(self.carat) if self.carat else False,
+            'price_unit':          unit_price,
+        }
+
+        line_vals = self._build_offline_order_lines(base_vals)
+        if not line_vals:
+            raise UserError(_(
+                "Cannot create an Offline Order: the RFQ has no size lines "
+                "and no legacy Quantity set."
+            ))
+
         order = self.env['custom.sale.order'].create({
-            'partner_id': self.partner_id.id,
-            'state': 'draft',
+            'partner_id':      self.partner_id.id,
+            'state':           'draft',
             'customer_rfq_id': self.id,
-            'order_line': [(0, 0, {
-                'name': description,
-                'product_template_id': product.id,
-                'product_id': product.product_variant_id.id,
-                'product_uom': product.uom_id.id,
-                'shapes': ', '.join(self.shape_ids.mapped('name')),
-                'color': self.color,
-                'clarity': self.clarity,
-                'carat_weight': str(self.carat) if self.carat else False,
-                # Carry the RFQ's requested quantity through to the order line.
-                # Total_price is the all-in price for ONE stone of this spec
-                # (price/carat x carat + margin + tax), so it is the unit price and the quantity multiplies it.
-                'product_uom_qty': self.quantity or 1.0,
-                'price_unit': self.total_price if self.total_price else self.price,
-            })],
+            'order_line':      [(0, 0, vals) for vals in line_vals],
         })
-        self.message_post(body=_("Offline Order %s created.") % order.name)
+
+        self.message_post(body=_(
+            "Offline Order %(order)s created with %(count)d line(s)."
+        ) % {'order': order.name, 'count': len(line_vals)})
+
         # Advance the RFQ so the "Create Offline Order" button hides and a second
         # offline order can't be created from the same RFQ.
         self.state = 'offline_order_created'
@@ -717,3 +726,74 @@ class CustomerRfq(models.Model):
             'view_mode': 'form',
             'target': 'current',
         }
+
+    def _build_offline_order_lines(self, base_vals):
+        """Expand every size_line row into N per-stone dicts.
+
+        Rules:
+        - int(round-down) for pieces, int(round-nearest) for carats.
+        - Big-Qty guard: raise UserError if any single row asks for > threshold
+          stones, so a typo doesn't silently generate 1000+ lines.
+        - Falls back to a single row for legacy RFQs (no size_line_ids); uses
+          the legacy `quantity` field as the count.
+        - Traces every generated line back to its source size_line via
+          rfq_size_line_id.
+        """
+        line_vals = []
+
+        if self.size_line_ids:
+            unit_is_pieces = (self.unit_type or 'carats') == 'pieces'
+            for size_line in self.size_line_ids:
+                raw_qty = size_line.quantity or 0.0
+                count = int(raw_qty) if unit_is_pieces else int(round(raw_qty))
+                if count <= 0:
+                    continue
+                if count > self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD:
+                    raise UserError(_(
+                        "One of the size lines requests %(count)d stones "
+                        "(quantity %(qty)s). This is above the safety "
+                        "threshold of %(threshold)d — please split the row "
+                        "if this is intentional."
+                    ) % {
+                        'count': count,
+                        'qty': raw_qty,
+                        'threshold': self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD,
+                    })
+                # Compose the per-stone description with dimensions from
+                # the size-line row.
+                dims = " × ".join(
+                    f"{v:g}" for v in (size_line.length_mm, size_line.width_mm,
+                                       size_line.depth_mm) if v
+                )
+                desc = self.name
+                if dims:
+                    desc = _("%s (%s mm)") % (self.name, dims)
+                for _n in range(count):
+                    line_vals.append({
+                        **base_vals,
+                        'name': desc,
+                        'product_uom_qty': 1.0,
+                        'rfq_size_line_id': size_line.id,
+                    })
+            return line_vals
+
+        # Legacy fallback: no guided-intake size lines. Use legacy quantity + size.
+        legacy_qty = int(self.quantity) if self.quantity else 1
+        if legacy_qty > self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD:
+            raise UserError(_(
+                "The RFQ quantity (%(qty)d) is above the safety threshold "
+                "of %(threshold)d — please split the RFQ if this is intentional."
+            ) % {
+                'qty': legacy_qty,
+                'threshold': self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD,
+            })
+        legacy_desc = self.name
+        if self.size:
+            legacy_desc = _("%s - Size: %s") % (self.name, self.size)
+        for _n in range(max(1, legacy_qty)):
+            line_vals.append({
+                **base_vals,
+                'name': legacy_desc,
+                'product_uom_qty': 1.0,
+            })
+        return line_vals

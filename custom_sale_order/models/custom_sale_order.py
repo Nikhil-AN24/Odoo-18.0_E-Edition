@@ -528,6 +528,14 @@ class CustomSaleOrderLine(models.Model):
     product_template_id = fields.Many2one('product.template', string='Product', domain="[('sale_ok', '=', True)]",
                                  change_default=True, ondelete='restrict')
 
+    # Traceability back to the RFQ size-line that generated this order line.
+    # Populated when action_create_offline_order expands size_line.quantity
+    # into N per-stone rows. Blank on lines that predate this behaviour.
+    rfq_size_line_id = fields.Many2one(
+        'customer.rfq.size.line', string='RFQ Size Line',
+        ondelete='set null', index=True, copy=False,
+    )
+
     name = fields.Text(string='Description')
 
     certificate_number = fields.Char(related = 'product_template_id.certificate', string="Certificate Number",)

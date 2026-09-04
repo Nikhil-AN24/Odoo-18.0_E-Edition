@@ -152,7 +152,10 @@
 <!--                                    </control>-->
 
                                     <field name="sequence" widget="handle"/>
-                                    <field name="name" column_invisible="parent.state not in ['draft','price_done', 'to_approve']"/>
+                                    <!-- Description visible in every state so Sales can
+                                         always see which RFQ / dimensions each per-stone
+                                         line came from. -->
+                                    <field name="name"/>
                                     <field name="product_id"
                                            context="{'partner_id':parent.partner_id, 'quantity':product_uom_qty, 'pricelist':parent.pricelist_id, 'company_id': parent.company_id}" column_invisible="1"/>
                                     <field name="product_template_id" widget="selection" options="{}" readonly="1" column_invisible="parent.state == 'draft'"/>
@@ -172,7 +175,9 @@
                                     <field name="treatments" column_invisible="parent.state == 'draft'"/>
                                     <field name="availability_status" string="Availability" column_invisible="parent.state == 'draft'"/>
 
-                                    <field name="product_uom_qty" column_invisible="True"/>
+                                    <!-- Quantity: visible always so the user can see the
+                                         per-stone breakdown (each expanded row is qty=1). -->
+                                    <field name="product_uom_qty" string="Quantity"/>
                                     <field name="carat_weight" column_invisible="True"/>
                                     <field name="shapes" readonly="1" column_invisible="parent.state == 'draft'"/>
                                     <field name="color" readonly="1" column_invisible="parent.state == 'draft'"/>
