@@ -153,14 +153,13 @@ class CustomerRfq(models.Model):
 
     growth_method = fields.Selection(
         [('hpht', 'HPHT'), ('cvd', 'CVD')],
-        string='Growth Method', tracking=True,
+        string='Growth Method', tracking=True, default='hpht',
         help='Only relevant for Lab-grown stones (HPHT or CVD).',
     )
     colour_mode = fields.Selection(
         [('white', 'White'), ('fancy', 'Fancy')],
         string='Colour Mode', default='white', tracking=True,
     )
-    # ── Colour ──────────────────────────────────────────────────────────
     # colour_white covers both Natural (all 6) and Lab grown (first 3 —
     # controlled via view invisible=). Old records with 'def'/'gh'/'ij'
     # still round-trip through Odoo as unlabelled but valid strings; new

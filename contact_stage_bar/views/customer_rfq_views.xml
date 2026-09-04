@@ -21,12 +21,10 @@
                 <field name="color"/>
                 <field name="clarity"/>
                 <field name="size"/>
-                <field name="quantity"/>
                 <!-- Procurement cost: never shown to Sales or Sales Managers.
                      group_lgd_sales_manager implies group_lgd_sales, so negating
                      the one group covers both roles. -->
                 <field name="price" groups="!contact_stage_bar.group_lgd_sales"/>
-                <field name="availability_status"/>
                 <field name="state" widget="badge"
                        decoration-info="state == 'draft'"
                        decoration-warning="state == 'sent_to_procurement'"
@@ -106,6 +104,11 @@
                             <field name="stone_certification_type" widget="radio" options="{'horizontal': true}"
                                    invisible="not stone_type" required="stone_type"
                                    readonly="state != 'draft'"/>
+                            <!-- Growth Method — Lab-grown + Non-Certified only. -->
+                            <field name="growth_method" widget="selection_badge"
+                                   invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'"
+                                   required="stone_type == 'lab_grown' and stone_certification_type == 'non_certified'"
+                                   readonly="state != 'draft'"/>
                             <field name="lab_type" widget="radio" options="{'horizontal': true}"
                                    invisible="stone_certification_type != 'certified'"
                                    readonly="state != 'draft'"/>
@@ -119,7 +122,9 @@
                             <field name="shape_ids" widget="many2many_tags" required="1"
                                    options="{'no_quick_create': False}"
                                    readonly="state != 'draft'"/>
-                            <field name="carat" readonly="state != 'draft'"/>
+                            <field name="carat"
+                                   invisible="stone_certification_type == 'non_certified'"
+                                   readonly="state != 'draft'"/>
                             <field name="color" required="1" readonly="state != 'draft'"/>
                             <field name="clarity" required="1" readonly="state != 'draft'"/>
 
@@ -132,7 +137,6 @@
                                    readonly="state != 'draft'"/>
 
 
-                            <field name="growth_method" invisible="1"/>
                             <field name="carat_min" invisible="1"/>
                             <field name="carat_max" invisible="1"/>
                             <field name="colour_mode" invisible="1"/>
@@ -143,8 +147,6 @@
                             <field name="clarity_grade" invisible="1"/>
                             <field name="clarity_non_cert" invisible="1"/>
                             <field name="fluorescence_colour_sel" invisible="1"/>
-                            <field name="unit_type" invisible="1"/>
-                            <field name="size_line_ids" invisible="1"/>
                             <field name="stone_certification" invisible="1"/>
                         </group>
                         <group>
@@ -168,6 +170,40 @@
                                    options="{'no_create': True}"
                                    readonly="state != 'draft'"/>
                         </group>
+                    </group>
+
+                    <!-- Quantity & size — Lab grown + Non-Certified only.
+                         Unit toggles which of the two size_line_ids lists renders;
+                         both bind the same one2many, differ only by Quantity column header (ct vs pcs). -->
+                    <group string="Quantity &amp; size"
+                           invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'">
+                        <div colspan="2" class="text-muted mb-2">
+                            Select quantity either by total carat weight or by number of pieces.
+                        </div>
+                        <field name="unit_type" widget="selection_badge" string="Unit"
+                               readonly="state != 'draft'"/>
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               readonly="state != 'draft'"
+                               invisible="unit_type == 'pieces'">
+                            <list editable="bottom">
+                                <field name="quantity" string="Quantity (ct)"/>
+                                <field name="length_mm" string="Length (mm)"/>
+                                <field name="width_mm" string="Width (mm)"/>
+                                <field name="depth_mm" string="Depth (mm)"/>
+                            </list>
+                        </field>
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               readonly="state != 'draft'"
+                               invisible="unit_type != 'pieces'">
+                            <list editable="bottom">
+                                <field name="quantity" string="Quantity (pcs)"/>
+                                <field name="length_mm" string="Length (mm)"/>
+                                <field name="width_mm" string="Width (mm)"/>
+                                <field name="depth_mm" string="Depth (mm)"/>
+                            </list>
+                        </field>
                     </group>
 
                     <!-- Cut, polish & symmetry — Certified only. -->
