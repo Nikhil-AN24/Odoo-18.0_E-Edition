@@ -123,19 +123,21 @@
                                    options="{'no_quick_create': False}"
                                    readonly="state != 'draft'"/>
                             <field name="carat"
-                                   invisible="stone_certification_type == 'non_certified'"
+                                   invisible="stone_certification_type == 'non_certified' and stone_type != 'lab_grown'"
                                    readonly="state != 'draft'"/>
                             <field name="color" required="1" readonly="state != 'draft'"/>
                             <field name="clarity" required="1" readonly="state != 'draft'"/>
+                            <field name="cut"
+                                   invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'"
+                                   readonly="state != 'draft'"/>
 
                             <field name="size"
-                                   invisible="stone_certification_type == 'certified'"
-                                   required="stone_certification_type == 'non_certified'"
+                                   invisible="stone_certification_type != 'non_certified' or stone_type == 'lab_grown'"
+                                   required="stone_certification_type == 'non_certified' and stone_type != 'lab_grown'"
                                    readonly="state != 'draft'"/>
                             <field name="quantity"
                                    invisible="stone_certification_type == 'non_certified'"
                                    readonly="state != 'draft'"/>
-
 
                             <field name="carat_min" invisible="1"/>
                             <field name="carat_max" invisible="1"/>
@@ -162,8 +164,12 @@
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
                                    invisible="not is_price_visible_for_user"
-                                   readonly="is_price_readonly"
+                                   readonly="is_price_readonly or different_prices"
                                    groups="!contact_stage_bar.group_lgd_sales"/>
+           
+                            <field name="different_prices"
+                                   readonly="is_price_readonly"
+                                   groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                             <field name="total_price" string="Sales Price/carat"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
@@ -176,9 +182,7 @@
                         </group>
                     </group>
 
-                    <!-- Quantity & size — Lab grown + Non-Certified only.
-                         Unit toggles which of the two size_line_ids lists renders;
-                         both bind the same one2many, differ only by Quantity column header (ct vs pcs). -->
+                
                     <group string="Quantity &amp; size"
                            invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'">
                         <div colspan="2" class="text-muted mb-2">
@@ -186,26 +190,54 @@
                         </div>
                         <field name="unit_type" widget="selection_badge" string="Unit"
                                readonly="state != 'draft'"/>
+
+                        <!-- DRAFT variant (Carats): default create control shows "Add a line". -->
                         <field name="size_line_ids" nolabel="1" colspan="2"
                                context="{'default_rfq_id': id}"
-                               readonly="state != 'draft'"
-                               invisible="unit_type == 'pieces'">
+                               invisible="state != 'draft' or unit_type == 'pieces'">
                             <list editable="bottom">
+                                <field name="costing"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                                 <field name="quantity" string="Quantity (ct)"/>
-                                <field name="length_mm" string="Length (mm)"/>
-                                <field name="width_mm" string="Width (mm)"/>
-                                <field name="depth_mm" string="Depth (mm)"/>
+                                <field name="description"/>
+                            </list>
+                        </field>
+                        <!-- POST-DRAFT variant (Carats): create="0" hides "Add a line". -->
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               readonly="state not in ('sent_to_procurement',)"
+                               invisible="state == 'draft' or unit_type == 'pieces'">
+                            <list editable="bottom" create="0">
+                                <field name="costing"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (ct)" readonly="1"/>
+                                <field name="description" readonly="1"/>
+                            </list>
+                        </field>
+                        <!-- DRAFT variant (Pieces). -->
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               invisible="state != 'draft' or unit_type != 'pieces'">
+                            <list editable="bottom">
+                                <field name="costing"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (pcs)"/>
+                                <field name="description"/>
                             </list>
                         </field>
                         <field name="size_line_ids" nolabel="1" colspan="2"
                                context="{'default_rfq_id': id}"
-                               readonly="state != 'draft'"
-                               invisible="unit_type != 'pieces'">
-                            <list editable="bottom">
-                                <field name="quantity" string="Quantity (pcs)"/>
-                                <field name="length_mm" string="Length (mm)"/>
-                                <field name="width_mm" string="Width (mm)"/>
-                                <field name="depth_mm" string="Depth (mm)"/>
+                               readonly="state not in ('sent_to_procurement',)"
+                               invisible="state == 'draft' or unit_type != 'pieces'">
+                            <list editable="bottom" create="0">
+                                <field name="costing"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (pcs)" readonly="1"/>
+                                <field name="description" readonly="1"/>
                             </list>
                         </field>
                     </group>

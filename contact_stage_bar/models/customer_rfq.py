@@ -63,9 +63,11 @@ class CustomerRfqSizeLine(models.Model):
                              ondelete='cascade', required=True)
     sequence = fields.Integer(default=10)
     quantity = fields.Float(string='Quantity', required=True)
-    length_mm = fields.Float(string='Length (mm)', required=True)
-    width_mm = fields.Float(string='Width (mm)', required=True)
+    length_mm = fields.Float(string='Length (mm)')
+    width_mm = fields.Float(string='Width (mm)')
     depth_mm = fields.Float(string='Depth (mm)')
+    description = fields.Char(string='Description')
+    costing = fields.Float(string='Costing')
 
 
 class CustomerRfqCancelWizard(models.TransientModel):
@@ -304,6 +306,7 @@ class CustomerRfq(models.Model):
     clarity = fields.Char(string='Clarity', tracking=True)
     size = fields.Char(string='Size', tracking=True)
     quantity = fields.Float(string='Quantity', tracking=True)
+    cut = fields.Char(string='Cut', tracking=True)        # Free-text Cut for Lab-grown + Non-Certified stones (no grading lab).
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
     # Two-pill toggle Procurement uses to pick INR vs USD for the price
@@ -319,9 +322,8 @@ class CustomerRfq(models.Model):
                 rec.currency_id = self.env.ref('base.INR', raise_if_not_found=False)
             elif rec.procurement_currency == 'usd':
                 rec.currency_id = self.env.ref('base.USD', raise_if_not_found=False)
-    # No tracking: a tracked change writes "Procurement Price/carat 0.00 -> 1.00"
-    # into the chatter, which Sales can read. The cost would leak there regardless of how the field itself is restricted on the form.
     price = fields.Float(string='Procurement Price/carat')
+    different_prices = fields.Boolean(string='Different prices', default=False)
     is_price_visible_for_user = fields.Boolean(
         string='Price Visible',
         compute='_compute_is_price_visible_for_user',
@@ -431,8 +433,43 @@ class CustomerRfq(models.Model):
             return '6_to_6_99'
         return '7_plus'
 
-    @api.depends('price', 'carat', 'tax_ids',
-                 'size_line_ids', 'size_line_ids.quantity')
+    @api.onchange('price')
+    def _onchange_price_mirror_to_costing(self):
+        """Mirror the flat Procurement Price/carat into every size line's
+        Costing. Only runs when Different prices is OFF — with it ON, per-row
+        costing is user-managed."""
+        for rec in self:
+            if rec.different_prices:
+                continue
+            for sl in rec.size_line_ids:
+                sl.costing = rec.price
+
+    @api.onchange('different_prices')
+    def _onchange_different_prices_clear_flat(self):
+        """Ticking Different prices clears the flat Procurement Price/carat
+        (they are mutually exclusive). Un-ticking blanks all per-row Costings
+        so the user can enter a fresh flat price."""
+        for rec in self:
+            if rec.different_prices:
+                rec.price = 0.0
+            else:
+                for sl in rec.size_line_ids:
+                    sl.costing = 0.0
+
+    @api.onchange('size_line_ids')
+    def _onchange_size_lines_seed_costing(self):
+        """New size line inherits the current flat price when Different prices
+        is OFF, so the Costing column stays in sync as rows are added."""
+        for rec in self:
+            if rec.different_prices or not rec.price:
+                continue
+            for sl in rec.size_line_ids:
+                if not sl.costing:
+                    sl.costing = rec.price
+
+    @api.depends('price', 'carat', 'tax_ids', 'different_prices',
+                 'size_line_ids', 'size_line_ids.quantity',
+                 'size_line_ids.costing')
     def _compute_pricing_totals(self):
         """Compute the full pricing breakdown for each RFQ record.
         Formula
@@ -466,7 +503,15 @@ class CustomerRfq(models.Model):
                     effective_carat = 0.0
 
             # ── 1. Base price ────────────────────────────────────────────────
-            rec_base_price = rec.price * effective_carat
+            # Different prices ON → sum of (per-row costing × per-row quantity).
+            # OFF → the flat Procurement Price/carat × effective carat weight.
+            if rec.different_prices and rec.size_line_ids:
+                rec_base_price = sum(
+                    (sl.costing or 0.0) * (sl.quantity or 0.0)
+                    for sl in rec.size_line_ids
+                )
+            else:
+                rec_base_price = rec.price * effective_carat
 
             # ── 2. Margin percentage ─────────────────────────────────────────
             band = self._carat_to_band(effective_carat) if effective_carat else None
@@ -630,7 +675,9 @@ class CustomerRfq(models.Model):
                 missing.append(_('Color'))
             if not rec.clarity:
                 missing.append(_('Clarity'))
-            if rec.stone_certification_type == 'non_certified' and not rec.size:
+            if (rec.stone_certification_type == 'non_certified'
+                    and rec.stone_type != 'lab_grown'
+                    and not rec.size):
                 missing.append(_('Size'))
             if missing:
                 raise ValidationError(_(
@@ -645,7 +692,15 @@ class CustomerRfq(models.Model):
         return super(CustomerRfq, self.sudo()).create(vals_list)
 
     def write(self, vals):
-        return super(CustomerRfq, self.sudo()).write(vals)
+        result = super(CustomerRfq, self.sudo()).write(vals)
+
+        if 'price' in vals or 'different_prices' in vals:
+            for rec in self:
+                if rec.different_prices:
+                    continue
+                if rec.size_line_ids and rec.price:
+                    rec.size_line_ids.sudo().write({'costing': rec.price})
+        return result
 
     def action_send_to_procurement(self):
         for rec in self:
@@ -660,12 +715,24 @@ class CustomerRfq(models.Model):
         for rec in self:
             if rec.state != 'sent_to_procurement':
                 raise UserError(_("Only RFQs sent to Procurement can be sent back to Sales."))
-            # Enforce that Procurement must enter a price before sending back.
-            if not rec.price or rec.price <= 0:
-                raise UserError(_(
-                    "Please enter a Price before sending back to Sales. "
-                    "Sales cannot see pricing until a valid amount is set."
-                ))
+            if rec.different_prices:
+                if not rec.size_line_ids:
+                    raise UserError(_(
+                        "Different prices is on but there are no size lines to price."
+                    ))
+                unpriced = [sl for sl in rec.size_line_ids
+                            if not sl.costing or sl.costing <= 0]
+                if unpriced:
+                    raise UserError(_(
+                        "Different prices is on — every Costing must be filled "
+                        "before sending back to Sales. %d row(s) still at 0."
+                    ) % len(unpriced))
+            else:
+                if not rec.price or rec.price <= 0:
+                    raise UserError(_(
+                        "Please enter a Price before sending back to Sales. "
+                        "Sales cannot see pricing until a valid amount is set."
+                    ))
             rec.state = 'sent_back_to_sales'
             # No figures in the body, for the same reason price is not tracked:
             # the chatter is readable by Sales.
@@ -834,15 +901,17 @@ class CustomerRfq(models.Model):
                         'qty': raw_qty,
                         'threshold': self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD,
                     })
-                # Compose the per-stone description with dimensions from
-                # the size-line row.
-                dims = " × ".join(
-                    f"{v:g}" for v in (size_line.length_mm, size_line.width_mm,
-                                       size_line.depth_mm) if v
-                )
+
                 desc = self.name
-                if dims:
-                    desc = _("%s (%s mm)") % (self.name, dims)
+                if size_line.description:
+                    desc = _("%s - %s") % (self.name, size_line.description)
+                else:
+                    dims = " × ".join(
+                        f"{v:g}" for v in (size_line.length_mm, size_line.width_mm,
+                                           size_line.depth_mm) if v
+                    )
+                    if dims:
+                        desc = _("%s (%s mm)") % (self.name, dims)
                 for _n in range(count):
                     line_vals.append({
                         **base_vals,
