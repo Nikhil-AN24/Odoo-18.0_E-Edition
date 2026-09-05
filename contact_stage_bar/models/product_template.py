@@ -16,16 +16,30 @@ class ProductTemplate(models.Model):
     _inherit = "product.template" 
 
     labs = fields.Char(string='LAB')
+    lab_id = fields.Selection(
+        [('igi', 'IGI'), ('gia', 'GIA'), ('other', 'Other')],
+        string='Lab', tracking=True,
+        help="IGI auto-fetches specs from the certificate number. GIA and "
+             "Other labs are manual entry only — left blank, auto-fetch "
+             "still applies (matches existing behaviour for records that "
+             "haven't picked a lab yet).",
+    )
     website_product_id = fields.Char()
     certificate = fields.Char(string="Certificate Number")
     certificate_type = fields.Char(string="Certificate Type")
+    # Set by customer.rfq._create_requested_stone when the source RFQ is
+    # Non-Certified. Product form hides Certificate Number + Fetch from IGI
+    # when this is True.
+    is_non_certified_source = fields.Boolean(
+        string="Non-Certified Source",
+        default=False,
+        help="True when this product record was spawned from a Non-Certified RFQ.",
+    )
     
     measurements = fields.Char(string="Measurements")
     weight = fields.Char(string="Carat Weight")
     # ── Diamond spec fields ──────────────────────────────────────────────────
     # tracking=True writes a chatter entry with who/when on every change.
-    # Any edit to one of these seven feeds through _onchange_spec_fields (live)
-    # AND write()/create() (persisted paths) to recompose product name.
     weight_carat = fields.Char(string="Carat Weight", tracking=True)
     color = fields.Char(string="Color", tracking=True)
     clarity = fields.Char(string="Clarity", tracking=True)
@@ -43,7 +57,7 @@ class ProductTemplate(models.Model):
     final_price_margin = fields.Float(string="Final Price")
     price_per_carat = fields.Float(string="Vendor Price Per Carat")
     country_id = fields.Many2one('res.country',string="Country")
-    stock_number = fields.Char(string="Stock Number")
+    stock_number = fields.Char(string="Vendor Stock Number")
     lgd_stock_number = fields.Char(string="Lgd Stock Number")
     
     length = fields.Float(string="Length")
@@ -163,6 +177,25 @@ class ProductTemplate(models.Model):
                 record.barcode = record.certificate
             else:
                 record.url_link = False
+
+    @api.onchange('certificate')
+    def _onchange_certificate_autofetch(self):
+
+        from ..services import igi_service
+        if not self.certificate:
+            return
+        if self.lab_id and self.lab_id != 'igi':
+            # Lab explicitly marked non-IGI — manual entry only, never call out.
+            return
+        try:
+            result = igi_service.fetch_by_report_number(self.env, self.certificate)
+        except Exception:
+            return
+        if not result or result.get('error'):
+            return
+        vals = self._igi_build_vals(result)
+        for field_name, value in vals.items():
+            self[field_name] = value
     
     def copy(self, default=None):
         self.ensure_one()
@@ -179,6 +212,11 @@ class ProductTemplate(models.Model):
         self.ensure_one()
         if not self.certificate:
             raise UserError(_("Please enter a Certificate Number first."))
+        if self.lab_id and self.lab_id != 'igi':
+            raise UserError(_(
+                "This record is marked as a non-IGI lab. IGI fetch does not "
+                "apply — please enter specs manually."
+            ))
 
         result = igi_service.fetch_by_report_number(self.env, self.certificate)
 
@@ -225,6 +263,7 @@ class ProductTemplate(models.Model):
         _set('width',                  data.get('width_mm'))
         _set('depth',                  data.get('depth_mm'))
         _set('labs',                   'IGI')
+        _set('lab_id',                 'igi')
         _set('certificate_type',       'IGI')
 
         # Auto-generate product name in the diamond trade nomenclature:

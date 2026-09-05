@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- Cut grades: 8x, Ideal, Excellent, Very Good, Good, Fair, Poor -->
+    <record id="grade_cut_8x" model="customer.rfq.grade">
+        <field name="name">8x</field>
+        <field name="code">8x</field>
+        <field name="category">cut</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="grade_cut_ideal" model="customer.rfq.grade">
+        <field name="name">Ideal</field>
+        <field name="code">ideal</field>
+        <field name="category">cut</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="grade_cut_excellent" model="customer.rfq.grade">
+        <field name="name">Excellent</field>
+        <field name="code">excellent</field>
+        <field name="category">cut</field>
+        <field name="sequence">30</field>
+    </record>
+    <record id="grade_cut_very_good" model="customer.rfq.grade">
+        <field name="name">Very Good</field>
+        <field name="code">very_good</field>
+        <field name="category">cut</field>
+        <field name="sequence">40</field>
+    </record>
+    <record id="grade_cut_good" model="customer.rfq.grade">
+        <field name="name">Good</field>
+        <field name="code">good</field>
+        <field name="category">cut</field>
+        <field name="sequence">50</field>
+    </record>
+    <record id="grade_cut_fair" model="customer.rfq.grade">
+        <field name="name">Fair</field>
+        <field name="code">fair</field>
+        <field name="category">cut</field>
+        <field name="sequence">60</field>
+    </record>
+    <record id="grade_cut_poor" model="customer.rfq.grade">
+        <field name="name">Poor</field>
+        <field name="code">poor</field>
+        <field name="category">cut</field>
+        <field name="sequence">70</field>
+    </record>
+
+    <!-- Polish grades: Excellent, Very Good, Good, Fair, Poor -->
+    <record id="grade_polish_excellent" model="customer.rfq.grade">
+        <field name="name">Excellent</field>
+        <field name="code">excellent</field>
+        <field name="category">polish</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="grade_polish_very_good" model="customer.rfq.grade">
+        <field name="name">Very Good</field>
+        <field name="code">very_good</field>
+        <field name="category">polish</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="grade_polish_good" model="customer.rfq.grade">
+        <field name="name">Good</field>
+        <field name="code">good</field>
+        <field name="category">polish</field>
+        <field name="sequence">30</field>
+    </record>
+    <record id="grade_polish_fair" model="customer.rfq.grade">
+        <field name="name">Fair</field>
+        <field name="code">fair</field>
+        <field name="category">polish</field>
+        <field name="sequence">40</field>
+    </record>
+    <record id="grade_polish_poor" model="customer.rfq.grade">
+        <field name="name">Poor</field>
+        <field name="code">poor</field>
+        <field name="category">polish</field>
+        <field name="sequence">50</field>
+    </record>
+
+    <!-- Symmetry grades: Excellent, Very Good, Good, Fair, Poor -->
+    <record id="grade_symmetry_excellent" model="customer.rfq.grade">
+        <field name="name">Excellent</field>
+        <field name="code">excellent</field>
+        <field name="category">symmetry</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="grade_symmetry_very_good" model="customer.rfq.grade">
+        <field name="name">Very Good</field>
+        <field name="code">very_good</field>
+        <field name="category">symmetry</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="grade_symmetry_good" model="customer.rfq.grade">
+        <field name="name">Good</field>
+        <field name="code">good</field>
+        <field name="category">symmetry</field>
+        <field name="sequence">30</field>
+    </record>
+    <record id="grade_symmetry_fair" model="customer.rfq.grade">
+        <field name="name">Fair</field>
+        <field name="code">fair</field>
+        <field name="category">symmetry</field>
+        <field name="sequence">40</field>
+    </record>
+    <record id="grade_symmetry_poor" model="customer.rfq.grade">
+        <field name="name">Poor</field>
+        <field name="code">poor</field>
+        <field name="category">symmetry</field>
+        <field name="sequence">50</field>
+    </record>
+
+    <!-- Fluorescence: None, Faint, Medium, Strong, Very Strong -->
+    <record id="grade_fluorescence_none" model="customer.rfq.grade">
+        <field name="name">None</field>
+        <field name="code">none</field>
+        <field name="category">fluorescence</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="grade_fluorescence_faint" model="customer.rfq.grade">
+        <field name="name">Faint</field>
+        <field name="code">faint</field>
+        <field name="category">fluorescence</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="grade_fluorescence_medium" model="customer.rfq.grade">
+        <field name="name">Medium</field>
+        <field name="code">medium</field>
+        <field name="category">fluorescence</field>
+        <field name="sequence">30</field>
+    </record>
+    <record id="grade_fluorescence_strong" model="customer.rfq.grade">
+        <field name="name">Strong</field>
+        <field name="code">strong</field>
+        <field name="category">fluorescence</field>
+        <field name="sequence">40</field>
+    </record>
+    <record id="grade_fluorescence_very_strong" model="customer.rfq.grade">
+        <field name="name">Very Strong</field>
+        <field name="code">very_strong</field>
+        <field name="category">fluorescence</field>
+        <field name="sequence">50</field>
+    </record>
+
+</odoo>

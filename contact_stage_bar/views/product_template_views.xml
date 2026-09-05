@@ -24,35 +24,42 @@
                                     invisible="sdk_is_code_enabled"/>
                                     </xpath>
                 <xpath expr="//label[@for='name']" position="before">
-                    <h1>
-                        <!-- <button name="action_fetch_certificate_data"
+                    <!-- Loaded so is_non_certified_source is available to
+                         invisible= expressions on the elements below. -->
+                    <field name="is_non_certified_source" invisible="1"/>
+                    <div invisible="is_non_certified_source">
+                        <h1>
+                            <label for="certificate" string="Certificate Number"/>
+                            <field name="certificate"/>
+                        </h1>
+                        <div class="mb-2">
+                            <!-- Visible unless the record is explicitly marked as a
+                                 non-IGI lab; the Python action also raises a clear
+                                 UserError if certificate is empty or lab isn't IGI. -->
+                            <button name="action_fetch_igi_data"
                                     type="object"
-                                    string="Fetch Certificate Data"
+                                    string="Fetch from IGI"
                                     class="btn-primary"
-                                    invisible="sdk_is_code_enabled"/> -->
-                        <label for="certificate" string="Certificate Number"/>
-                        <field name="certificate"/>
-
-                    </h1>
-                    <div class="mb-2">
-                        <!-- Always visible; the Python action raises a clear UserError if certificate is empty when clicked. -->
-                        <button name="action_fetch_igi_data"
-                                type="object"
-                                string="Fetch from IGI"
-                                class="btn-primary"/>
+                                    invisible="lab_id not in (False, 'igi')"/>
+                        </div>
                     </div>
                 </xpath>
                 <xpath expr="//group[@name='group_general']" position="inside">
+                    <field name="lab_id"/>
                     <field name="labs"/>
                     <field name="lgd_stock_number"/>
                     <field name="stock_number"/>
                     <field name="certificate_type" groups="!contact_stage_bar.group_lgd_procurement"/>
                     <field name="website_product_id" readonly="1"/>
                     <field name="url_link" readonly="1" widget="url"/>
-                    <field name="shapes" required="1"/>
-                    <field name="weight_carat" required="1"/>
-                    <field name="clarity" required="1"/>
-                    <field name="color" required="1"/>
+                    <!-- Required= dropped: the IGI fetch auto-fills these on new
+                         records, but legacy records may have blank values that
+                         would otherwise block save. Users can still leave them
+                         blank if IGI is down or the certificate is unknown. -->
+                    <field name="shapes"/>
+                    <field name="weight_carat"/>
+                    <field name="clarity"/>
+                    <field name="color"/>
                     <field name="luster"/>
                     <field name="shade"/>
                     <field name="fluorescence_color"/>
@@ -69,12 +76,11 @@
                     <field name="width"/>
                     <field name="depth"/>
                     <field name="eye_clean"/>
-                    <field name="polish" required="1"/>
-                    <!-- Cut is intentionally NOT required — fancy shapes (Marquise,
-                         Princess, etc.) don't receive a cut grade and IGI returns
-                         it empty. Enforcing required=1 would block saving those. -->
+                    <!-- Required= dropped for Polish/Symmetry too — see comment
+                         above on the 4C fields. Cut was already optional. -->
+                    <field name="polish"/>
                     <field name="cut"/>
-                    <field name="symmetry" required="1"/>
+                    <field name="symmetry"/>
                     <field name="treatments"/>
                     <field name="video_360" readonly="1" widget="url"/>
                     <field name="image_augmont" readonly="1" widget="url"/>

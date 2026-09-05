@@ -21,12 +21,10 @@
                 <field name="color"/>
                 <field name="clarity"/>
                 <field name="size"/>
-                <field name="quantity"/>
                 <!-- Procurement cost: never shown to Sales or Sales Managers.
                      group_lgd_sales_manager implies group_lgd_sales, so negating
                      the one group covers both roles. -->
                 <field name="price" groups="!contact_stage_bar.group_lgd_sales"/>
-                <field name="availability_status"/>
                 <field name="state" widget="badge"
                        decoration-info="state == 'draft'"
                        decoration-warning="state == 'sent_to_procurement'"
@@ -90,20 +88,27 @@
                     </group>
                     <group>
                         <group>
-
-                            <!-- Price: visibility + readonly computed based on user group/state -->
-                            <field name="partner_id" string="Company Name" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" readonly="state != 'draft'"/>
-                            <!-- customer_phone hidden from every user. -->
+                            <field name="partner_id" string="Company Name"
+                                   groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
+                                   readonly="state != 'draft'"/>
                             <field name="customer_phone" invisible="1"/>
-                            <field name="customer_email" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1" readonly="state != 'draft'"/>
-                            <field name="customer_address" groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system" invisible="1" readonly="state != 'draft'"/>
+                            <field name="customer_email"
+                                   groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
+                                   invisible="1" readonly="state != 'draft'"/>
+                            <field name="customer_address"
+                                   groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
+                                   invisible="1" readonly="state != 'draft'"/>
+
                             <field name="stone_type" widget="radio" options="{'horizontal': true}"
                                    required="1" readonly="state != 'draft'"/>
-                  
                             <field name="stone_certification_type" widget="radio" options="{'horizontal': true}"
-                                   invisible="not stone_type" required="stone_type" readonly="state != 'draft'"/>
-                            <!-- Lab Type — only relevant for Certified stones. Hidden
-                                 (and dropped from required) when Non-Certified. -->
+                                   invisible="not stone_type" required="stone_type"
+                                   readonly="state != 'draft'"/>
+                 
+                            <field name="growth_method" widget="selection_badge"
+                                   invisible="stone_type != 'lab_grown'"
+                                   required="stone_type == 'lab_grown'"
+                                   readonly="state != 'draft'"/>
                             <field name="lab_type" widget="radio" options="{'horizontal': true}"
                                    invisible="stone_certification_type != 'certified'"
                                    readonly="state != 'draft'"/>
@@ -116,53 +121,190 @@
 
                             <field name="shape_ids" widget="many2many_tags" required="1"
                                    options="{'no_quick_create': False}"
+                                   readonly="state != 'draft'"/>                   
+                            <field name="carat"
+                                   invisible="stone_certification_type == 'non_certified'"
                                    readonly="state != 'draft'"/>
-                            <field name="carat" required="1" readonly="state != 'draft'"/>
                             <field name="color" required="1" readonly="state != 'draft'"/>
                             <field name="clarity" required="1" readonly="state != 'draft'"/>
-          
-                            <field name="size" invisible="stone_certification_type == 'certified'"
-                                   required="stone_certification_type == 'non_certified'"
-                                   readonly="state != 'draft'"/>
-                            <field name="quantity" invisible="stone_certification_type == 'non_certified'"
-                                   required="stone_certification_type == 'certified'"
+                            <field name="cut"
+                                   invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'"
                                    readonly="state != 'draft'"/>
 
-                            <!-- Procurement sets whether the stone needs certification -->
-                            <field name="stone_certification" readonly="is_price_readonly" invisible="1"/>
+                            <field name="size"
+                                   invisible="stone_certification_type != 'non_certified' or stone_type == 'lab_grown'"
+                                   required="stone_certification_type == 'non_certified' and stone_type != 'lab_grown'"
+                                   readonly="state != 'draft'"/>
+                            <field name="quantity"
+                                   invisible="stone_certification_type == 'non_certified'"
+                                   readonly="state != 'draft'"/>
+
+                            <field name="carat_min" invisible="1"/>
+                            <field name="carat_max" invisible="1"/>
+                            <field name="colour_mode" invisible="1"/>
+                            <field name="colour_white" invisible="1"/>
+                            <field name="colour_fancy" invisible="1"/>
+                            <field name="fancy_intensity" invisible="1"/>
+                            <field name="fancy_overtone" invisible="1"/>
+                            <field name="clarity_grade" invisible="1"/>
+                            <field name="clarity_non_cert" invisible="1"/>
+                            <field name="fluorescence_colour_sel" invisible="1"/>
+                            <field name="stone_certification" invisible="1"/>
                         </group>
                         <group>
-                            <!-- Hidden helper fields used for conditional rendering -->
                             <field name="is_price_visible_for_user" invisible="1"/>
                             <field name="is_price_readonly" invisible="1"/>
                             <field name="currency_id" invisible="1"/>
 
-                            <!-- Procurement cost. Hidden outright from Sales & Sales
-                                 Managers: they work from Sales Price/carat below.
-                                 group_lgd_sales_manager implies group_lgd_sales, so
-                                 negating the one group covers both roles. -->
-                            <field name="price"
+                            <field name="procurement_currency" string="Currency"
+                                   widget="selection_badge"
+                                   readonly="is_price_readonly"
+                                   groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                            <field name="price" string="Procurement Price/carat"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
                                    invisible="not is_price_visible_for_user"
-                                   readonly="is_price_readonly"
+                                   readonly="is_price_readonly or different_prices"
                                    groups="!contact_stage_bar.group_lgd_sales"/>
-
-                            <!-- base_price, margin_percentage, margin_amount and
-                                 tax_amount are intentionally NOT on this form. Only
-                                 the number Sales actually quotes is shown; the
-                                 arithmetic behind it stays in the backend. -->
-                            <!-- Hidden from Procurement: they quote the cost, they do
-                                 not get to see what Sales marks it up to. -->
-                            <field name="total_price" widget="monetary"
+           
+                            <!-- Different prices hidden for Lab grown + Certified —
+                                 that path has no per-stone sizes to price individually. -->
+                            <field name="different_prices"
+                                   readonly="is_price_readonly"
+                                   invisible="stone_type == 'lab_grown' and stone_certification_type == 'certified'"
+                                   groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                            <field name="total_price" string="Sales Price/carat"
+                                   widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
                                    invisible="not is_price_visible_for_user"
                                    groups="!contact_stage_bar.group_lgd_procurement"/>
 
-                            <!-- Owner: defaults to the record creator, editable so the record can be reassigned -->
-                            <field name="owner_id" string="Owner" options="{'no_create': True}"
+                            <field name="owner_id" string="Owner"
+                                   options="{'no_create': True}"
                                    readonly="state != 'draft'"/>
                         </group>
+                    </group>
+
+                
+                    <group string="Quantity &amp; size"
+                           invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'">
+                        <div colspan="2" class="text-muted mb-2">
+                            Select quantity either by total carat weight or by number of pieces.
+                        </div>
+                        <field name="unit_type" widget="selection_badge" string="Unit"
+                               readonly="state != 'draft'"/>
+
+                        <!-- DRAFT variant (Carats): default create control shows "Add a line". -->
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               invisible="state != 'draft' or unit_type == 'pieces'">
+                            <list editable="bottom">
+                                <!-- Costing header carries the parent's Currency symbol ₹ / $ -->
+                                <field name="costing" string="Costing ₹"
+                                       column_invisible="parent.procurement_currency != 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="costing" string="Costing $"
+                                       column_invisible="parent.procurement_currency == 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (ct)"/>
+                                <field name="description"/>
+                            </list>
+                        </field>
+                        <!-- POST-DRAFT variant (Carats): create="0" hides "Add a line". -->
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               readonly="state not in ('sent_to_procurement',)"
+                               invisible="state == 'draft' or unit_type == 'pieces'">
+                            <list editable="bottom" create="0">
+                                <!-- Costing header carries the parent's Currency symbol ₹ / $ -->
+                                <field name="costing" string="Costing ₹"
+                                       column_invisible="parent.procurement_currency != 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="costing" string="Costing $"
+                                       column_invisible="parent.procurement_currency == 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (ct)" readonly="1"/>
+                                <field name="description" readonly="1"/>
+                            </list>
+                        </field>
+                        <!-- DRAFT variant (Pieces). -->
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               invisible="state != 'draft' or unit_type != 'pieces'">
+                            <list editable="bottom">
+                                <!-- Costing header carries the parent's Currency symbol ₹ / $ -->
+                                <field name="costing" string="Costing ₹"
+                                       column_invisible="parent.procurement_currency != 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="costing" string="Costing $"
+                                       column_invisible="parent.procurement_currency == 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (pcs)"/>
+                                <field name="description"/>
+                            </list>
+                        </field>
+                        <field name="size_line_ids" nolabel="1" colspan="2"
+                               context="{'default_rfq_id': id}"
+                               readonly="state not in ('sent_to_procurement',)"
+                               invisible="state == 'draft' or unit_type != 'pieces'">
+                            <list editable="bottom" create="0">
+                                   <!-- Costing header carries the parent's Currency symbol ₹ / $ -->
+                                <field name="costing" string="Costing ₹"
+                                       column_invisible="parent.procurement_currency != 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="costing" string="Costing $"
+                                       column_invisible="parent.procurement_currency == 'inr'"
+                                       readonly="not parent.different_prices"
+                                       groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                                <field name="quantity" string="Quantity (pcs)" readonly="1"/>
+                                <field name="description" readonly="1"/>
+                            </list>
+                        </field>
+                    </group>
+
+                    <!-- Cut, polish & symmetry — Certified only. -->
+                    <group string="Cut, polish &amp; symmetry"
+                           invisible="stone_certification_type != 'certified'">
+                        <field name="cut_preset" widget="selection_badge" nolabel="1" colspan="2"
+                               readonly="state != 'draft'"/>
+                        <group col="3" colspan="2">
+                            <group>
+                                <field name="cut_grade_ids" string="Cut"
+                                       widget="many2many_checkboxes"
+                                       readonly="state != 'draft'"/>
+                            </group>
+                            <group>
+                                <field name="polish_grade_ids" string="Polish"
+                                       widget="many2many_checkboxes"
+                                       readonly="state != 'draft'"/>
+                            </group>
+                            <group>
+                                <field name="symmetry_grade_ids" string="Symmetry"
+                                       widget="many2many_checkboxes"
+                                       readonly="state != 'draft'"/>
+                            </group>
+                        </group>
+                        <!-- Legacy single-select fields kept for schema/history compat. -->
+                        <field name="cut_grade" invisible="1"/>
+                        <field name="polish_grade" invisible="1"/>
+                        <field name="symmetry_grade" invisible="1"/>
+                    </group>
+
+                    <!-- Fluorescence — Certified only. -->
+                    <group string="Fluorescence"
+                           invisible="stone_certification_type != 'certified'">
+                        <field name="fluorescence_grade_ids" string="Fluorescence"
+                               widget="many2many_checkboxes"
+                               readonly="state != 'draft'"/>
+                        <!-- Legacy single-select field kept for schema/history compat. -->
+                        <field name="fluorescence_intensity_sel" invisible="1"/>
                     </group>
 
                 </sheet>
@@ -388,12 +530,12 @@ action = action_vals
     </record>
 
     <menuitem id="menu_customer_rfq_config" name="Configuration" parent="menu_sales_3"
-              sequence="90" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+              sequence="90" groups="base.group_system"/>
     <menuitem id="menu_customer_rfq_shape" name="Shapes" parent="menu_customer_rfq_config"
               action="action_customer_rfq_shape" sequence="10"
-              groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+              groups="base.group_system"/>
     <menuitem id="menu_customer_rfq_cancel_reason" name="Cancellation Reasons"
               parent="menu_customer_rfq_config" action="action_customer_rfq_cancel_reason"
-              sequence="20" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+              sequence="20" groups="base.group_system"/>
 
 </odoo>

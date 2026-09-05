@@ -4,21 +4,14 @@ from datetime import datetime, timedelta
 import datetime
 
 
-
-# Diamond grade Selection options (generated once at import).
-# Discount: "Certified: Less 1".."Non-certified: Less 6"
-DISCOUNT_DIAMOND_GRADE_SELECTION = [
-    (f"cert_less_{i}", f"Certified: Less {i}") for i in range(1, 7)
-] + [
-    (f"noncert_less_{i}", f"Non-certified: Less {i}") for i in range(1, 7)
-]
-
-# Payment: "Certified: 1 day".."Non-certified: 90 days"
-PAYMENT_DIAMOND_GRADE_SELECTION = [
-    (f"cert_{d}d", f"Certified: {d} day{'s' if d > 1 else ''}") for d in range(1, 91)
-] + [
-    (f"noncert_{d}d", f"Non-certified: {d} day{'s' if d > 1 else ''}") for d in range(1, 91)
-]
+# Vendor-master matrix field names, keyed by (stone_type, certification).
+# See procurement_vendor_fields/models/res_partner.py for the 4x4 matrix.
+_VENDOR_TERMS_FIELD_MAP = {
+    ('lab_grown', 'certified'):     ('lg_cert_discount', 'lg_cert_payment_days'),
+    ('lab_grown', 'non_certified'): ('lg_non_cert_discount', 'lg_non_cert_payment_days'),
+    ('natural', 'certified'):       ('natural_cert_discount', 'natural_cert_payment_days'),
+    ('natural', 'non_certified'):   ('natural_non_cert_discount', 'natural_non_cert_payment_days'),
+}
 
 
 class PurchaseOrderLine(models.Model):
@@ -69,6 +62,62 @@ class PurchaseOrderLine(models.Model):
     def _compute_rupees_rate(self):
         for line in self:
             line.rupees_rate = line.bank_rate * line.price_unit
+
+    # ── Vendor discount / payment terms (PRD §5.5/§5.6) ─────────────────
+    # Procurement classifies the stone; discount % and payment days are then
+    # derived from the vendor master's 4x4 matrix and snapshotted onto the
+    # line — never typed, never re-read live from the vendor afterwards.
+    stone_type = fields.Selection(
+        [('lab_grown', 'Lab Grown'), ('natural', 'Natural')],
+        string='Stone Type',
+    )
+    stone_certification_type = fields.Selection(
+        [('certified', 'Certified'), ('non_certified', 'Non-Certified')],
+        string='Certification',
+    )
+    discount_percent = fields.Float(
+        string='Vendor Discount %', digits=(16, 2),
+        readonly=True, copy=False,
+        help="Derived automatically from the vendor's discount matrix. "
+             "Procurement never types this value directly.",
+    )
+    payment_days = fields.Integer(
+        string='Payment Terms (Days)',
+        readonly=True, copy=False,
+        help="Derived automatically from the vendor's payment-terms matrix.",
+    )
+    expected_net = fields.Monetary(
+        string='Expected Net', currency_field='currency_id',
+        compute='_compute_expected_net', store=True, readonly=True,
+        help="Gross x (1 - discount%). What Accounting should expect to pay.",
+    )
+
+    @api.depends('price_unit', 'product_qty', 'discount_percent')
+    def _compute_expected_net(self):
+        for line in self:
+            gross = line.price_unit * line.product_qty
+            line.expected_net = gross * (1 - (line.discount_percent or 0.0) / 100.0)
+
+    def _get_vendor_terms(self, partner):
+        """Look up (discount %, payment days) on the vendor master for this
+        line's stone classification. Missing vendor terms resolve to
+        (0.0, 0) rather than raising, per PRD REQ-5.4.3."""
+        self.ensure_one()
+        key = (self.stone_type, self.stone_certification_type)
+        field_names = _VENDOR_TERMS_FIELD_MAP.get(key)
+        if not partner or not field_names:
+            return 0.0, 0
+        discount_field, days_field = field_names
+        return partner[discount_field] or 0.0, partner[days_field] or 0
+
+    @api.onchange('stone_type', 'stone_certification_type')
+    def _onchange_stone_classification_fill_vendor_terms(self):
+        for line in self:
+            if not line.stone_type or not line.stone_certification_type:
+                continue
+            discount, days = line._get_vendor_terms(line.order_id.partner_id)
+            line.discount_percent = discount
+            line.payment_days = days
 
 
     @api.depends('weight', 'rupees_rate', 'product_qty', 'price_unit', 'taxes_id', 'discount')
@@ -131,80 +180,12 @@ class PurchaseOrder(models.Model):
             # Location: India -> mumbai, anything else -> surat.
             order.location = 'mumbai' if partner.country_id.code == 'IN' else 'surat'
 
-    # ── Melee / Diamonds classification (shown after the Arrival field) ──
-    discount_type = fields.Selection(
-        [('melee', 'Melee'), ('diamonds', 'Diamonds')],
-        string='Discount',
-    )
-    augmont_payment_terms = fields.Selection(
-        [('melee', 'Melee'), ('diamonds', 'Diamonds')],
-        string='Payment Terms',
-    )
-    # Both Many2many fields share the same comodel but need DISTINCT relation
-    # tables, otherwise they would read/write the same links.
-    discount_melee_ids = fields.Many2many(
-        'purchase.melee.value',
-        'purchase_order_discount_melee_rel',
-        'order_id', 'value_id',
-        string='Discount Melee Values',
-    )
-    payment_melee_ids = fields.Many2many(
-        'purchase.melee.value',
-        'purchase_order_payment_melee_rel',
-        'order_id', 'value_id',
-        string='Payment Melee Values',
-    )
-
-    # ── Diamonds branch: Discount (Labgrown / Natural → grade) ──
-    discount_diamond_type = fields.Selection(
-        [('labgrown', 'Labgrown'), ('natural', 'Natural')],
-        string='Diamond Type',
-    )
-    discount_diamond_grade = fields.Selection(
-        DISCOUNT_DIAMOND_GRADE_SELECTION,
-        string='Diamond Grade',
-    )
-
-    # ── Diamonds branch: Payment Terms (Labgrown / Natural → grade) ──
-    payment_diamond_type = fields.Selection(
-        [('labgrown', 'Labgrown'), ('natural', 'Natural')],
-        string='Diamond Type',
-    )
-    payment_diamond_grade = fields.Selection(
-        PAYMENT_DIAMOND_GRADE_SELECTION,
-        string='Diamond Grade',
-    )
-
-    # ── Clear stale sub-selections when a parent Discount/Payment changes ──
-    @api.onchange('discount_type')
-    def _onchange_discount_type_clear(self):
-        for order in self:
-            if order.discount_type != 'melee':
-                order.discount_melee_ids = [(5, 0, 0)]
-            if order.discount_type != 'diamonds':
-                order.discount_diamond_type = False
-                order.discount_diamond_grade = False
-
-    @api.onchange('discount_diamond_type')
-    def _onchange_discount_diamond_type_clear(self):
-        for order in self:
-            if not order.discount_diamond_type:
-                order.discount_diamond_grade = False
-
-    @api.onchange('augmont_payment_terms')
-    def _onchange_augmont_payment_terms_clear(self):
-        for order in self:
-            if order.augmont_payment_terms != 'melee':
-                order.payment_melee_ids = [(5, 0, 0)]
-            if order.augmont_payment_terms != 'diamonds':
-                order.payment_diamond_type = False
-                order.payment_diamond_grade = False
-
-    @api.onchange('payment_diamond_type')
-    def _onchange_payment_diamond_type_clear(self):
-        for order in self:
-            if not order.payment_diamond_type:
-                order.payment_diamond_grade = False
+            # Re-derive discount/payment terms for lines already classified
+            # by stone type + certification (PRD REQ-5.6.1). Terms are
+            # snapshotted onto the line at this point, not referenced live —
+            # renegotiating the vendor later does not affect this PO.
+            for line in order.order_line:
+                line._onchange_stone_classification_fill_vendor_terms()
 
     procurement_reference = fields.Char(
         string="Procurement Reference",

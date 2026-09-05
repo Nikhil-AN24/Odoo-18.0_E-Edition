@@ -30,22 +30,14 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='order_line']" position="before">
-                <button name="%(action_sale_order_add_product_wizard)d" 
+                <!-- order_source must be present in the form arch for the
+                     button's invisible= expression to evaluate. -->
+                <field name="order_source" invisible="1"/>
+                <button name="%(action_sale_order_add_product_wizard)d"
                         type="action" string="Add Product"
-                        class="btn-primary"/>
+                        class="btn-primary"
+                        invisible="order_source == 'offline'"/>
             </xpath>
-             <!-- <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="attributes">
-            <attribute name="context">{'form_view_ref': 'product.product_template_only_form_view', 'target':'new'}</attribute>
-        </xpath> -->
-            <!-- <xpath expr="//field[@name='order_line']" position="before">
-                        <button name="%(action_sale_order_add_product_wizard)d"
-                                type="object"
-                                string="Add New Product"
-                                class="btn-primary"
-                                
-                                
-                        />
-                        </xpath> -->
         </field>
     </record>
 

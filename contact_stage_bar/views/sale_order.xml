@@ -603,4 +603,17 @@
         </field>
     </record>
 
+    <!-- Hide the standard "Quotation Template" field on sale.order for
+         everyone. Field stays on the model; only the form widget is gone. -->
+    <record id="view_order_form_hide_quotation_template" model="ir.ui.view">
+        <field name="name">sale.order.form.hide.quotation.template</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale_management.sale_order_form_quote"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='sale_order_template_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+        </field>
+    </record>
+
 </odoo>

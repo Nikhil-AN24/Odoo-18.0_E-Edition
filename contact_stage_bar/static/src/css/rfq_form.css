@@ -1,0 +1,38 @@
+/* Fluorescence: lay the many2many_checkboxes row out horizontally.
+   Scoped to the fluorescence_grade_ids field only so Cut / Polish /
+   Symmetry stay in their default vertical stack. */
+.o_form_view div[name="fluorescence_grade_ids"] {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 1.5rem;
+}
+
+.o_form_view div[name="fluorescence_grade_ids"] > .form-check,
+.o_form_view div[name="fluorescence_grade_ids"] > div {
+    display: inline-flex !important;
+    align-items: center;
+    width: auto;
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+/* Quantity & Size table: give the Quantity column a fixed narrow width
+   and pad the Description column so they don't collide visually. Scoped
+   to size_line_ids on the RFQ form. */
+.o_form_view div[name="size_line_ids"] table.o_list_table th,
+.o_form_view div[name="size_line_ids"] table.o_list_table td {
+    padding-right: 1.5rem;
+}
+
+.o_form_view div[name="size_line_ids"] table.o_list_table th[data-name="quantity"],
+.o_form_view div[name="size_line_ids"] table.o_list_table td[name="quantity"] {
+    width: 8rem;
+    min-width: 8rem;
+    padding-right: 2.5rem;
+}
+
+.o_form_view div[name="size_line_ids"] table.o_list_table th[data-name="description"],
+.o_form_view div[name="size_line_ids"] table.o_list_table td[name="description"] {
+    padding-left: 0.5rem;
+}

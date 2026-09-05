@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.12",
+    "version": "18.0.1.7.13",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -18,6 +18,7 @@
         # 'data/customer_onboarding_sequence.xml',
         'data/customer_rfq_shape_data.xml',
         'data/customer_rfq_cancel_reason_data.xml',
+        'data/customer_rfq_grade_data.xml',
         'security/ir.model.access.csv',
         'security/sale_visibility_rules.xml',
         "views/reports_label.xml",
@@ -40,7 +41,6 @@
         "views/customer_rfq_views.xml",
         "views/menu_security.xml",
         "views/purchase_order.xml",
-        "views/melee_value_views.xml",
         "views/lgd_margin_views.xml",
         "report/sale_report_inherit.xml",
         "report/augmont_tax_invoice.xml",
@@ -49,11 +49,11 @@
     ],
     'assets': {
         'web.assets_backend': [
-            'contact_stage_bar/static/src/js/igi_popup.js',
             'contact_stage_bar/static/src/js/restrict_availability_dropdown.js',
             'contact_stage_bar/static/src/js/rename_new_button.js',
             'contact_stage_bar/static/src/js/hide_cog_menu.js',
             'contact_stage_bar/static/src/js/hide_replenish.js',
+            'contact_stage_bar/static/src/css/rfq_form.css',
         ],
     },
     "installable": True,

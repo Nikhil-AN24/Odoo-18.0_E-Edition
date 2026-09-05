@@ -116,18 +116,8 @@
                                    context="{'res_partner_search_mode': 'customer', 'show_address': 1}"
                                    options='{"always_reload": True, "no_quick_create": True}'/>
                             <field name="shipping_address" readonly="state != 'draft'"/>
-                            <field name="billing_address" readonly="state != 'draft'"/>
 
-<!--                            <field name="gst_treatment" readonly="state != 'draft'"/>-->
-<!--                            <field name="location" readonly="state != 'draft'"/>-->
 
-<!--
-    <field name="partner_invoice_id"-->
-<!--                                   context="{'default_parent_id': partner_id}"-->
-<!--                                   options='{"no_quick_create": True}'/>-->
-<!--                            <field name="partner_shipping_id"-->
-<!--                                   context="{'default_parent_id': partner_id}"-->
-<!--                                   options='{"no_quick_create": True}'/>-->
                         </group>
                         <group>
                             <field name="date_order" widget="datetime"/>
@@ -143,16 +133,12 @@
                         <page string="Order Lines" name="order_lines">
                             <field name="order_line" widget="section_and_note_one2many" mode="tree,kanban">
                                 <list string="Custom Sale Order Lines" editable="bottom">
-<!--                                    <control>-->
-<!--                                        <create name="add_product_control" string="Add a product"/>-->
-<!--                                        <create name="add_section_control" string="Add a section"-->
-<!--                                                context="{'default_display_type': 'line_section'}"/>-->
-<!--                                        <create name="add_note_control" string="Add a note"-->
-<!--                                                context="{'default_display_type': 'line_note'}"/>-->
-<!--                                    </control>-->
 
                                     <field name="sequence" widget="handle"/>
-                                    <field name="name" column_invisible="parent.state not in ['draft','price_done', 'to_approve']"/>
+                                    <!-- Description visible in every state so Sales can
+                                         always see which RFQ / dimensions each per-stone
+                                         line came from. -->
+                                    <field name="name"/>
                                     <field name="product_id"
                                            context="{'partner_id':parent.partner_id, 'quantity':product_uom_qty, 'pricelist':parent.pricelist_id, 'company_id': parent.company_id}" column_invisible="1"/>
                                     <field name="product_template_id" widget="selection" options="{}" readonly="1" column_invisible="parent.state == 'draft'"/>
@@ -172,7 +158,9 @@
                                     <field name="treatments" column_invisible="parent.state == 'draft'"/>
                                     <field name="availability_status" string="Availability" column_invisible="parent.state == 'draft'"/>
 
-                                    <field name="product_uom_qty" column_invisible="True"/>
+                                    <!-- Quantity: visible always so the user can see the
+                                         per-stone breakdown (each expanded row is qty=1). -->
+                                    <field name="product_uom_qty" string="Quantity"/>
                                     <field name="carat_weight" column_invisible="True"/>
                                     <field name="shapes" readonly="1" column_invisible="parent.state == 'draft'"/>
                                     <field name="color" readonly="1" column_invisible="parent.state == 'draft'"/>
@@ -221,11 +209,7 @@
                     </notebook>
                 </sheet>
                 <chatter/>
-<!--                <div class="oe_chatter">-->
-<!--                    <field name="message_follower_ids"/>-->
-<!--                    <field name="activity_ids"/>-->
-<!--                    <field name="message_ids"/>-->
-<!--                </div>-->
+
             </form>
         </field>
     </record>

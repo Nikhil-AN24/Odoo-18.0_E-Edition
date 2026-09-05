@@ -5,8 +5,6 @@ access_stock_picking_wizard,stock.picking.wizard,model_stock_picking_wizard,base
 access_sale_order_add_product_wizard,sale.order.add.product.wizard,model_sale_order_add_product_wizard,base.group_user,1,1,1,1
 access_payment_confirmation_wizard,payment.confirmation.wizard,model_payment_confirmation_wizard,base.group_user,1,1,1,1
 access_augmont_api_retry,augmont.api.retry,model_augmont_api_retry,base.group_user,1,1,1,1
-access_purchase_melee_value_user,purchase.melee.value.user,model_purchase_melee_value,base.group_user,1,0,0,0
-access_purchase_melee_value_manager,purchase.melee.value.manager,model_purchase_melee_value,purchase.group_purchase_manager,1,1,1,1
 access_customer_rfq_sales,customer.rfq.sales,model_customer_rfq,contact_stage_bar.group_lgd_sales,1,1,1,1
 access_customer_rfq_procurement,customer.rfq.procurement,model_customer_rfq,contact_stage_bar.group_lgd_procurement,1,1,0,0
 access_customer_rfq_admin,customer.rfq.admin,model_customer_rfq,base.group_system,1,1,1,1
@@ -32,3 +30,6 @@ access_customer_rfq_cancel_reason_admin,customer.rfq.cancel.reason.admin,model_c
 access_customer_rfq_cancel_wizard_user,customer.rfq.cancel.wizard.user,model_customer_rfq_cancel_wizard,base.group_user,1,1,1,1
 access_sale_order_cancel_request_wizard,sale.order.cancel.request.wizard,model_sale_order_cancel_request_wizard,base.group_user,1,1,1,1
 access_sale_order_cancel_reject_wizard,sale.order.cancel.reject.wizard,model_sale_order_cancel_reject_wizard,base.group_user,1,1,1,1
+access_customer_rfq_size_line_user,customer.rfq.size.line.user,model_customer_rfq_size_line,base.group_user,1,1,1,1
+access_customer_rfq_grade_user,customer.rfq.grade.user,model_customer_rfq_grade,base.group_user,1,0,0,0
+access_customer_rfq_grade_admin,customer.rfq.grade.admin,model_customer_rfq_grade,base.group_system,1,1,1,1

@@ -16,4 +16,3 @@ from . import ir_http
 from . import customer_rfq
 # from . import customer_onboarding
 from . import lgd_margin
-from . import melee_value

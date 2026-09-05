@@ -18,6 +18,28 @@ class CustomerRfqShape(models.Model):
     ]
 
 
+class CustomerRfqGrade(models.Model):
+    _name = 'customer.rfq.grade'
+    _description = 'Customer RFQ Cut/Polish/Symmetry Grade'
+    _order = 'category, sequence, id'
+
+    name = fields.Char(string='Label', required=True, translate=True)
+    code = fields.Char(string='Code', required=True,
+                       help='Machine key used by preset auto-fill.')
+    category = fields.Selection(
+        [('cut', 'Cut'), ('polish', 'Polish'), ('symmetry', 'Symmetry'),
+         ('fluorescence', 'Fluorescence')],
+        string='Category', required=True,
+    )
+    sequence = fields.Integer(default=10)
+    active = fields.Boolean(default=True)
+
+    _sql_constraints = [
+        ('code_category_unique', 'UNIQUE(category, code)',
+         'Grade code must be unique per category.'),
+    ]
+
+
 class CustomerRfqCancelReason(models.Model):
     _name = 'customer.rfq.cancel.reason'
     _description = 'Customer RFQ Cancellation Reason'
@@ -30,6 +52,22 @@ class CustomerRfqCancelReason(models.Model):
     _sql_constraints = [
         ('name_unique', 'UNIQUE(name)', 'Cancellation reason must be unique.'),
     ]
+
+
+class CustomerRfqSizeLine(models.Model):
+    _name = 'customer.rfq.size.line'
+    _description = 'Customer RFQ Size Line'
+    _order = 'sequence, id'
+
+    rfq_id = fields.Many2one('customer.rfq', string='RFQ',
+                             ondelete='cascade', required=True)
+    sequence = fields.Integer(default=10)
+    quantity = fields.Float(string='Quantity', required=True)
+    length_mm = fields.Float(string='Length (mm)')
+    width_mm = fields.Float(string='Width (mm)')
+    depth_mm = fields.Float(string='Depth (mm)')
+    description = fields.Char(string='Description')
+    costing = fields.Float(string='Costing')
 
 
 class CustomerRfqCancelWizard(models.TransientModel):
@@ -115,6 +153,145 @@ class CustomerRfq(models.Model):
         help="Free-text lab name when Lab Type is 'Other'.",
     )
 
+    growth_method = fields.Selection(
+        [('hpht', 'HPHT'), ('cvd', 'CVD')],
+        string='Growth Method', tracking=True, default='hpht',
+        help='Only relevant for Lab-grown stones (HPHT or CVD).',
+    )
+    colour_mode = fields.Selection(
+        [('white', 'White'), ('fancy', 'Fancy')],
+        string='Colour Mode', default='white', tracking=True,
+    )
+    # colour_white covers both Natural (all 6) and Lab grown (first 3 —
+    # controlled via view invisible=). Old records with 'def'/'gh'/'ij'
+    # still round-trip through Odoo as unlabelled but valid strings; new
+    # writes go through the tokens below.
+    colour_white = fields.Selection(
+        [('def', 'DEF'), ('fg', 'FG'), ('gh', 'GH'),
+         ('ij', 'IJ'), ('kl', 'KL'), ('mn', 'MN')],
+        string='Colour Range', tracking=True,
+    )
+    # Fancy colour: replaces the old pill grid with three dependent dropdowns.
+    colour_fancy = fields.Selection(
+        [('yellow', 'Yellow'), ('pink', 'Pink'), ('blue', 'Blue'),
+         ('red', 'Red'), ('green', 'Green'), ('purple', 'Purple'),
+         ('orange', 'Orange'), ('violet', 'Violet'), ('grey', 'Grey'),
+         ('black', 'Black'), ('brown', 'Brown'), ('champagne', 'Champagne'),
+         ('cognac', 'Cognac'), ('chameleon', 'Chameleon'), ('white', 'White'),
+         ('salt_and_pepper', 'Salt and Pepper'), ('other', 'Other')],
+        string='Fancy Colour', tracking=True,
+    )
+    fancy_intensity = fields.Selection(
+        [('faint', 'Faint'), ('very_light', 'Very Light'), ('light', 'Light'),
+         ('fancy_light', 'Fancy Light'), ('fancy', 'Fancy'),
+         ('fancy_dark', 'Fancy Dark'), ('fancy_intense', 'Fancy Intense'),
+         ('fancy_vivid', 'Fancy Vivid'), ('fancy_deep', 'Fancy Deep')],
+        string='Fancy Intensity', tracking=True,
+    )
+    fancy_overtone = fields.Selection(
+        [('none', 'None'), ('yellow', 'Yellow'), ('yellowish', 'Yellowish'),
+         ('pink', 'Pink'), ('pinkish', 'Pinkish'), ('blue', 'Blue'),
+         ('blueish', 'Blueish'), ('red', 'Red'), ('reddish', 'Reddish'),
+         ('green', 'Green'), ('greenish', 'Greenish'), ('purple', 'Purple'),
+         ('purplish', 'Purplish'), ('orange', 'Orange'), ('orangey', 'Orangey'),
+         ('violet', 'Violet'), ('grey', 'Grey'), ('greyish', 'Greyish'),
+         ('black', 'Black'), ('brown', 'Brown'), ('brownish', 'Brownish'),
+         ('champagne', 'Champagne'), ('cognac', 'Cognac'),
+         ('chameleon', 'Chameleon'), ('white', 'White'), ('other', 'Other')],
+        string='Fancy Overtone', tracking=True,
+    )
+
+    # ── Clarity ─────────────────────────────────────────────────────────
+    # Certified: full IGI scale. Natural adds FL/I3 vs Lab grown's VVS/VS/I2.
+    clarity_grade = fields.Selection(
+        [('FL', 'FL'), ('IF', 'IF'), ('VVS', 'VVS'), ('VVS1', 'VVS1'),
+         ('VVS2', 'VVS2'), ('VS', 'VS'), ('VS1', 'VS1'), ('VS2', 'VS2'),
+         ('SI1', 'SI1'), ('SI2', 'SI2'), ('I1', 'I1'), ('I2', 'I2'),
+         ('I3', 'I3')],
+        string='Clarity', tracking=True,
+    )
+    # Non-Certified: coarser grouped grades. Shown in place of clarity_grade
+    # when stone_certification_type == 'non_certified'.
+    clarity_non_cert = fields.Selection(
+        [('VVS', 'VVS'), ('VVS-VS', 'VVS-VS'), ('VS', 'VS'),
+         ('VS-SI', 'VS-SI'), ('SI', 'SI'), ('I1', 'I1')],
+        string='Clarity (Non-Cert)', tracking=True,
+    )
+
+    # ── Cut / Polish / Symmetry (Natural mode) ──────────────────────────
+    # Preset shortcuts sit above the three individual grade selectors.
+    cut_preset = fields.Selection(
+        [('3ex', '3EX'), ('ex_cut', 'EX Cut'), ('3vg_plus', '3VG+')],
+        string='Cut Preset', tracking=True,
+    )
+    cut_grade = fields.Selection(
+        [('8x', '8x'), ('ideal', 'Ideal'), ('excellent', 'Excellent'),
+         ('very_good', 'Very Good'), ('good', 'Good'),
+         ('fair', 'Fair'), ('poor', 'Poor')],
+        string='Cut', tracking=True,
+    )
+    polish_grade = fields.Selection(
+        [('excellent', 'Excellent'), ('very_good', 'Very Good'),
+         ('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')],
+        string='Polish', tracking=True,
+    )
+    symmetry_grade = fields.Selection(
+        [('excellent', 'Excellent'), ('very_good', 'Very Good'),
+         ('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')],
+        string='Symmetry', tracking=True,
+    )
+
+    # Multi-select variants used by the redesigned pill UI. 
+    # Preset onchange populates them from cut_preset; the user can still tick / untick any individual pill afterwards.
+    cut_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_cut_grade_rel',
+        'rfq_id', 'grade_id', string='Cut',
+        domain=[('category', '=', 'cut')], tracking=True,
+    )
+    polish_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_polish_grade_rel',
+        'rfq_id', 'grade_id', string='Polish',
+        domain=[('category', '=', 'polish')], tracking=True,
+    )
+    symmetry_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_symmetry_grade_rel',
+        'rfq_id', 'grade_id', string='Symmetry',
+        domain=[('category', '=', 'symmetry')], tracking=True,
+    )
+    fluorescence_grade_ids = fields.Many2many(
+        'customer.rfq.grade', 'customer_rfq_fluorescence_grade_rel',
+        'rfq_id', 'grade_id', string='Fluorescence',
+        domain=[('category', '=', 'fluorescence')], tracking=True,
+    )
+
+    # ── Fluorescence (Natural mode) ─────────────────────────────────────
+    fluorescence_intensity_sel = fields.Selection(
+        [('none', 'None'), ('faint', 'Faint'), ('medium', 'Medium'),
+         ('strong', 'Strong'), ('very_strong', 'Very Strong')],
+        string='Fluorescence Intensity', tracking=True,
+    )
+    fluorescence_colour_sel = fields.Selection(
+        [('blue', 'Blue'), ('yellow', 'Yellow'), ('red', 'Red'),
+         ('green', 'Green'), ('purple', 'Purple'), ('orange', 'Orange')],
+        string='Fluorescence Colour', tracking=True,
+    )
+
+    # ── Carat range (Natural mode) ──────────────────────────────────────
+    carat_min = fields.Float(string='Carat Min', tracking=True)
+    carat_max = fields.Float(string='Carat Max', tracking=True)
+    unit_type = fields.Selection(
+        [('carats', 'Carats'), ('pieces', 'Pieces')],
+        string='Unit', default='carats', tracking=True,
+    )
+    size_line_ids = fields.One2many(
+        'customer.rfq.size.line', 'rfq_id', string='Sizes',
+    )
+    reference_image = fields.Binary(
+        string='Reference Image', attachment=True,
+        help='Optional example image of the requested stone.',
+    )
+    reference_image_filename = fields.Char(string='Reference Image Filename')
+
     shape_ids = fields.Many2many(
         'customer.rfq.shape',
         'customer_rfq_shape_rel',   
@@ -129,11 +306,24 @@ class CustomerRfq(models.Model):
     clarity = fields.Char(string='Clarity', tracking=True)
     size = fields.Char(string='Size', tracking=True)
     quantity = fields.Float(string='Quantity', tracking=True)
+    cut = fields.Char(string='Cut', tracking=True)        # Free-text Cut for Lab-grown + Non-Certified stones (no grading lab).
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
-    # No tracking: a tracked change writes "Procurement Price/carat 0.00 -> 1.00"
-    # into the chatter, which Sales can read. The cost would leak there regardless of how the field itself is restricted on the form.
+    # Two-pill toggle Procurement uses to pick INR vs USD for the price
+    procurement_currency = fields.Selection(
+        [('inr', '₹'), ('usd', '$')],
+        string='Currency', default='usd', tracking=True,
+    )
+
+    @api.onchange('procurement_currency')
+    def _onchange_procurement_currency(self):
+        for rec in self:
+            if rec.procurement_currency == 'inr':
+                rec.currency_id = self.env.ref('base.INR', raise_if_not_found=False)
+            elif rec.procurement_currency == 'usd':
+                rec.currency_id = self.env.ref('base.USD', raise_if_not_found=False)
     price = fields.Float(string='Procurement Price/carat')
+    different_prices = fields.Boolean(string='Different prices', default=False)
     is_price_visible_for_user = fields.Boolean(
         string='Price Visible',
         compute='_compute_is_price_visible_for_user',
@@ -243,7 +433,43 @@ class CustomerRfq(models.Model):
             return '6_to_6_99'
         return '7_plus'
 
-    @api.depends('price', 'carat', 'tax_ids')
+    @api.onchange('price')
+    def _onchange_price_mirror_to_costing(self):
+        """Mirror the flat Procurement Price/carat into every size line's
+        Costing. Only runs when Different prices is OFF — with it ON, per-row
+        costing is user-managed."""
+        for rec in self:
+            if rec.different_prices:
+                continue
+            for sl in rec.size_line_ids:
+                sl.costing = rec.price
+
+    @api.onchange('different_prices')
+    def _onchange_different_prices_clear_flat(self):
+        """Ticking Different prices clears the flat Procurement Price/carat
+        (they are mutually exclusive). Un-ticking blanks all per-row Costings
+        so the user can enter a fresh flat price."""
+        for rec in self:
+            if rec.different_prices:
+                rec.price = 0.0
+            else:
+                for sl in rec.size_line_ids:
+                    sl.costing = 0.0
+
+    @api.onchange('size_line_ids')
+    def _onchange_size_lines_seed_costing(self):
+        """New size line inherits the current flat price when Different prices
+        is OFF, so the Costing column stays in sync as rows are added."""
+        for rec in self:
+            if rec.different_prices or not rec.price:
+                continue
+            for sl in rec.size_line_ids:
+                if not sl.costing:
+                    sl.costing = rec.price
+
+    @api.depends('price', 'carat', 'tax_ids', 'different_prices',
+                 'size_line_ids', 'size_line_ids.quantity',
+                 'size_line_ids.costing')
     def _compute_pricing_totals(self):
         """Compute the full pricing breakdown for each RFQ record.
         Formula
@@ -267,16 +493,28 @@ class CustomerRfq(models.Model):
         default_margin_pct = margin_singleton.default_margin_percentage if margin_singleton else 0.0
 
         for rec in self:
+            effective_carat = 0.0
+            if rec.size_line_ids:
+                effective_carat = sum(rec.size_line_ids.mapped('quantity')) or 0.0
+            if not effective_carat and rec.carat:
+                try:
+                    effective_carat = float(rec.carat)
+                except (TypeError, ValueError):
+                    effective_carat = 0.0
+
             # ── 1. Base price ────────────────────────────────────────────────
-            rec_base_price = rec.price * rec.carat
+            # Different prices ON → sum of (per-row costing × per-row quantity).
+            # OFF → the flat Procurement Price/carat × effective carat weight.
+            if rec.different_prices and rec.size_line_ids:
+                rec_base_price = sum(
+                    (sl.costing or 0.0) * (sl.quantity or 0.0)
+                    for sl in rec.size_line_ids
+                )
+            else:
+                rec_base_price = rec.price * effective_carat
 
             # ── 2. Margin percentage ─────────────────────────────────────────
-            # A carat band configured in the Carat–Margin Table wins for the
-            # weights it covers; the Default Margin (%) on the same Margins
-            # screen covers everything else. Without the fallback a stone under
-            # 1 carat -- which _carat_to_band() maps to None -- and any weight
-            # the table has no row for would silently be sold at cost.
-            band = self._carat_to_band(rec.carat) if rec.carat else None
+            band = self._carat_to_band(effective_carat) if effective_carat else None
             rec_margin_pct = default_margin_pct
             if band and margin_singleton_id:
                 margin_line = MarginLine.search([
@@ -320,16 +558,19 @@ class CustomerRfq(models.Model):
             else:
                 rec.is_price_visible_for_user = (rec.state == 'sent_back_to_sales')
 
+    @api.depends('state')
     @api.depends_context('uid')
     def _compute_is_price_readonly(self):
-        """Price is editable for Procurement and Admin at any time, regardless of
-        which menu they used to open the record.  Sales always sees it readonly."""
+        """Price is editable for Procurement and Admin only while the RFQ is
+        in 'sent_to_procurement' — the one state where Procurement is meant to
+        enter it (see action_send_back_to_sales). Once sent back to Sales the
+        price is locked for everyone, so a later edit can't silently drift
+        from the value Sales already saw. Sales always sees it readonly."""
         user = self.env.user
         is_procurement = user.has_group('contact_stage_bar.group_lgd_procurement')
         is_admin = user.has_group('base.group_system')
-        # Procurement and Admin can always edit the price; Sales cannot.
-        editable = is_procurement or is_admin
         for rec in self:
+            editable = (is_procurement or is_admin) and rec.state == 'sent_to_procurement'
             rec.is_price_readonly = not editable
 
     availability_status = fields.Selection(
@@ -387,6 +628,30 @@ class CustomerRfq(models.Model):
     )
 
 
+    # Preset → (cut codes, polish codes, symmetry codes) mapping. 
+    _CUT_PRESET_GRADES = {
+        '3ex': (['8x', 'ideal', 'excellent'], ['excellent'], ['excellent']),
+        'ex_cut': (['excellent'], ['excellent', 'very_good'], ['excellent', 'very_good']),
+        '3vg_plus': (['excellent', 'very_good'], ['excellent', 'very_good'], ['excellent', 'very_good']),
+    }
+
+    @api.onchange('cut_preset')
+    def _onchange_cut_preset(self):
+
+        if not self.cut_preset:
+            return
+        mapping = self._CUT_PRESET_GRADES.get(self.cut_preset)
+        if not mapping:
+            return
+        cut_codes, polish_codes, sym_codes = mapping
+        Grade = self.env['customer.rfq.grade']
+        self.cut_grade_ids = Grade.search(
+            [('category', '=', 'cut'), ('code', 'in', cut_codes)])
+        self.polish_grade_ids = Grade.search(
+            [('category', '=', 'polish'), ('code', 'in', polish_codes)])
+        self.symmetry_grade_ids = Grade.search(
+            [('category', '=', 'symmetry'), ('code', 'in', sym_codes)])
+
     @api.constrains('shape_ids')
     def _check_single_shape(self):
         """A Customer RFQ describes allows exactly one Shape."""
@@ -396,7 +661,7 @@ class CustomerRfq(models.Model):
                     "Please select only one Shape (got %d).") % len(rec.shape_ids))
 
     @api.constrains('shape_ids', 'stone_type', 'stone_certification_type',
-                    'carat', 'color', 'clarity', 'size', 'quantity')
+                    'color', 'clarity', 'size', 'quantity')
     def _check_required_specs(self):
         for rec in self:
             missing = []
@@ -406,16 +671,14 @@ class CustomerRfq(models.Model):
                 missing.append(_('Type of Stone'))
             if not rec.stone_certification_type:
                 missing.append(_('Certification'))
-            if not rec.carat:
-                missing.append(_('Carat'))
             if not rec.color:
                 missing.append(_('Color'))
             if not rec.clarity:
                 missing.append(_('Clarity'))
-            if rec.stone_certification_type == 'non_certified' and not rec.size:
+            if (rec.stone_certification_type == 'non_certified'
+                    and rec.stone_type != 'lab_grown'
+                    and not rec.size):
                 missing.append(_('Size'))
-            if rec.stone_certification_type == 'certified' and not rec.quantity:
-                missing.append(_('Quantity'))
             if missing:
                 raise ValidationError(_(
                     "These fields are mandatory on a Customer RFQ: %s."
@@ -429,7 +692,15 @@ class CustomerRfq(models.Model):
         return super(CustomerRfq, self.sudo()).create(vals_list)
 
     def write(self, vals):
-        return super(CustomerRfq, self.sudo()).write(vals)
+        result = super(CustomerRfq, self.sudo()).write(vals)
+
+        if 'price' in vals or 'different_prices' in vals:
+            for rec in self:
+                if rec.different_prices:
+                    continue
+                if rec.size_line_ids and rec.price:
+                    rec.size_line_ids.sudo().write({'costing': rec.price})
+        return result
 
     def action_send_to_procurement(self):
         for rec in self:
@@ -444,12 +715,24 @@ class CustomerRfq(models.Model):
         for rec in self:
             if rec.state != 'sent_to_procurement':
                 raise UserError(_("Only RFQs sent to Procurement can be sent back to Sales."))
-            # Enforce that Procurement must enter a price before sending back.
-            if not rec.price or rec.price <= 0:
-                raise UserError(_(
-                    "Please enter a Price before sending back to Sales. "
-                    "Sales cannot see pricing until a valid amount is set."
-                ))
+            if rec.different_prices:
+                if not rec.size_line_ids:
+                    raise UserError(_(
+                        "Different prices is on but there are no size lines to price."
+                    ))
+                unpriced = [sl for sl in rec.size_line_ids
+                            if not sl.costing or sl.costing <= 0]
+                if unpriced:
+                    raise UserError(_(
+                        "Different prices is on — every Costing must be filled "
+                        "before sending back to Sales. %d row(s) still at 0."
+                    ) % len(unpriced))
+            else:
+                if not rec.price or rec.price <= 0:
+                    raise UserError(_(
+                        "Please enter a Price before sending back to Sales. "
+                        "Sales cannot see pricing until a valid amount is set."
+                    ))
             rec.state = 'sent_back_to_sales'
             # No figures in the body, for the same reason price is not tracked:
             # the chatter is readable by Sales.
@@ -471,6 +754,16 @@ class CustomerRfq(models.Model):
         product.action_combine_sdk_fields()
         if not product.name:
             product.name = self.name
+        # Non-Certified RFQs override the auto-composed name with a
+        # deliberately generic label so the SO line reads
+        # "Non-Certified - <shape>" rather than an IGI-style trade name.
+        if self.stone_certification_type == 'non_certified':
+            shapes = ', '.join(self.shape_ids.mapped('name'))
+            product.name = _("Non-Certified - %s") % (shapes or self.name)
+            # Marker used by product.template form to hide the Certificate
+            # Number field and the "Fetch from IGI" button for 'Non-Certified'.
+            product.certificate_type = 'Non-Certified'
+            product.is_non_certified_source = True
         return product
 
     def action_open_cancel_wizard(self):
@@ -517,6 +810,11 @@ class CustomerRfq(models.Model):
         self.sudo().message_post(body=body)
         return True
 
+    # Safety threshold — if a single size-line quantity is above this we ask
+    # the user to confirm before spawning that many lines (guards against
+    # typos like "1000" that would create an unmanageable sale order).
+    _OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD = 50
+
     def action_create_offline_order(self):
         self.ensure_one()
         if self.state == 'offline_order_created':
@@ -526,34 +824,38 @@ class CustomerRfq(models.Model):
         if not self.partner_id:
             raise UserError(_("Customer is required to create an Offline Order."))
 
-        description = self.name
-        if self.size:
-            description = _("%s - Size: %s") % (self.name, self.size)
-
         unit_price = self.total_price if self.total_price else self.price
         product = self._create_requested_stone(unit_price)
 
+        base_vals = {
+            'product_template_id': product.id,
+            'product_id':          product.product_variant_id.id,
+            'product_uom':         product.uom_id.id,
+            'shapes':              ', '.join(self.shape_ids.mapped('name')),
+            'color':               self.color,
+            'clarity':             self.clarity,
+            'carat_weight':        str(self.carat) if self.carat else False,
+            'price_unit':          unit_price,
+        }
+
+        line_vals = self._build_offline_order_lines(base_vals)
+        if not line_vals:
+            raise UserError(_(
+                "Cannot create an Offline Order: the RFQ has no size lines "
+                "and no legacy Quantity set."
+            ))
+
         order = self.env['custom.sale.order'].create({
-            'partner_id': self.partner_id.id,
-            'state': 'draft',
+            'partner_id':      self.partner_id.id,
+            'state':           'draft',
             'customer_rfq_id': self.id,
-            'order_line': [(0, 0, {
-                'name': description,
-                'product_template_id': product.id,
-                'product_id': product.product_variant_id.id,
-                'product_uom': product.uom_id.id,
-                'shapes': ', '.join(self.shape_ids.mapped('name')),
-                'color': self.color,
-                'clarity': self.clarity,
-                'carat_weight': str(self.carat) if self.carat else False,
-                # Carry the RFQ's requested quantity through to the order line.
-                # Total_price is the all-in price for ONE stone of this spec
-                # (price/carat x carat + margin + tax), so it is the unit price and the quantity multiplies it.
-                'product_uom_qty': self.quantity or 1.0,
-                'price_unit': self.total_price if self.total_price else self.price,
-            })],
+            'order_line':      [(0, 0, vals) for vals in line_vals],
         })
-        self.message_post(body=_("Offline Order %s created.") % order.name)
+
+        self.message_post(body=_(
+            "Offline Order %(order)s created with %(count)d line(s)."
+        ) % {'order': order.name, 'count': len(line_vals)})
+
         # Advance the RFQ so the "Create Offline Order" button hides and a second
         # offline order can't be created from the same RFQ.
         self.state = 'offline_order_created'
@@ -566,3 +868,76 @@ class CustomerRfq(models.Model):
             'view_mode': 'form',
             'target': 'current',
         }
+
+    def _build_offline_order_lines(self, base_vals):
+        """Expand every size_line row into N per-stone dicts.
+
+        Rules:
+        - int(round-down) for pieces, int(round-nearest) for carats.
+        - Big-Qty guard: raise UserError if any single row asks for > threshold
+          stones, so a typo doesn't silently generate 1000+ lines.
+        - Falls back to a single row for legacy RFQs (no size_line_ids); uses
+          the legacy `quantity` field as the count.
+        - Traces every generated line back to its source size_line via
+          rfq_size_line_id.
+        """
+        line_vals = []
+
+        if self.size_line_ids:
+            unit_is_pieces = (self.unit_type or 'carats') == 'pieces'
+            for size_line in self.size_line_ids:
+                raw_qty = size_line.quantity or 0.0
+                count = int(raw_qty) if unit_is_pieces else int(round(raw_qty))
+                if count <= 0:
+                    continue
+                if count > self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD:
+                    raise UserError(_(
+                        "One of the size lines requests %(count)d stones "
+                        "(quantity %(qty)s). This is above the safety "
+                        "threshold of %(threshold)d — please split the row "
+                        "if this is intentional."
+                    ) % {
+                        'count': count,
+                        'qty': raw_qty,
+                        'threshold': self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD,
+                    })
+
+                desc = self.name
+                if size_line.description:
+                    desc = _("%s - %s") % (self.name, size_line.description)
+                else:
+                    dims = " × ".join(
+                        f"{v:g}" for v in (size_line.length_mm, size_line.width_mm,
+                                           size_line.depth_mm) if v
+                    )
+                    if dims:
+                        desc = _("%s (%s mm)") % (self.name, dims)
+                for _n in range(count):
+                    line_vals.append({
+                        **base_vals,
+                        'name': desc,
+                        'product_uom_qty': 1.0,
+                        'rfq_size_line_id': size_line.id,
+                    })
+            return line_vals
+
+        # Legacy fallback: no guided-intake size lines. Use legacy quantity + size.
+        legacy_qty = int(self.quantity) if self.quantity else 1
+        if legacy_qty > self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD:
+            raise UserError(_(
+                "The RFQ quantity (%(qty)d) is above the safety threshold "
+                "of %(threshold)d — please split the RFQ if this is intentional."
+            ) % {
+                'qty': legacy_qty,
+                'threshold': self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD,
+            })
+        legacy_desc = self.name
+        if self.size:
+            legacy_desc = _("%s - Size: %s") % (self.name, self.size)
+        for _n in range(max(1, legacy_qty)):
+            line_vals.append({
+                **base_vals,
+                'name': legacy_desc,
+                'product_uom_qty': 1.0,
+            })
+        return line_vals

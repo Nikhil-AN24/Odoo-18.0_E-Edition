@@ -14,34 +14,10 @@
                 <field name="location" readonly="state != 'draft'"/>
             </xpath>
 
-            <!-- After the Arrival (effective_date) field: Discount / Payment Terms
-                 selections + their Melee Many2many lists (shown only when Melee). -->
-            <xpath expr="//field[@name='effective_date']" position="after">
-                <!-- Discount -->
-                <field name="discount_type"/>
-                <field name="discount_melee_ids"
-                       widget="many2many_tags"
-                       invisible="discount_type != 'melee'"
-                       options="{'no_quick_create': True}"/>
-                <field name="discount_diamond_type"
-                       string="Diamond Type"
-                       invisible="discount_type != 'diamonds'"/>
-                <field name="discount_diamond_grade"
-                       string="Diamond Grade"
-                       invisible="discount_type != 'diamonds' or not discount_diamond_type"/>
-                <!-- Payment Terms -->
-                <field name="augmont_payment_terms"/>
-                <field name="payment_melee_ids"
-                       widget="many2many_tags"
-                       invisible="augmont_payment_terms != 'melee'"
-                       options="{'no_quick_create': True}"/>
-                <field name="payment_diamond_type"
-                       string="Diamond Type"
-                       invisible="augmont_payment_terms != 'diamonds'"/>
-                <field name="payment_diamond_grade"
-                       string="Diamond Grade"
-                       invisible="augmont_payment_terms != 'diamonds' or not payment_diamond_type"/>
-            </xpath>
+            <!-- Discount % / payment days are now per-line (PRD §5.6), derived
+                 from the vendor master and shown in the order_line list below —
+                 no header-level Discount/Payment Terms fields anymore. -->
+
             <xpath expr="//field[@name='order_line']/list/field[@name='product_qty']" position="attributes">
                 <attribute name="widget">integer</attribute>
             </xpath>
@@ -130,11 +106,16 @@
                 <field name="custom_discount" string="Discount" optional="show"/>
                 <field name="rate_usd" string="Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show"/>
                 <field name="bank_rate" string="Bank Rate" optional="show"/>
+                <field name="stone_type" optional="show"/>
+                <field name="stone_certification_type" string="Certification" optional="show"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
                 <field name="rupees_rate" string="Rupees Rate" readonly="1" force_save="1" optional="show"/>
                 <field name="weight" string="Weight" optional="show"/>
+                <field name="discount_percent" string="Vendor Discount %" optional="show"/>
+                <field name="payment_days" string="Payment Terms (Days)" optional="show"/>
+                <field name="expected_net" string="Expected Net" widget="monetary" optional="show"/>
             </xpath>
 
             <xpath expr="//page[@name='purchase_delivery_invoice']" position="attributes">
