@@ -27,19 +27,40 @@ class ProductTemplate(models.Model):
     website_product_id = fields.Char()
     certificate = fields.Char(string="Certificate Number")
     certificate_type = fields.Char(string="Certificate Type")
-    # Set by customer.rfq._create_requested_stone when the source RFQ is
-    # Non-Certified. Product form hides Certificate Number + Fetch from IGI
-    # when this is True.
+    purchase_ok = fields.Boolean(default=False)
     is_non_certified_source = fields.Boolean(
         string="Non-Certified Source",
         default=False,
         help="True when this product record was spawned from a Non-Certified RFQ.",
     )
+
+    # True when the current user belongs to any LGD Sales role — used by the
+    # product form to make the General Information tab viewable-only for
+    # Sales groups. Procurement roles and Admin see it editable as usual.
+    is_readonly_for_sales_view = fields.Boolean(
+        string="Readonly for Sales",
+        compute='_compute_is_readonly_for_sales_view',
+    )
+
+    @api.depends_context('uid')
+    def _compute_is_readonly_for_sales_view(self):
+        user = self.env.user
+        is_sales = (
+            user.has_group('contact_stage_bar.group_lgd_sales')
+            or user.has_group('contact_stage_bar.group_lgd_regional_sales_head')
+            or user.has_group('contact_stage_bar.group_lgd_sales_manager')
+        )
+        is_admin = user.has_group('base.group_system')
+        is_procurement = (
+            user.has_group('contact_stage_bar.group_lgd_procurement')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        for rec in self:
+            rec.is_readonly_for_sales_view = is_sales and not (is_admin or is_procurement)
     
     measurements = fields.Char(string="Measurements")
     weight = fields.Char(string="Carat Weight")
     # ── Diamond spec fields ──────────────────────────────────────────────────
-    # tracking=True writes a chatter entry with who/when on every change.
     weight_carat = fields.Char(string="Carat Weight", tracking=True)
     color = fields.Char(string="Color", tracking=True)
     clarity = fields.Char(string="Clarity", tracking=True)
@@ -266,11 +287,7 @@ class ProductTemplate(models.Model):
         _set('lab_id',                 'igi')
         _set('certificate_type',       'IGI')
 
-        # Auto-generate product name in the diamond trade nomenclature:
-        #   "<Shape> <W>ct <Color> <Clarity> - <Cut> <Polish> <Symmetry>"
-        # Cut is dropped when empty (fancy shapes like Marquise/Princess don't
-        # get a cut grade — IGI returns "" and the trade convention leaves the
-        # slot empty rather than typing "-- -- --").
+
         name = self._igi_compose_name(data)
         if name:
             _set('name', name)

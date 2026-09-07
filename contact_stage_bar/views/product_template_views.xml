@@ -6,12 +6,7 @@
             <field name="model">product.template</field>
             <field name="inherit_id" ref="product.product_template_form_view"/>
             <field name="arch" type="xml">
-                <!-- <xpath expr="//button[@name='action_update_quantity_on_hand']" position="attributes">
-                    <attribute name="invisible">1</attribute>
-                </xpath>  -->
-                <!-- <xpath expr="//button[@name='action_update_quantity_on_hand']" position="attributes">
-                    <attribute name="invisible">1</attribute>
-                </xpath>  -->
+
                 <xpath expr="//button[@name='action_open_label_layout']" position="attributes">
                     <attribute name="invisible">1</attribute>
                 </xpath>
@@ -24,8 +19,6 @@
                                     invisible="sdk_is_code_enabled"/>
                                     </xpath>
                 <xpath expr="//label[@for='name']" position="before">
-                    <!-- Loaded so is_non_certified_source is available to
-                         invisible= expressions on the elements below. -->
                     <field name="is_non_certified_source" invisible="1"/>
                     <div invisible="is_non_certified_source">
                         <h1>
@@ -52,10 +45,7 @@
                     <field name="certificate_type" groups="!contact_stage_bar.group_lgd_procurement"/>
                     <field name="website_product_id" readonly="1"/>
                     <field name="url_link" readonly="1" widget="url"/>
-                    <!-- Required= dropped: the IGI fetch auto-fills these on new
-                         records, but legacy records may have blank values that
-                         would otherwise block save. Users can still leave them
-                         blank if IGI is down or the certificate is unknown. -->
+     
                     <field name="shapes"/>
                     <field name="weight_carat"/>
                     <field name="clarity"/>
@@ -76,8 +66,7 @@
                     <field name="width"/>
                     <field name="depth"/>
                     <field name="eye_clean"/>
-                    <!-- Required= dropped for Polish/Symmetry too — see comment
-                         above on the 4C fields. Cut was already optional. -->
+  
                     <field name="polish"/>
                     <field name="cut"/>
                     <field name="symmetry"/>
@@ -122,11 +111,136 @@
                     <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
                 </xpath>
 
+                <!-- Purchase: only Procurement groups + Admin. -->
                 <xpath expr="//page[@name='purchase']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_sales</attribute>
+                    <attribute name="groups">contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,base.group_system</attribute>
+                </xpath>
+                <!-- Sales: only Sales groups + Admin. -->
+                <xpath expr="//page[@name='sales']" position="attributes">
+                    <attribute name="groups">contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_regional_sales_head,contact_stage_bar.group_lgd_sales_manager,base.group_system</attribute>
                 </xpath>
 
+                <!-- Expose is_readonly_for_sales_view so the General Info
+                     page can bind readonly= to it (only sales roles → True). -->
+                <xpath expr="//page[@name='general_information']" position="before">
+                    <field name="is_readonly_for_sales_view" invisible="1"/>
+                </xpath>
 
+                <xpath expr="//field[@name='type']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='combo_ids']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='service_tracking']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='list_price']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='categ_id']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='company_id']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='description']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='lab_id']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='labs']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='lgd_stock_number']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='stock_number']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='certificate_type']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='shapes']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='weight_carat']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='clarity']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='color']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='luster']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='shade']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='fluorescence_color']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='fluorescence_intensity']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='measurements']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='length']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='width']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='depth']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='eye_clean']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='polish']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='cut']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='symmetry']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='treatments']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='country_id']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='order_specific']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='item_notes']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='customer_reference_note']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='default_qc_requirements']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='final_price_margin']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='standard_price']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='invoice_policy']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='is_storable']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
             </field>
         </record>
 
@@ -151,12 +265,25 @@
             <field name="model">product.template</field>
             <field name="inherit_id" ref="product.product_template_only_form_view"/>
             <field name="arch" type="xml">
+                <!-- Sales tab: only Sales groups + Admin. -->
                 <xpath expr="//page[@name='sales']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_regional_sales_head,contact_stage_bar.group_lgd_sales_manager,base.group_system</attribute>
                 </xpath>
-                <!-- Hide the "Purchase" notebook page for LGD Procurement -->
+                <!-- Purchase tab: only Procurement groups + Admin. -->
                 <xpath expr="//page[@name='purchase']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,base.group_system</attribute>
+                </xpath>
+                <!-- Attributes & Variants: Admin only. -->
+                <xpath expr="//page[@name='variants']" position="attributes">
+                    <attribute name="groups">base.group_system</attribute>
+                </xpath>
+                <!-- General Info: readonly for LGD Sales roles. -->
+                <xpath expr="//page[@name='general_information']" position="before">
+                    <field name="is_readonly_for_sales_view" invisible="1"/>
+                </xpath>
+
+                <xpath expr="//page[@name='general_information']/group" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
                 </xpath>
                 <!-- hide the Sales/Purchase checkboxes near the product
                      name, the "Product Type" radio (Goods/Service/Combo),
@@ -165,7 +292,7 @@
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 </xpath>
                 <xpath expr="//field[@name='purchase_ok']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_regional_sales_head,!contact_stage_bar.group_lgd_sales_manager</attribute>
                 </xpath>
                 <xpath expr="//field[@name='type']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
@@ -175,6 +302,13 @@
                 </xpath>
                 <xpath expr="//field[@name='is_storable']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='default_code']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+                <xpath expr="//field[@name='barcode']" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
                 </xpath>
             </field>
         </record>
@@ -186,27 +320,34 @@
             <field name="arch" type="xml">
                 <xpath expr="//button[@name='action_fetch_certificate_data']" position="replace"/>
 
+                <!-- Sales tab: only Sales groups + Admin. -->
                 <xpath expr="//page[@name='sales']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_regional_sales_head,contact_stage_bar.group_lgd_sales_manager,base.group_system</attribute>
                 </xpath>
-                <!-- hide the "Purchase" notebook page for LGD Procurement -->
+                <!-- Purchase tab: only Procurement groups + Admin. -->
                 <xpath expr="//page[@name='purchase']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,base.group_system</attribute>
                 </xpath>
-                <!-- hide the Sales/Purchase checkboxes near the product
-                     name, the "Product Type" radio (Goods/Service/Combo),
-                     and "Cost" for LGD Procurement. -->
+
+                <!-- General Info: readonly for LGD Sales roles. -->
+                <xpath expr="//page[@name='general_information']" position="before">
+                    <field name="is_readonly_for_sales_view" invisible="1"/>
+                </xpath>
+
+                <xpath expr="//page[@name='general_information']/group" position="attributes">
+                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
+                </xpath>
+
                 <xpath expr="//field[@name='sale_ok']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 </xpath>
                 <xpath expr="//field[@name='purchase_ok']" position="attributes">
-                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                    <attribute name="groups">!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_regional_sales_head,!contact_stage_bar.group_lgd_sales_manager</attribute>
                 </xpath>
                 <xpath expr="//field[@name='type']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 </xpath>
-                <!-- Cost field: hidden for BOTH LGD Procurement and LGD Sales.
-                     Sales Manager inherits Sales, so it is hidden for them too. -->
+
                 <xpath expr="//field[@name='standard_price']" position="attributes">
                     <attribute name="groups">!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales</attribute>
                 </xpath>
