@@ -130,20 +130,6 @@
                  <attribute name="invisible">[('state', '=', 'cancel')]</attribute>
             </xpath>
 
-            <!-- <xpath expr="//field[@name='order_line']" position="before"> -->
-            <!-- <xpath expr="//button[@name='action_quotation_send']" position="after"> -->
-                <!-- <button name="action_open_product_popup"
-                        type="object"
-                        string="Add New Product"
-                        class="btn-primary"
-                                
-                                
-                /> -->
-            <!-- <xpath expr="//field[@name='order_line']/list" position="attributes">
-                <attribute name="edit">False</attribute>
-            </xpath> -->
-            <!-- </xpath> -->  
-
             <xpath expr="//button[@name='action_quotation_send']" position="after">
                 <button name="create_sale_payment" string="Register Payment" type="object" class="btn-primary" groups="base.group_user" invisible="1"></button>
             </xpath>
@@ -249,8 +235,10 @@
 
             <xpath expr="//field[@name='partner_id']" position="attributes">
                 <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                <!-- Drop show_address so the customer name renders without the  multi-line address block underneath. -->
+                <attribute name="context">{'res_partner_search_mode': 'customer', 'show_vat': True}</attribute>
             </xpath>
-            
+
             <xpath expr="//field[@name='payment_term_id']" position="attributes">
                 <attribute name="readonly">state != 'draft'</attribute>
             </xpath>
@@ -271,20 +259,6 @@
                 <attribute name="options">{}</attribute>
                 <attribute name="domain">[('is_show_product', '!=', False)]</attribute>
             </xpath>
-
-            <!-- <xpath expr="//field[@name='order_line']//field[@name='price_unit']" position="after">
-                <field name="availability_status" string="Availability" readonly="parent.state != 'draft'" required="1"/>
-                <field name="certificate" readonly="1" />
-                <field name="stock_number" readonly="1" string="Vendor SKU"/>
-                <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                <field name="shapes" readonly="1"/>
-                <field name="carat_weight" readonly="1"/>
-                <field name="color" readonly="1"/>
-                <field name="clarity" readonly="1"/>
-                <field name="vendor_id"/>
-                <field name="vendor_city"/>
-                <field name="final_price"/>
-            </xpath> -->              
 
             <xpath expr="//field[@name='order_line']" position="before">
                 <style>
