@@ -97,6 +97,16 @@ class CustomSaleOrder(models.Model):
     payment_term_id = fields.Many2one('account.payment.term', string='Payment Terms',
                                       domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]")
 
+    # Mirrors res.partner.terms (Advance / Credit / Cash on Delivery). Related
+    # so it auto-refreshes when the Customer changes; writable so Sales can
+    # override on a per-order basis without editing the partner.
+    terms = fields.Selection([
+        ('advance', 'Advance'),
+        ('credit', 'Credit'),
+        ('cod', 'Cash on Delivery'),
+    ], string='Payment Terms',
+        related='partner_id.terms', store=True, readonly=False)
+
     # Link to created sale order
     sale_order_id = fields.Many2one('sale.order', string='Created Sale Order', readonly=True, copy=False)
 
@@ -123,6 +133,10 @@ class CustomSaleOrder(models.Model):
         if self.partner_id:
             self.pricelist_id = self.partner_id.property_product_pricelist.id
             self.payment_term_id = self.partner_id.property_payment_term_id.id
+            # Auto-fill Shipping Address from the partner's computed
+            # shipping block (shipping_street + city + state + country).
+            if self.partner_id.shipping_address:
+                self.shipping_address = self.partner_id.shipping_address
 
     @api.depends('order_line.availability_status', 'sale_state')
     def _compute_augmont_status_from_lines(self):
