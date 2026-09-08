@@ -173,10 +173,14 @@
                                    readonly="is_price_readonly"
                                    invisible="stone_type == 'lab_grown' and stone_certification_type == 'certified'"
                                    groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
+                            <!-- Sales Price/carat is hidden once the RFQ is
+                                 sent back to Sales for Non-Certified + Different
+                                 prices — per-row Sales Price/Carat inside the
+                                 Quantity & Size table replaces it. -->
                             <field name="total_price" string="Sales Price/carat"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
-                                   invisible="not is_price_visible_for_user"
+                                   invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales')"
                                    groups="!contact_stage_bar.group_lgd_procurement"/>
 
                             <field name="owner_id" string="Owner"
@@ -218,7 +222,13 @@
                                readonly="state not in ('sent_to_procurement',)"
                                invisible="state == 'draft' or unit_type == 'pieces'">
                             <list editable="bottom" create="0">
-                                <!-- Costing header carries the parent's Currency symbol ₹ / $ -->
+                                <!-- Sales Price/Carat (per row) surfaces once
+                                     the RFQ is sent back to Sales. Value = costing × (1 + margin_percentage / 100). -->
+                                <field name="sales_price_per_carat"
+                                       string="Sales Price/Carat"
+                                       column_invisible="parent.state not in ('sent_back_to_sales', 'offline_order_created')"
+                                       readonly="1"
+                                       groups="!contact_stage_bar.group_lgd_procurement"/>
                                 <field name="costing" string="Costing ₹"
                                        column_invisible="parent.procurement_currency != 'inr'"
                                        readonly="not parent.different_prices"
@@ -249,12 +259,17 @@
                                 <field name="description"/>
                             </list>
                         </field>
+                        <!-- POST-DRAFT variant (Pieces): create="0" hides "Add a line". -->
                         <field name="size_line_ids" nolabel="1" colspan="2"
                                context="{'default_rfq_id': id}"
                                readonly="state not in ('sent_to_procurement',)"
                                invisible="state == 'draft' or unit_type != 'pieces'">
                             <list editable="bottom" create="0">
-                                   <!-- Costing header carries the parent's Currency symbol ₹ / $ -->
+                                <field name="sales_price_per_carat"
+                                       string="Sales Price/Carat"
+                                       column_invisible="parent.state not in ('sent_back_to_sales', 'offline_order_created')"
+                                       readonly="1"
+                                       groups="!contact_stage_bar.group_lgd_procurement"/>
                                 <field name="costing" string="Costing ₹"
                                        column_invisible="parent.procurement_currency != 'inr'"
                                        readonly="not parent.different_prices"

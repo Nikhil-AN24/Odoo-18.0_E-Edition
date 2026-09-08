@@ -68,7 +68,19 @@ class CustomerRfqSizeLine(models.Model):
     depth_mm = fields.Float(string='Depth (mm)')
     description = fields.Char(string='Description')
     costing = fields.Float(string='Costing')
+    # Per-row Sales Price/Carat surfaced on the Sales side once Procurement sends the RFQ back.
+    # Formula: costing × (1 + margin_percentage / 100).
+    sales_price_per_carat = fields.Float(
+        string='Sales Price/Carat',
+        compute='_compute_sales_price_per_carat',
+        store=False,
+    )
 
+    @api.depends('costing', 'rfq_id.margin_percentage')
+    def _compute_sales_price_per_carat(self):
+        for line in self:
+            pct = line.rfq_id.margin_percentage or 0.0
+            line.sales_price_per_carat = (line.costing or 0.0) * (1.0 + pct / 100.0)
 
 class CustomerRfqCancelWizard(models.TransientModel):
     _name = 'customer.rfq.cancel.wizard'
@@ -86,7 +98,6 @@ class CustomerRfqCancelWizard(models.TransientModel):
         self.ensure_one()
         self.rfq_id._apply_cancellation(self.reason_ids, self.comment)
         return {'type': 'ir.actions.act_window_close'}
-
 
 class CustomerRfq(models.Model):
     _name = 'customer.rfq'
@@ -734,8 +745,6 @@ class CustomerRfq(models.Model):
                         "Sales cannot see pricing until a valid amount is set."
                     ))
             rec.state = 'sent_back_to_sales'
-            # No figures in the body, for the same reason price is not tracked:
-            # the chatter is readable by Sales.
             rec.message_post(body=_("Sent back to Sales team."))
 
     def _create_requested_stone(self, unit_price):
