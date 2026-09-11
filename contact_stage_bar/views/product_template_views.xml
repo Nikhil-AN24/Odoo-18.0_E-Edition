@@ -26,19 +26,19 @@
                             <field name="certificate"/>
                         </h1>
                         <div class="mb-2">
-                            <!-- Visible unless the record is explicitly marked as a
-                                 non-IGI lab; the Python action also raises a clear
-                                 UserError if certificate is empty or lab isn't IGI. -->
+                            <!-- Visible unless LAB names a non-IGI lab; the Python
+                                 action also raises a clear UserError if certificate
+                                 is empty or lab isn't IGI. -->
+                            <field name="is_igi_lab" invisible="1"/>
                             <button name="action_fetch_igi_data"
                                     type="object"
                                     string="Fetch from IGI"
                                     class="btn-primary"
-                                    invisible="lab_id not in (False, 'igi')"/>
+                                    invisible="not is_igi_lab"/>
                         </div>
                     </div>
                 </xpath>
                 <xpath expr="//group[@name='group_general']" position="inside">
-                    <field name="lab_id"/>
                     <field name="labs"/>
                     <field name="lgd_stock_number"/>
                     <field name="stock_number"/>
@@ -146,9 +146,6 @@
                     <attribute name="readonly">is_readonly_for_sales_view</attribute>
                 </xpath>
                 <xpath expr="//field[@name='description']" position="attributes">
-                    <attribute name="readonly">is_readonly_for_sales_view</attribute>
-                </xpath>
-                <xpath expr="//field[@name='lab_id']" position="attributes">
                     <attribute name="readonly">is_readonly_for_sales_view</attribute>
                 </xpath>
                 <xpath expr="//field[@name='labs']" position="attributes">

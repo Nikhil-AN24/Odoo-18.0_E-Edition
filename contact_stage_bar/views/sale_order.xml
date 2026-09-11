@@ -11,8 +11,12 @@
         <field name="inherit_id" ref="sale.sale_order_tree"/>
         <field name="arch" type="xml">
             <!-- Make list editable so Salesperson can be changed inline / in bulk -->
+            <!-- Newest arrivals first: website orders carry the platform's
+                 invoice date as Order Date, which can be older than when the
+                 order reached Odoo, so sort on creation time instead. -->
             <xpath expr="//list" position="attributes">
                 <attribute name="multi_edit">1</attribute>
+                <attribute name="default_order">create_date desc, id desc</attribute>
             </xpath>
             <xpath expr="//field[@name='user_id']" position="attributes">
                 <attribute name="readonly">0</attribute>
@@ -27,6 +31,7 @@
                     decoration-warning="sdk_augmont_status in ['Payment Pending', 'Not available', 'Diamond Booked', 'Order Received', 'Return of Order']"
                     decoration-info="sdk_augmont_status in ['In QC process', 'Dispatched', 'Re - Dispatched']"
                     decoration-success="sdk_augmont_status in ['Confirmed', 'Order Confirmed', 'Payment Completed', 'Delivered', 'Order Completed']"/>
+                <field name="stone_list_names" optional="show"/>
             </xpath>
             <xpath expr="//field[@name='name']" position="after">
                 <field name="sdk_augmont_number"/>
@@ -216,6 +221,7 @@
             
             <xpath expr="//field[@name='payment_term_id']" position="after">
                 <field name="sdk_augmont_status" readonly="1"/>
+                <field name="stone_list_names"/>
                 <field name="user_id" string="Salesperson" widget="many2one_avatar_user"
                        groups="!contact_stage_bar.group_lgd_procurement"/>
                 <field name="is_website" invisible="1"/>
@@ -308,6 +314,36 @@
                 </style>
             </xpath>
 
+            <!-- Procurement users limited to some stone lists see only those
+                 lines: the full Order Lines table is swapped for
+                 procurement_line_ids, a filtered view of the same lines. -->
+            <xpath expr="//field[@name='order_line']" position="attributes">
+                <attribute name="invisible">is_stone_restricted</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']" position="after">
+                <field name="is_stone_restricted" invisible="1"/>
+                <field name="procurement_line_ids" invisible="not is_stone_restricted"
+                       readonly="state != 'draft'">
+                    <list editable="bottom" create="0" delete="0">
+                        <field name="display_type" column_invisible="True"/>
+                        <field name="line_type" column_invisible="True"/>
+                        <field name="is_melee_parent" column_invisible="True"/>
+                        <field name="availability_status" string="Availability"/>
+                        <field name="order_number" readonly="1"/>
+                        <field name="product_template_id" readonly="1"/>
+                        <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
+                        <field name="certificate" readonly="1"/>
+                        <field name="vendor_id" readonly="1"/>
+                        <field name="stock_number" readonly="1" string="Vendor SKU"/>
+                        <field name="vendor_city" readonly="1" optional="show"/>
+                        <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                        <field name="stone_type" optional="show"/>
+                        <field name="stone_certification_type" optional="show"/>
+                        <field name="treatments" readonly="1"/>
+                    </list>
+                </field>
+            </xpath>
+
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="before">
                 <field name="availability_status" string="Availability"
                        groups="contact_stage_bar.group_lgd_sales"
@@ -325,6 +361,8 @@
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                <field name="stone_type" optional="show"/>
+                <field name="stone_certification_type" optional="show"/>
                 <field name="treatments"/>
             
                 <field name="shapes" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>

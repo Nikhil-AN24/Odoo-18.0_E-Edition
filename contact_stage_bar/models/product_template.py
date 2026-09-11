@@ -1,6 +1,7 @@
 import email
 from odoo import models, fields, api
 from odoo.exceptions import ValidationError,UserError
+from odoo.tools.sql import column_exists
 from odoo.http import request
 import requests
 from odoo import _
@@ -15,15 +16,14 @@ _logger = logging.getLogger(__name__)
 class ProductTemplate(models.Model):
     _inherit = "product.template" 
 
-    labs = fields.Char(string='LAB')
-    lab_id = fields.Selection(
-        [('igi', 'IGI'), ('gia', 'GIA'), ('other', 'Other')],
-        string='Lab', tracking=True,
-        help="IGI auto-fetches specs from the certificate number. GIA and "
-             "Other labs are manual entry only — left blank, auto-fetch "
-             "still applies (matches existing behaviour for records that "
-             "haven't picked a lab yet).",
+    labs = fields.Char(
+        string='LAB',
+        help="Grading lab, as sent by the Augmont website (e.g. IGI, WISE, "
+             "No-cert). IGI — or blank — auto-fetches specs from the "
+             "certificate number; any other lab is manual entry only.",
     )
+    # Replaces the former lab_id selection, which duplicated labs.
+    is_igi_lab = fields.Boolean(compute='_compute_is_igi_lab')
     website_product_id = fields.Char()
     certificate = fields.Char(string="Certificate Number")
     certificate_type = fields.Char(string="Certificate Type")
@@ -79,7 +79,7 @@ class ProductTemplate(models.Model):
     price_per_carat = fields.Float(string="Vendor Price Per Carat")
     country_id = fields.Many2one('res.country',string="Country")
     stock_number = fields.Char(string="Vendor Stock Number")
-    lgd_stock_number = fields.Char(string="Lgd Stock Number")
+    lgd_stock_number = fields.Char(string="Website Stock Number")
     
     length = fields.Float(string="Length")
     width = fields.Float(string="Width")
@@ -199,13 +199,35 @@ class ProductTemplate(models.Model):
             else:
                 record.url_link = False
 
+    @api.depends('labs')
+    def _compute_is_igi_lab(self):
+        # Blank counts as IGI, so records with no lab still auto-fetch.
+        for record in self:
+            record.is_igi_lab = (record.labs or 'IGI').strip().upper() == 'IGI'
+
+    @api.model
+    def _lgd_backfill_labs_from_lab_id(self):
+        cr = self.env.cr
+        if not column_exists(cr, 'product_template', 'lab_id'):
+            return
+        cr.execute("""
+            UPDATE product_template
+               SET labs = CASE lab_id WHEN 'igi' THEN 'IGI'
+                                      WHEN 'gia' THEN 'GIA'
+                                      ELSE 'Other' END
+             WHERE lab_id IS NOT NULL AND COALESCE(labs, '') = ''
+        """)
+        if cr.rowcount:
+            _logger.info("Copied lab_id into labs on %s product(s)", cr.rowcount)
+            self.invalidate_model(['labs'])
+
     @api.onchange('certificate')
     def _onchange_certificate_autofetch(self):
 
         from ..services import igi_service
         if not self.certificate:
             return
-        if self.lab_id and self.lab_id != 'igi':
+        if not self.is_igi_lab:
             # Lab explicitly marked non-IGI — manual entry only, never call out.
             return
         try:
@@ -233,7 +255,7 @@ class ProductTemplate(models.Model):
         self.ensure_one()
         if not self.certificate:
             raise UserError(_("Please enter a Certificate Number first."))
-        if self.lab_id and self.lab_id != 'igi':
+        if not self.is_igi_lab:
             raise UserError(_(
                 "This record is marked as a non-IGI lab. IGI fetch does not "
                 "apply — please enter specs manually."
@@ -284,7 +306,6 @@ class ProductTemplate(models.Model):
         _set('width',                  data.get('width_mm'))
         _set('depth',                  data.get('depth_mm'))
         _set('labs',                   'IGI')
-        _set('lab_id',                 'igi')
         _set('certificate_type',       'IGI')
 
 

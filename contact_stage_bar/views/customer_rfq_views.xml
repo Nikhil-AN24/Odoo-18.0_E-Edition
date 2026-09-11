@@ -21,9 +21,7 @@
                 <field name="color"/>
                 <field name="clarity"/>
                 <field name="size"/>
-                <!-- Procurement cost: never shown to Sales or Sales Managers.
-                     group_lgd_sales_manager implies group_lgd_sales, so negating
-                     the one group covers both roles. -->
+                <!-- Procurement cost: never shown to Sales or Sales Managers. -->
                 <field name="price" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="state" widget="badge"
                        decoration-info="state == 'draft'"
@@ -433,49 +431,54 @@ action = action_vals
     <!-- Customer Orders menu under Purchase -->
     <menuitem id="menu_customer_orders_procurement" name="Customer Quotations" parent="purchase.menu_purchase_root" action="action_customer_orders_procurement" sequence="-1" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
     
-    <!-- Orders: sale.order list inside Procurement.
-         Separate server action so the breadcrumb shows "Orders" instead
-         of "Sales" when accessed from Procurement. Same group-aware domain
-         logic as action_dynamic_sales_orders. -->
     <record id="action_dynamic_cfq_orders_procurement" model="ir.actions.server">
-        <field name="name">Orders</field>
+        <field name="name">All Orders</field>
         <field name="model_id" ref="sale.model_sale_order"/>
         <field name="state">code</field>
-        <field name="code"><![CDATA[
-action_vals = dict(env.ref('sale.action_orders').sudo().read()[0])
-action_vals['id'] = env.ref('contact_stage_bar.action_dynamic_cfq_orders_procurement').id
-action_vals['name'] = 'Orders'
-action_vals['display_name'] = 'Orders'
-action_vals.pop('path', None)
-action_vals.pop('xml_id', None)
-
-# Procurement reads the orders Sales has raised; it never raises them here, so
-# the New button and the control-panel cog (Import / Export / Duplicate /
-# Delete) are both dropped. Setting them on the action context scopes this to
-# this action alone, rather than create="0" on the view, which would take the
-# button away from every other place sale.view_order_form is used.
-action_vals['context'] = {'create': False, 'hide_cog_menu': True}
-
-if env.user.has_group('base.group_system'):
-    # Admin sees every CFQ Order without any restriction.
-    action_vals['domain'] = []
-
-# LGD Procurement users see ALL Orders EXCEPT those belonging to (Ankit & Aarav)
-elif env.user.has_group('contact_stage_bar.group_lgd_procurement'):
-    action_vals['domain'] = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
-
-elif env.user.has_group('contact_stage_bar.group_lgd_sales_manager'):
-    # Sales Manager sees ALL except Ankit and Aarav
-    action_vals['domain'] = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
-else:
-    # Standard salesperson sees ONLY their own records.
-    action_vals['domain'] = [('user_id', '=', env.uid)]
- 
-action = action_vals
-        ]]></field>
+        <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_dynamic_cfq_orders_procurement', 'All Orders')</field>
     </record>
- 
-    <menuitem id="menu_cfq_orders_procurement" name="Orders" parent="purchase.menu_purchase_root" action="action_dynamic_cfq_orders_procurement" sequence="-2" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+
+    <record id="action_procurement_orders_lab_grown_certified" model="ir.actions.server">
+        <field name="name">LabGrown Certified</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="state">code</field>
+        <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_lab_grown_certified', 'LabGrown Certified', 'lab_grown_certified')</field>
+    </record>
+
+    <record id="action_procurement_orders_lab_grown_melee" model="ir.actions.server">
+        <field name="name">LabGrown Melle</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="state">code</field>
+        <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_lab_grown_melee', 'LabGrown Melle', 'lab_grown_melee')</field>
+    </record>
+
+    <record id="action_procurement_orders_natural_certified" model="ir.actions.server">
+        <field name="name">Natural Certified</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="state">code</field>
+        <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_natural_certified', 'Natural Certified', 'natural_certified')</field>
+    </record>
+
+    <record id="action_procurement_orders_natural_melee" model="ir.actions.server">
+        <field name="name">Natural Melle</field>
+        <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="state">code</field>
+        <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_natural_melee', 'Natural Melle', 'natural_melee')</field>
+    </record>
+
+    <record id="menu_cfq_orders_procurement" model="ir.ui.menu">
+        <field name="name">Orders</field>
+        <field name="parent_id" ref="purchase.menu_purchase_root"/>
+        <field name="sequence">-2</field>
+        <field name="action" eval="False"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('base.group_system')])]"/>
+    </record>
+
+    <menuitem id="menu_cfq_orders_procurement_all" name="All Orders" parent="menu_cfq_orders_procurement" action="action_dynamic_cfq_orders_procurement" sequence="1" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_all_orders,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
+    <menuitem id="menu_procurement_orders_lab_grown_certified" name="LabGrown Certified" parent="menu_cfq_orders_procurement" action="action_procurement_orders_lab_grown_certified" sequence="2" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_lab_grown_certified,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
+    <menuitem id="menu_procurement_orders_lab_grown_melee" name="LabGrown Melle" parent="menu_cfq_orders_procurement" action="action_procurement_orders_lab_grown_melee" sequence="3" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_lab_grown_melee,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
+    <menuitem id="menu_procurement_orders_natural_certified" name="Natural Certified" parent="menu_cfq_orders_procurement" action="action_procurement_orders_natural_certified" sequence="4" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_natural_certified,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
+    <menuitem id="menu_procurement_orders_natural_melee" name="Natural Melle" parent="menu_cfq_orders_procurement" action="action_procurement_orders_natural_melee" sequence="5" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_natural_melee,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
 
     <!-- CANCELLATION WIZARD -->
     <record id="view_customer_rfq_cancel_wizard_form" model="ir.ui.view">

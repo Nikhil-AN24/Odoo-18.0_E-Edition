@@ -76,6 +76,34 @@
             <field name="implied_ids" eval="[(4, ref('contact_stage_bar.group_lgd_procurement')), (4, ref('purchase.group_purchase_manager'))]"/>
         </record>
 
+        <!-- Orders stone lists an LGD Procurement. Hidden category, so they don't show among the
+             LGD User Roles checkboxes: they're ticked from the "LGD
+             Procurement — Stone Access" section of the user form instead. -->
+        <record id="group_lgd_procurement_all_orders" model="res.groups">
+            <field name="name">LGD Procurement: All Orders</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+        </record>
+
+        <record id="group_lgd_procurement_lab_grown_certified" model="res.groups">
+            <field name="name">LGD Procurement: LabGrown Certified</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+        </record>
+
+        <record id="group_lgd_procurement_lab_grown_melee" model="res.groups">
+            <field name="name">LGD Procurement: LabGrown Melle</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+        </record>
+
+        <record id="group_lgd_procurement_natural_certified" model="res.groups">
+            <field name="name">LGD Procurement: Natural Certified</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+        </record>
+
+        <record id="group_lgd_procurement_natural_melee" model="res.groups">
+            <field name="name">LGD Procurement: Natural Melle</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+        </record>
+
         <record id="group_lgd_superadmin" model="res.groups">
             <field name="name">LGD SuperAdmin</field>
             <field name="category_id" ref="module_category_lgd"/>
@@ -88,29 +116,12 @@
 
         <function model="res.users" name="_lgd_restrict_export_to_admins"/>
 
-        <!-- The sale.order Actions dropdown (Cancel, Create invoice(s), Send an
-             email, Mark Quotation as Sent, Share, Generate a Payment Link) is
-             admin-only too. These are action bindings, so groups_id on each one
-             is filtered by get_bindings() server-side. "Insert in spreadsheet"
-             is not a binding and is handled in models/ir_http.py. -->
         <function model="res.users" name="_lgd_restrict_sale_order_bindings_to_admins"/>
 
         <record id="lgd_sales_own_partner_read_rule" model="ir.rule">
             <field name="name">LGD Sales Own Partner Read</field>
             <field name="model_id" ref="base.model_res_partner"/>
 
-            <!-- Customer side = "not a supplier", NOT "tagged buyer". partner_kind
-                 is only set when the record is created from a tagged menu or
-                 inherits one from a parent, so the overwhelming majority of
-                 contacts carry no kind at all. Requiring 'buyer' hid them from
-                 the very reps who own them - including contacts a rep had just
-                 created. '!=' matches NULL in Odoo domains, so untagged records
-                 fall on the customer side while suppliers stay hidden.
-
-                 The user_ids branch keeps colleagues' own partner records
-                 readable. Followers on a shared order are internal users, and
-                 without it the chatter raises AccessError on any order a
-                 colleague follows. -->
             <field name="domain_force">['|', '|', '|',
                                         ('id', '=', user.partner_id.id),
                                         ('id', '=', user.company_id.partner_id.id),
@@ -154,21 +165,7 @@
         <record id="lgd_procurement_partner_rule" model="ir.rule">
             <field name="name">LGD Procurement Partner Access (Suppliers Only)</field>
             <field name="model_id" ref="base.model_res_partner"/>
-            <!-- The user_ids branch keeps colleagues' own partner records
-                 readable, for the same reason the LGD Sales rule carries it:
-                 followers on a shared order are internal users, and without it
-                 the chatter raises AccessError on any order a colleague
-                 follows.
 
-                 sale_order_ids covers the customer on an order Procurement can
-                 already open. The Customer field itself is stripped from their
-                 arch (see views/sale_order.xml), but Odoo re-injects partner_id
-                 as an invisible dependency because the delivery/invoice address
-                 fields name it in their context, and the client reads it. Read
-                 access here is what stops that read raising AccessError; it does
-                 not put the customer back on their screen. It also covers the
-                 handful of partners that both buy and sell, which cannot be
-                 tagged 'supplier' without hiding them from LGD Sales. -->
             <field name="domain_force">['|', '|', '|', '|', '|',
                                         ('id', '=', user.partner_id.id),
                                         ('id', '=', user.company_id.partner_id.id),
@@ -219,10 +216,10 @@
             <field name="perm_unlink" eval="True"/>
         </record>
 
-        <!-- Tag line vendors that predate the bifurcation, so the procurement
-             rule above can actually match them. Idempotent: it only touches
-             partners with no kind set. -->
         <function model="res.partner" name="_lgd_backfill_vendor_partner_kind"/>
+
+        <!-- Carry any lab picked in the removed "Lab" selection (lab_id) over to LAB (labs). Only fills products with no LAB. -->
+        <function model="product.template" name="_lgd_backfill_labs_from_lab_id"/>
 
         <function name="write" model="ir.model.data">
             <function name="search" model="ir.model.data">

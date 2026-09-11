@@ -12,7 +12,7 @@ class ProductTemplate(models.Model):
     _inherit = "product.template"
 
     certificate = fields.Char(string="Certificate Number")
-    lgd_stock_number = fields.Char(string="Lgd Stock Number")
+    lgd_stock_number = fields.Char(string="Website Stock Number")
     cut = fields.Char(string='Cut')
     polish = fields.Char(string='Polish')
     symmetry = fields.Char(string='Symmetry')

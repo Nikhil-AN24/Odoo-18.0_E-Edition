@@ -35,7 +35,16 @@
 
         // Sync the Breadcrumb/View Title exactly with the App Name
         var menuBrand = document.querySelector(".o_menu_brand");
-        var appName = menuBrand ? menuBrand.textContent.trim() : "";        
+        var appName = menuBrand ? menuBrand.textContent.trim() : "";
+
+        // Procurement > Orders lists keep their own name as the title, so the user can see which stone list is open.
+        var keepOwnTitle = [
+            "All Orders",
+            "LabGrown Certified",
+            "LabGrown Melle",
+            "Natural Certified",
+            "Natural Melle",
+        ];
 
         if (appName) {
             // Find the active breadcrumb item title
@@ -47,7 +56,9 @@
 
             // Forcefully overwrite the native action name with the App Name
             breadcrumbTitles.forEach(function(breadcrumb) {
-                if (breadcrumb && breadcrumb.textContent.trim() !== appName) {
+                var title = breadcrumb ? breadcrumb.textContent.trim() : "";
+                if (breadcrumb && title !== appName
+                        && keepOwnTitle.indexOf(title) === -1) {
                     breadcrumb.textContent = appName;
                 }
             });

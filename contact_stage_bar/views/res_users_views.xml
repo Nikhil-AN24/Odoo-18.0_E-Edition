@@ -10,6 +10,18 @@
                 <label for="location" string="Location"/>
                     <field name="location"/>
             </xpath>
+            <!-- Stone lists shown only once LGD Procurement (or Procurement Manager) is ticked in LGD User Roles. -->
+            <xpath expr="//page[@name='access_rights']" position="inside">
+                <field name="is_lgd_procurement" invisible="1"/>
+                <group string="LGD Procurement — Stone Access" name="lgd_procurement_stone_access"
+                       invisible="not is_lgd_procurement">
+                    <field name="lgd_access_all_orders"/>
+                    <field name="lgd_access_lab_grown_certified"/>
+                    <field name="lgd_access_lab_grown_melee"/>
+                    <field name="lgd_access_natural_certified"/>
+                    <field name="lgd_access_natural_melee"/>
+                </group>
+            </xpath>
         </field>
         </record>
 </odoo>
