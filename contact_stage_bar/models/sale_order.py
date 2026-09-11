@@ -2,6 +2,7 @@ from odoo import models, fields,api,_
 from markupsafe import Markup
 from datetime import datetime, timedelta
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.osv import expression
 import requests
 import json
 import time
@@ -2337,6 +2338,65 @@ class SaleOrder(models.Model):
             'target': 'self',
         }
 
+    # Procurement > Orders sub-menus (PRD §5.7.1): each list is a
+    # (stone_type, stone_certification_type) pair matched against the order's
+    # lines. This is a list filter, not an access rule (§5.7.4): an order
+    # carrying both kinds of stone stays one order (§5.7.3) and shows under
+    # every list it has lines for.
+    _PROCUREMENT_ORDER_SEGMENTS = {
+        'lab_grown_certified': ('lab_grown', 'certified'),
+        'lab_grown_melee': ('lab_grown', 'non_certified'),
+        'natural_certified': ('natural', 'certified'),
+        'natural_melee': ('natural', 'non_certified'),
+    }
+
+    @api.model
+    def _procurement_orders_action(self, action_xmlid, name, segment=None):
+        """Build the sale.order list action behind Procurement > Orders.
+
+        Every list applies the same group-aware visibility; ``segment`` (a key
+        of _PROCUREMENT_ORDER_SEGMENTS) narrows it to orders holding that kind
+        of stone.
+        """
+        action_vals = dict(self.env.ref('sale.action_orders').sudo().read()[0])
+        # Point at the calling server action so the breadcrumb shows its own
+        # name instead of "Sales".
+        action_vals['id'] = self.env.ref(action_xmlid).id
+        action_vals['name'] = name
+        action_vals['display_name'] = name
+        action_vals.pop('path', None)
+        action_vals.pop('xml_id', None)
+
+        # Procurement reads the orders Sales has raised; it never raises them here, so
+        # the New button and the control-panel cog (Import / Export / Duplicate /
+        # Delete) are both dropped. Setting them on the action context scopes this to
+        # these actions alone, rather than create="0" on the view, which would take the
+        # button away from every other place sale.view_order_form is used.
+        action_vals['context'] = {'create': False, 'hide_cog_menu': True}
+
+        user = self.env.user
+        if user.has_group('base.group_system'):
+            # Admin sees every order without any restriction.
+            domain = []
+        elif (user.has_group('contact_stage_bar.group_lgd_procurement')
+                or user.has_group('contact_stage_bar.group_lgd_sales_manager')):
+            # LGD Procurement and Sales Manager see ALL orders EXCEPT those
+            # belonging to Ankit and Aarav.
+            domain = ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]
+        else:
+            # Standard salesperson sees ONLY their own records.
+            domain = [('user_id', '=', self.env.uid)]
+
+        if segment:
+            stone_type, certification = self._PROCUREMENT_ORDER_SEGMENTS[segment]
+            domain = expression.AND([domain, [('order_line', 'any', [
+                ('stone_type', '=', stone_type),
+                ('stone_certification_type', '=', certification),
+            ])]])
+
+        action_vals['domain'] = domain
+        return action_vals
+
 class SaleOrderCancelInherited(models.TransientModel):
     _inherit = 'sale.order.cancel'
 
@@ -2427,6 +2487,33 @@ class SaleOrderLine(models.Model):
         ('melee', 'MELEE (Non-Certified)'),
     ], string="Line Type", default='lgd',
        help="LGD = certified individual stone; MELEE = non-certified parcel order.")
+
+    # Lab Grown / Natural and Certified / Non-Certified on every stone line,
+    # so Procurement can work each kind of stone in its own list (PRD §5.7.1,
+    # §5.7.6). Keys match customer.rfq and purchase.order.line.
+    stone_type = fields.Selection(
+        [('lab_grown', 'Lab Grown'), ('natural', 'Natural')],
+        string="Stone Type", compute='_compute_stone_classification',
+        store=True, index=True)
+    stone_certification_type = fields.Selection(
+        [('certified', 'Certified'), ('non_certified', 'Non-Certified')],
+        string="Certification", compute='_compute_stone_classification',
+        store=True, index=True)
+
+    @api.depends('display_type', 'line_type')
+    def _compute_stone_classification(self):
+        """Website orders come from the Augmont LGD platform, which sells only
+        lab-grown stones, and their certification follows line_type.
+        custom_sale_order extends this to read both values from the Customer
+        RFQ on offline orders. Section and note lines carry no stone."""
+        for line in self:
+            if line.display_type:
+                line.stone_type = False
+                line.stone_certification_type = False
+            else:
+                line.stone_type = 'lab_grown'
+                line.stone_certification_type = (
+                    'non_certified' if line.line_type == 'melee' else 'certified')
 
     # True only on the summary/parent line that groups all parcel child-lines.
     is_melee_parent = fields.Boolean(
