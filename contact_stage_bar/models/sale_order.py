@@ -2365,6 +2365,43 @@ class SaleOrder(models.Model):
                 if kind in kinds
             ) or False
 
+    # A Procurement user limited to some stone lists sees only those lines of
+    # an order. This is on screen only: the form shows procurement_line_ids,
+    # a filtered view of the same lines, while business logic (order status,
+    # PO auto-confirm, Augmont sync) keeps reading every line via order_line.
+    is_stone_restricted = fields.Boolean(compute='_compute_is_stone_restricted')
+    procurement_line_ids = fields.One2many(
+        'sale.order.line', 'order_id', string="Order Lines",
+        domain=lambda self: self._procurement_visible_line_domain())
+
+    @api.depends_context('uid')
+    def _compute_is_stone_restricted(self):
+        restricted = self._is_stone_restricted_user()
+        for order in self:
+            order.is_stone_restricted = restricted
+
+    @api.model
+    def _is_stone_restricted_user(self):
+        user = self.env.user
+        return (user.has_group('contact_stage_bar.group_lgd_procurement')
+                and not user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+                and not user.has_group('contact_stage_bar.group_lgd_procurement_all_orders')
+                and not user.has_group('base.group_system'))
+
+    @api.model
+    def _procurement_visible_line_domain(self):
+        """Lines a restricted user may see: the stone lists ticked on their
+        user form (LGD Procurement — Stone Access). Section/note lines always
+        show; with no list ticked, no stone line does."""
+        if not self._is_stone_restricted_user():
+            return []
+        allowed = [
+            [('stone_type', '=', stone_type), ('stone_certification_type', '=', certification)]
+            for segment, (stone_type, certification) in self._PROCUREMENT_ORDER_SEGMENTS.items()
+            if self.env.user.has_group('contact_stage_bar.group_lgd_procurement_' + segment)
+        ]
+        return expression.OR([[('display_type', '!=', False)]] + (allowed or [[('id', '=', 0)]]))
+
     @api.model
     def _procurement_orders_action(self, action_xmlid, name, segment=None):
         """Build the sale.order list action behind Procurement > Orders.

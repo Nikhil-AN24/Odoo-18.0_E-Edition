@@ -310,6 +310,36 @@
                 </style>
             </xpath>
 
+            <!-- Procurement users limited to some stone lists see only those
+                 lines: the full Order Lines table is swapped for
+                 procurement_line_ids, a filtered view of the same lines. -->
+            <xpath expr="//field[@name='order_line']" position="attributes">
+                <attribute name="invisible">is_stone_restricted</attribute>
+            </xpath>
+            <xpath expr="//field[@name='order_line']" position="after">
+                <field name="is_stone_restricted" invisible="1"/>
+                <field name="procurement_line_ids" invisible="not is_stone_restricted"
+                       readonly="state != 'draft'">
+                    <list editable="bottom" create="0" delete="0">
+                        <field name="display_type" column_invisible="True"/>
+                        <field name="line_type" column_invisible="True"/>
+                        <field name="is_melee_parent" column_invisible="True"/>
+                        <field name="availability_status" string="Availability"/>
+                        <field name="order_number" readonly="1"/>
+                        <field name="product_template_id" readonly="1"/>
+                        <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
+                        <field name="certificate" readonly="1"/>
+                        <field name="vendor_id" readonly="1"/>
+                        <field name="stock_number" readonly="1" string="Vendor SKU"/>
+                        <field name="vendor_city" readonly="1" optional="show"/>
+                        <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                        <field name="stone_type" optional="show"/>
+                        <field name="stone_certification_type" optional="show"/>
+                        <field name="treatments" readonly="1"/>
+                    </list>
+                </field>
+            </xpath>
+
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="before">
                 <field name="availability_status" string="Availability"
                        groups="contact_stage_bar.group_lgd_sales"
