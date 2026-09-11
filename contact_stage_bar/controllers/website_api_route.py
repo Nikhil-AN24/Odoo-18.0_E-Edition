@@ -45,160 +45,6 @@ STATUS_MAP = {
 }
 
 class PartnerSyncController(http.Controller):
-    # @http.route('/api/contact/login', type='json', auth='public', methods=['POST'], csrf=False)
-    # def contact_login_or_create(self):
-        
-    #     # target_db = request.httprequest.headers.get('X-Odoo-Database', 'Testing')
-    #     # request.session.db = 'augmont_private_limited'
-        
-    #     data = json.loads(request.httprequest.data)
-    #     _logger.info(f"Received data: {data}")
-        
-    #     vals = {}
-    #     state = None
-    #     country = None
-    #     city = None
-        
-    #     state_name = data.get("address", {}).get("state", {}).get("name")
-    #     _logger.info(f"Received state: {state_name}")
-    #     if state_name:
-    #         state = request.env['res.country.state'].sudo().search([('name', 'ilike', state_name)], limit=1)
-    #         _logger.info(f"Matched state: {state}")
-    #         if state:
-    #             state = state.id
-
-       
-    #     input_country = data.get("address", {}).get("country", {}).get("name")
-    #     _logger.info(f"input_country: {input_country}")
-            
-    #     if input_country:
-    #         country = request.env['res.country'].sudo().search([
-    #             ('name', '=', input_country.title())
-    #         ], limit=1).id
-    #     _logger.info(f" country: {country}")
-                
-    #     full_name = f"{data.get('firstName', '').strip()} {data.get('lastName', '').strip()}".strip()
-    #     _logger.info(f"Full name constructed: {full_name}")
-            
-    #     businessType = None
-    #     businessRole = None
-
-    #     businessType = request.env['custom.category'].sudo().search([
-    #         ('name', 'ilike', data.get('businessType'))
-    #     ], limit=1)
-
-    #     if not businessType:
-    #         businessType = request.env['custom.category'].sudo().create({
-    #             'name': data.get('businessType'),
-    #         })
-
-    #     businessRole = request.env['custom.category'].sudo().search([
-    #         ('name', 'ilike', data.get('businessRole'))
-    #     ], limit=1)
-
-    #     if not businessRole:
-    #         businessRole = request.env['custom.category'].sudo().create({
-    #             'name': data.get('businessRole'),
-    #         })
-        
-    #     gst_stage_map = {
-    #         'verified': 'Verified',
-    #         'not_verified': 'Not Verified',
-    #         'pending': 'Pending',
-    #     }
-    #     gst_value = data.get("kyc", {}).get('gstinStatus')
-    #     _logger.info(f"GST value: {gst_value}")
-        
-    #     ein_value = data.get("kyc", {}).get('einStatus')
-    #     _logger.info(f"EIN value: {ein_value}")
-                    
-    #     mapping = { 
-    #         'name': data.get('companyName'),
-    #         'first_name':data.get('firstName'),
-    #         'last_name':data.get('lastName'),
-    #         'phone' : data.get('mobileNumber'),
-    #         'email' : data.get('email'),
-    #         'street' : data.get("address",{}). get("addressLine1"),
-    #         'street2' : data.get("address",{}). get("addressLine2"),
-    #         'city': data.get("address", {}).get("city", {}).get("name"),
-    #         'zip' : data.get("address",{}). get("pincode"),
-    #         'category_ids': [(6, 0, [businessType.id])],
-    #         'primary_category_ids': [(6, 0, [businessRole.id])],
-    #         'state_id' : state,
-    #         'country_id' : country,
-    #         'vat' : data.get("kyc",{}). get('gstin'),
-    #         'ein_number' : data.get("kyc",{}). get('einNumber'),
-    #         'gst_stages' : gst_value,
-    #         'ein_status' : ein_value,
-    #         'l10n_in_pan' : data.get("kyc",{}). get('panNumber')
-    #         }
-    #     _logger.info(f"Mapping values: {mapping}")   
-    #     partner = request.env['res.partner'].sudo().search([('email','=',data.get('email'))],limit=1)
-    #     _logger.info(f"Partner found: {partner}")
-        
-    #     for field_name, value in mapping.items():
-    #         if value:
-    #             vals[field_name] = value
-        
-    #     if partner:
-    #         _logger.info(f"Writing values to partner {partner.id}: {vals}")
-    #         partner.write(vals)
-    #         partner.stage_id = 15  
-    #         _logger.info(f"Updated partner {partner.id} to stage_id  ({partner.stage_id.name})")
-            
-    #         return {
-    #             'status': 'Existing Accounts Updated',
-    #             'name': partner.name,
-    #             'first_name': partner.first_name,
-    #             'last_name': partner.last_name,
-    #             'partner_id': partner.id,
-    #             'stages': partner.stage_id.name,
-    #             'country': partner.country_id.name if partner.country_id else '',
-    #             'Bussiness Type': businessType.name if businessType else '',
-    #             'Bussiness Role': businessRole.name if businessRole else '',
-    #             'phone': partner.phone,
-    #             'email': partner.email,
-    #             'street': partner.street,
-    #             'street2': partner.street2,    
-    #             'city': partner.city,
-    #             'zip': partner.zip, 
-    #             'pan_number': partner.l10n_in_pan,
-    #             'gst_stages': partner.gst_stages,
-    #             'ein_status': partner.ein_status,
-    #             'Gst Number': partner.vat,
-    #             'Ein Number': partner.ein_number,
-    #         }
-            
-    #     else:
-    #         _logger.info(f"Creating new partner with vals: {vals}")
-    #         new_partner = request.env['res.partner'].sudo().create(vals)
-    #         _logger.info(f"Created new partner {new_partner.id} with vals: {vals}")
-    #         return {
-    #             'status': 'New Accounts Company Created',
-    #             'name': new_partner.name,
-    #             'first_name': new_partner.first_name,
-    #             'last_name': new_partner.last_name,
-    #             'stages': new_partner.stage_id.name,
-    #             'partner_id': new_partner.id,
-    #             'Bussiness Type': businessType.name if businessType else '',
-    #             'Bussiness Role': businessRole.name if businessRole else '',    
-    #             'phone': new_partner.phone,
-    #             'email': new_partner.email, 
-    #             'street': new_partner.street,
-    #             'street2': new_partner.street2,
-    #             'city': new_partner.city,
-    #             'zip': new_partner.zip,
-    #             'pan_number': new_partner.l10n_in_pan,
-    #             'gst_stages': new_partner.gst_stages,
-    #             'ein_status': new_partner.ein_status,
-    #             'Gst Number': new_partner.vat,
-    #             'Ein Number': new_partner.ein_number,
-    #             'state': new_partner.state_id.name if new_partner.state_id else '',
-    #             'city': new_partner.city,
-    #             'zip': new_partner.zip,
-    #             'country': new_partner.country_id.name if new_partner.country_id else '',
-    #         }
-    
     
     @http.route('/api/contact/login', type='json', auth='public', methods=['POST'], csrf=False)
     def contact_login_or_create(self):
@@ -354,243 +200,34 @@ class PartnerSyncController(http.Controller):
             
     
 
-    # @http.route('/api/order/cart_add', type='json', auth='public', methods=['POST'], csrf=False)
-    # def add_to_cart(self):
-        # GRADE_SHORT_NAMES = {
-        #     'Excellent': 'EX',
-        #     'Very Good': 'VG',
-        #     'Ideal': 'ID',
-        #     'Good': 'G',
-        #     'Fair': 'F',
-        #     'Poor': 'P'
-        # }
+    # Website orders always belong to this company, whichever user sends the
+    # request: a call without a logged-in session runs as the Public user,
+    # whose own company may differ and would hide the order from Procurement.
+    _WEBSITE_ORDER_COMPANY_NAME = 'AUGMONT ENTERPRISES PVT LTD.'
+    # Tax historically hardcoded on website stone products.
+    _WEBSITE_STONE_TAX_ID = 112
 
-        # try:
-        #     data = json.loads(request.httprequest.data)
-        #     _logger.info("Received data: %s", data)
+    def _website_order_company(self):
+        company = request.env['res.company'].sudo().search(
+            [('name', '=', self._WEBSITE_ORDER_COMPANY_NAME)], limit=1)
+        return company or request.env.company
 
-        #     orders = data.get('orders', [])
-        #     _logger.info("Processing %d orders", len(orders))
+    def _website_stone_tax(self, company):
+        """Tax for website stone products, taken from the order's company.
 
-        #     # Get common data
-        #     order_invoice_number = data.get('invoiceNumber')
-        #     buyer = data.get('buyerKyc', {})
-        #     email = buyer.get('email')
-        #     customer_name = f"{buyer.get('firstName', '')} {buyer.get('lastName', '')}".strip()
-
-        #     partner = request.env['res.partner'].sudo().search([('email', '=', email)], limit=1)
-        #     if not partner:
-        #         partner = request.env['res.partner'].sudo().create({
-        #             'name': customer_name,
-        #             'email': email,
-        #             'phone': buyer.get('mobileNumber'),
-        #         })
-
-        #     # Try to find existing draft sale order
-        #     sale_order = request.env['sale.order'].sudo().search([
-        #         ('partner_id', '=', partner.id),
-        #         ('state', '=', 'draft'),
-        #         ('sdk_augmont_number','=',order_invoice_number)
-        #     ], limit=1)
-
-        #     if not sale_order:
-        #         raw_order_date = orders[0].get('invoiceDate') if orders else None
-        #         order_date = datetime.strptime(raw_order_date, "%Y-%m-%dT%H:%M:%S.%fZ") if raw_order_date else fields.Datetime.now()
-        #         order_status = orders[0].get('orderCurrentStatus', {}).get("statusName") if orders else ''
-
-        #         billing_address = shipping_address = ''
-        #         if orders and 'orderAddress' in orders[0]:
-        #             addr = orders[0]['orderAddress'][0]
-        #             billing_address = addr.get('billingAddress', '')
-        #             shipping_address = addr.get('shippingAddress', '')
-
-        #         sale_order = request.env['sale.order'].sudo().create({
-        #             'partner_id': partner.id,
-        #             'state': 'draft',
-        #             'sdk_augmont_status': order_status,
-        #             'date_order': order_date,
-        #             'sdk_augmont_number': order_invoice_number,
-        #             'billing_address': billing_address,
-        #             'shipping_address': shipping_address,
-        #             'location': 'mumbai',
-        #             'gst_treatment' : 'within_maharashtra',
-        #             'is_website' : True,
-        #         })
-
-        #     # Process each order item
-        #     for order in orders:
-        #         product_details = order.get('productDetails', {})
-        #         product_name = product_details.get('title')
-        #         quantity = float(order.get('quantity', 1.0))
-        #         order_price = order.get('productPrice')
-        #         order_number = order.get('orderUniqueId')
-
-        #         # Vendor
-        #         seller = order.get('seller', {})
-        #         vendor_company = seller.get('companyName')
-        #         full_name = f"{seller.get('firstName', '').strip()} {seller.get('lastName', '').strip()}".strip()
-        #         vendor_phone = seller.get('mobileNumber')
-        #         vendor_email = seller.get('email')
-        #         name = vendor_company or full_name
-        #         vendor = request.env['res.partner'].sudo().search([
-        #             ('name', '=', name),
-        #             ('supplier_rank', '>', 0)
-        #         ], limit=1)
-
-        #         if not vendor:
-        #             vendor = request.env['res.partner'].sudo().create({
-        #                 'name': name,
-        #                 'first_name': seller.get('firstName', '').strip(),
-        #                 'last_name': seller.get('LastName', '').strip(),
-        #                 'supplier_rank': 1,
-        #                 'phone': vendor_phone,
-        #                 'email': vendor_email,
-        #             })
-
-        #         input_country = product_details.get('country')
-        #         country_id = False
-        #         if input_country:
-        #             country = request.env['res.country'].sudo().search([('name', '=', input_country.title())], limit=1)
-        #             country_id = country.id if country else False
-
-        #         # product = request.env['product.template'].sudo().search([('name', '=', product_name)], limit=1)
-        #         certificate =  product_details.get('certNumber')
-        #         stock_number = product_details.get('stockNum')
-        #         lgd_stock_number =  product_details.get('lgdStockNum')
-                
-        #         product = request.env['product.template'].sudo().search([
-        #             ('certificate', '=', certificate),
-        #             ('stock_number', '=', stock_number),
-        #             ('lgd_stock_number', '=', lgd_stock_number)
-        #         ], limit=1)
-                
-
-        #         buy = request.env.ref('purchase_stock.route_warehouse0_buy', raise_if_not_found=False)
-        #         mto = request.env.ref('stock.route_warehouse0_mto', raise_if_not_found=False)
-        #         routes = [r.id for r in (buy, mto) if r]
-        #         warehouse = request.env['stock.warehouse'].sudo().search([], limit=1)
-        #         _logger.info("product_id>>>>>>>>",product_details.get('id'))
-        #         product_vals = {
-        #             'website_product_id': product_details.get('id'),
-        #             'name': product_name,
-        #             'type': 'consu',
-        #             'list_price': product_details.get('pricePerCarat'),
-        #             'standard_price': product_details.get('finalPriceMargin'),
-        #             'labs': product_details.get('lab'),
-        #             'cut': product_details.get('cut'),
-        #             'clarity': product_details.get('clarity'),
-        #             'color': product_details.get('color'),
-        #             'shapes': product_details.get('shape'),
-        #             'weight_carat': product_details.get('weight'),
-        #             'shade': product_details.get('shade'),
-        #             'treatments': product_details.get('treatment'),
-        #             'measurements': product_details.get('measurements'),
-        #             'order_specific': order.get('orderNote'),
-        #             'item_notes': order.get('generalNotes'),
-        #             'default_qc_requirements': order.get('defaultQcRequirements'),
-        #             'certificate': product_details.get('certNumber'),
-        #             'certificate_type': product_details.get('certType'),
-        #             'stock_number': product_details.get('stockNum'),
-        #             'lgd_stock_number': product_details.get('lgdStockNum'),
-        #             'video_360': product_details.get('diamondVideo360'),
-        #             'final_price': product_details.get('finalPrice'),
-        #             'symmetry': product_details.get('symmetry'),
-        #             'image_augmont': product_details.get('diamondImage'),
-        #             'polish': product_details.get('polish'),
-        #             'country_id': country_id,
-        #             'barcode': product_details.get('certNumber'),
-        #             'length': product_details.get('length'),
-        #             'width': product_details.get('width'),
-        #             'depth': product_details.get('height'),
-        #             'eye_clean': product_details.get('eyeClean'),
-        #             'taxes_id': [(6, 0, [112])],
-        #             'supplier_taxes_id': [(6, 0, [112])],
-        #             'route_ids': [(6, 0, routes)],
-        #             'is_storable': True,
-        #             'fluorescence_color': product_details.get('fluorescenceColor'),
-        #             'fluorescence_intensity': product_details.get('fluorescenceIntensity'),
-        #             'warehouse_id': warehouse.id,
-        #             # 'seller_ids': [(0, 0, {
-        #             #     'partner_id': vendor.id,
-        #             #     'min_qty': quantity,
-        #             #     'price': product_details.get('finalPriceMargin'),
-        #             #     'vendor_final_price': product_details.get('finalPriceMargin'),
-        #             #     'vendor_per_carat_price': product_details.get('pricePerCaratMargin'),
-        #             # })],
-        #             # custom field
-        #             'sdk_is_code_enabled': True,
-        #         }
-        #         _logger.info(product_vals,"Testing product_vals")
-
-        #         existing_seller = product.seller_ids.filtered(lambda s: s.partner_id.id == vendor.id)
-
-        #         seller_vals = []
-        #         if not existing_seller:
-        #             seller_vals = [(0, 0, {
-        #                 'partner_id': vendor.id,
-        #                 'min_qty': quantity,
-        #                 'price': product_details.get('finalPriceMargin'),
-        #                 'vendor_final_price': product_details.get('finalPriceMargin'),
-        #                 'vendor_per_carat_price': product_details.get('pricePerCaratMargin'),
-        #             })]
-
-        #         product_vals.update({
-        #             'seller_ids': seller_vals
-        #         })
-        #         if not product:
-        #             # Create product template
-        #             product = request.env['product.template'].sudo().create(product_vals)
-        #             _logger.info(product)
-
-        #         else:
-        #             # Update existing template
-        #             product.sudo().write(product_vals)
-        #             _logger.info(product)
-
-
-        #         # Ensure variant exists
-        #         variant = product.product_variant_id
-        #         if not variant:
-        #             variant = request.env['product.product'].sudo().create({
-        #                 'product_tmpl_id': product.id,
-        #                 'name': product.name,
-        #                 'barcode': product.certificate,  # barcode = certificate
-        #             })
-                
-
-        #         # Now handle sale order line
-        #         existing_line = request.env['sale.order.line'].sudo().search([
-        #             ('order_id', '=', sale_order.id),
-        #             ('certificate', '=', certificate),
-        #             ('lgd_stock_number', '=', lgd_stock_number),
-        #         ], limit=1)
-
-        #         if not existing_line:
-        #             sale_order.sudo().write({
-        #                 'order_line': [(0, 0, {
-        #                     'product_id': variant.id,
-        #                     'product_uom_qty': quantity,
-        #                     'price_unit': product.list_price,
-        #                     'name': product.name,
-        #                     'order_number': order_number,
-        #                     'vendor_id': vendor.id,
-        #                     'tax_id': [(6, 0, product.taxes_id.ids)],
-        #                 })]
-        #             })
-
-        #     return {
-        #         'status': 'Sale Order Updated with all line items',
-        #         'Sale Order': sale_order.name,
-        #         'Customer': partner.name,
-        #         'order_count': len(orders)
-        #         }
-
-
-
-        # except Exception as e:
-        #     _logger.exception("Error in /api/order/cart_add: %s", str(e))
-        #     return {'error': str(e)}
-
+        Keeps the historical tax when it belongs to that company; otherwise
+        uses the company's sale tax of the same name, so an order never
+        carries another company's tax (which Odoo rejects).
+        """
+        Tax = request.env['account.tax'].sudo().with_context(active_test=False)
+        tax = Tax.browse(self._WEBSITE_STONE_TAX_ID).exists()
+        if not tax or tax.company_id == company:
+            return tax
+        return Tax.search([
+            ('name', '=', tax.name),
+            ('type_tax_use', '=', tax.type_tax_use),
+            ('company_id', '=', company.id),
+        ], order='active desc, id', limit=1)
 
     @http.route('/training/api/order/cart_add', type='json', auth='public', methods=['POST'], csrf=False)
     def add_to_cart(self):
@@ -617,6 +254,9 @@ class PartnerSyncController(http.Controller):
                 return {'status': 'error', 'message': 'No orders provided in payload'}
 
             _logger.info("Processing %d orders", len(orders))
+
+            company = self._website_order_company()
+            stone_tax = self._website_stone_tax(company)
 
             # Get common data
             order_invoice_number = data.get('invoiceNumber')
@@ -647,7 +287,8 @@ class PartnerSyncController(http.Controller):
             sale_order = request.env['sale.order'].sudo().search([
                 ('partner_id', '=', partner.id),
                 ('state', '=', 'draft'),
-                ('sdk_augmont_number','=',order_invoice_number)
+                ('sdk_augmont_number','=',order_invoice_number),
+                ('company_id', '=', company.id),
             ], limit=1)
 
             if not sale_order:
@@ -673,6 +314,7 @@ class PartnerSyncController(http.Controller):
                     'gst_treatment' : 'within_maharashtra',
                     'is_website' : True,
                     'order_source': 'website',
+                    'company_id': company.id,
                     'vat': gst_number,
                     'ein_number': ein_number,
                 })
@@ -828,7 +470,7 @@ class PartnerSyncController(http.Controller):
                                 'name': summary_title,
                                 'order_number': str(order_number) if order_number else request_number,
                                 'vendor_id': melee_vendor.id if melee_vendor else False,
-                                'tax_id': [(6, 0, melee_product.taxes_id.ids)],
+                                'tax_id': [(6, 0, melee_product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
                                 'availability_status': melee_avail_status,
                                 # MELEE-specific fields
                                 'line_type': 'melee',
@@ -944,7 +586,7 @@ class PartnerSyncController(http.Controller):
                                     'name': parcel_name,
                                     'order_number': str(order_number) if order_number else '',
                                     'vendor_id': melee_vendor.id if melee_vendor else False,
-                                    'tax_id': [(6, 0, melee_product.taxes_id.ids)],
+                                    'tax_id': [(6, 0, melee_product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
                                     'availability_status': melee_avail_status,
                                     'line_type': 'melee',
                                     'is_melee_parent': False,
@@ -1067,8 +709,8 @@ class PartnerSyncController(http.Controller):
                     'width': product_details.get('width'),
                     'depth': product_details.get('height'),
                     'eye_clean': product_details.get('eyeClean'),
-                    'taxes_id': [(6, 0, [112])],
-                    'supplier_taxes_id': [(6, 0, [112])],
+                    'taxes_id': [(6, 0, stone_tax.ids)],
+                    'supplier_taxes_id': [(6, 0, stone_tax.ids)],
                     'route_ids': [(6, 0, routes)],
                     'is_storable': True,
                     'fluorescence_color': product_details.get('fluorescenceColor'),
@@ -1142,7 +784,7 @@ class PartnerSyncController(http.Controller):
                             'name': product.name,
                             'order_number': order_number,
                             'vendor_id': vendor.id,
-                            'tax_id': [(6, 0, product.taxes_id.ids)],
+                            'tax_id': [(6, 0, product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
                             'availability_status': lgd_avail_status,
                         })]
                     })

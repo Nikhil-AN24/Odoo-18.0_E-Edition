@@ -27,6 +27,7 @@
                     decoration-warning="sdk_augmont_status in ['Payment Pending', 'Not available', 'Diamond Booked', 'Order Received', 'Return of Order']"
                     decoration-info="sdk_augmont_status in ['In QC process', 'Dispatched', 'Re - Dispatched']"
                     decoration-success="sdk_augmont_status in ['Confirmed', 'Order Confirmed', 'Payment Completed', 'Delivered', 'Order Completed']"/>
+                <field name="stone_list_names" optional="show"/>
             </xpath>
             <xpath expr="//field[@name='name']" position="after">
                 <field name="sdk_augmont_number"/>
@@ -216,6 +217,7 @@
             
             <xpath expr="//field[@name='payment_term_id']" position="after">
                 <field name="sdk_augmont_status" readonly="1"/>
+                <field name="stone_list_names"/>
                 <field name="user_id" string="Salesperson" widget="many2one_avatar_user"
                        groups="!contact_stage_bar.group_lgd_procurement"/>
                 <field name="is_website" invisible="1"/>
@@ -325,6 +327,8 @@
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
+                <field name="stone_type" optional="show"/>
+                <field name="stone_certification_type" optional="show"/>
                 <field name="treatments"/>
             
                 <field name="shapes" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
