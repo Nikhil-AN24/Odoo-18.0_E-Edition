@@ -11,8 +11,12 @@
         <field name="inherit_id" ref="sale.sale_order_tree"/>
         <field name="arch" type="xml">
             <!-- Make list editable so Salesperson can be changed inline / in bulk -->
+            <!-- Newest arrivals first: website orders carry the platform's
+                 invoice date as Order Date, which can be older than when the
+                 order reached Odoo, so sort on creation time instead. -->
             <xpath expr="//list" position="attributes">
                 <attribute name="multi_edit">1</attribute>
+                <attribute name="default_order">create_date desc, id desc</attribute>
             </xpath>
             <xpath expr="//field[@name='user_id']" position="attributes">
                 <attribute name="readonly">0</attribute>
