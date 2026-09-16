@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <record id="purchase.menu_purchase_root" model="ir.ui.menu">
-        <field name="groups_id" eval="[(4, ref('contact_stage_bar.group_lgd_procurement'))]"/>
+        <field name="groups_id" eval="[(4, ref('contact_stage_bar.group_lgd_procurement')), (4, ref('contact_stage_bar.group_lgd_accounting'))]"/>
     </record>
     
     <record id="account.menu_finance" model="ir.ui.menu">

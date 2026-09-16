@@ -5,7 +5,7 @@ from odoo import models, fields, api
 _logger = logging.getLogger(__name__)
 
 # Which Procurement > Orders stone lists an LGD Procurement user may open
-# (PRD §5.7.5): user-form checkbox -> hidden res.groups gating that menu.
+# user-form checkbox -> hidden res.groups gating that menu.
 _LGD_PROCUREMENT_STONE_GROUPS = {
     'lgd_access_all_orders': 'contact_stage_bar.group_lgd_procurement_all_orders',
     'lgd_access_lab_grown_certified': 'contact_stage_bar.group_lgd_procurement_lab_grown_certified',
@@ -141,6 +141,30 @@ class ResUsers(models.Model):
                 "Export restricted to admins: revoked base.group_allow_export "
                 "from %s user(s): %s",
                 len(revoke), ", ".join(sorted(revoke.mapped('login'))))
+
+    @api.model
+    def _lgd_grant_accounting_invoice(self):
+        """Ensure every LGD Accounting member has the full Invoicing group.
+
+        LGD Accounting implies account.group_account_invoice (full Accounting
+        access); its edit rights on Sale/Purchase Orders are lowered separately
+        in security/lgd_accounting_access.xml so the role is view-only there.
+        An earlier revision briefly based this role on the read-only accounting
+        group and stripped Invoicing from members; this restores it. Runs on
+        every module update via security/res_groups.xml.
+        """
+        acc = self.env.ref('contact_stage_bar.group_lgd_accounting',
+                            raise_if_not_found=False)
+        invoice = self.env.ref('account.group_account_invoice',
+                               raise_if_not_found=False)
+        if not acc or not invoice:
+            return
+        missing = acc.users.filtered(lambda u: invoice not in u.groups_id)
+        if missing:
+            missing.write({'groups_id': [(4, invoice.id)]})
+            _logger.info(
+                "Granted full Invoicing access to %d LGD Accounting user(s): %s",
+                len(missing), ", ".join(sorted(missing.mapped('login'))))
 
     @api.model
     def _lgd_restrict_sale_order_bindings_to_admins(self):

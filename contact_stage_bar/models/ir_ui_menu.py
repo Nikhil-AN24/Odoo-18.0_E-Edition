@@ -113,12 +113,15 @@ class IrUiMenuHideSaleExtras(models.Model):
             allowed_root_names.update(['Dispatch', 'Logistics', 'LGD Inventory', 'Inventory'])
             
         if lgd_groups['accounting']:
-            # Only allow Invoicing & Offline Orders
+            # Full Accounting module, plus VIEW-ONLY access to the Sales & Procurement apps.
             allowed_root_refs.update([
-                'account.menu_finance', 
-                'custom_sale_order.menu_custom_sale_root'
+                'account.menu_finance',
+                'accountant.menu_accounting',
+                'contact_stage_bar.menu_sales_3',
+                'purchase.menu_purchase_root',
+                'custom_sale_order.menu_custom_sale_root',
             ])
-            allowed_root_names.add('Offline order')
+            allowed_root_names.update(['Sales', 'Accounting', 'Offline order'])
             
         if lgd_groups['hr']:
             allowed_root_refs.update([

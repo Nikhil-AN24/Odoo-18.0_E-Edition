@@ -36,7 +36,7 @@ class ProductTemplate(models.Model):
 
     # True when the current user belongs to any LGD Sales role — used by the
     # product form to make the General Information tab viewable-only for
-    # Sales groups. Procurement roles and Admin see it editable as usual.
+    # Sales groups. Procurement roles & Admin see it editable as usual.
     is_readonly_for_sales_view = fields.Boolean(
         string="Readonly for Sales",
         compute='_compute_is_readonly_for_sales_view',
@@ -71,6 +71,27 @@ class ProductTemplate(models.Model):
     treatments = fields.Char(string='Treatments')
     shapes = fields.Char(string="Shapes", tracking=True)
     shade = fields.Char(string="Shade")
+
+    # ── Replacement / segregation fields  ──────────────────────────
+    # stone_type is the origin (lab-grown vs natural). The Replace Stone flow's
+    # hard block compares this between the original and its
+    # replacement, so it must be reliable data, not an assumption. Keys match
+    # customer.rfq.stone_type. Filled from IGI's is_lab_grown; entered by hand
+    # for GIA / other labs.
+    stone_type = fields.Selection(
+        [('natural', 'Natural'), ('lab_grown', 'Lab Grown')],
+        string="Stone Type", tracking=True,
+    )
+    # Numeric carat, parsed from the free-text weight_carat, kept in sync by a
+    # stored compute so every product (manual edits included) stays consistent.
+    carat_value = fields.Float(
+        string="Carat (numeric)", digits=(16, 2),
+        compute='_compute_carat_value', store=True,
+        help="Numeric carat weight parsed from Carat Weight, for pricing and "
+             "matching.",
+    )
+    table_pct = fields.Float(string="Table %", digits=(16, 2))
+    depth_pct = fields.Float(string="Depth %", digits=(16, 2))
     url_link = fields.Char(string="URL Link",compute='_compute_url_link', store=True)
     image_augmont = fields.Char(string="Image")
     video_360 = fields.Char(string="Diamond 360 Video")
@@ -205,6 +226,20 @@ class ProductTemplate(models.Model):
         for record in self:
             record.is_igi_lab = (record.labs or 'IGI').strip().upper() == 'IGI'
 
+    @api.depends('weight_carat')
+    def _compute_carat_value(self):
+        """Parse the leading number out of the free-text Carat Weight."""
+        for record in self:
+            value = 0.0
+            if record.weight_carat:
+                match = re.search(r'([\d.]+)', str(record.weight_carat))
+                if match:
+                    try:
+                        value = float(match.group(1))
+                    except (TypeError, ValueError):
+                        value = 0.0
+            record.carat_value = value
+
     @api.model
     def _lgd_backfill_labs_from_lab_id(self):
         cr = self.env.cr
@@ -307,6 +342,10 @@ class ProductTemplate(models.Model):
         _set('depth',                  data.get('depth_mm'))
         _set('labs',                   'IGI')
         _set('certificate_type',       'IGI')
+        # Origin + proportions igi_service 
+        _set('stone_type', 'lab_grown' if data.get('is_lab_grown') else 'natural')
+        _set('table_pct',              data.get('table_pct_value'))
+        _set('depth_pct',              data.get('depth_pct_value'))
 
 
         name = self._igi_compose_name(data)

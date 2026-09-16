@@ -355,6 +355,22 @@
 
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="after">
                 <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
+                <!-- Replace Stone: Operations only, on a certified
+                     line that is Not available. -->
+                <button name="action_open_replace_stone" type="object"
+                        icon="fa-exchange" title="Replace Stone"
+                        invisible="line_type != 'lgd' or availability_status != 'not_available'"
+                        groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+                <!-- Sales confirm / reject a pending replacement. -->
+                <field name="replacement_pending_sales" column_invisible="True"/>
+                <button name="action_replacement_confirm" type="object"
+                        string="Confirm" class="btn-link"
+                        invisible="not replacement_pending_sales"
+                        groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+                <button name="action_replacement_reject" type="object"
+                        string="Reject" class="btn-link text-danger"
+                        invisible="not replacement_pending_sales"
+                        groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
                 <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="1"/>
                 <field name="stock_number" readonly="1" string="Vendor SKU"
@@ -600,6 +616,16 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='order_line']" position="before">
                 <button name="%(action_sale_order_add_product_wizard)d" type="action" string="Add Product" class="btn-primary"/>
+                <!-- Replace Stone banner: shown to Operations
+                     when a certified line is Not available. -->
+                <field name="replacement_alert_count" invisible="1"/>
+                <div class="alert alert-warning" role="alert"
+                     invisible="replacement_alert_count == 0"
+                     groups="contact_stage_bar.group_lgd_procurement,base.group_system">
+                    <field name="replacement_alert_count" class="oe_inline" nolabel="1"/>
+                    stone(s) not available — use the Replace Stone
+                    (<i class="fa fa-exchange"/>) action on each such line.
+                </div>
             </xpath>
         </field>
     </record>
