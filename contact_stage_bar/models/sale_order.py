@@ -1355,6 +1355,12 @@ class SaleOrder(models.Model):
     def action_send_product_to_api(self):
         Param = self.env['ir.config_parameter'].sudo()
         url = Param.get_param('base_augmont_url')
+
+        if not url:
+            _logger.warning(
+                "Augmont product push skipped for %s: base_augmont_url is not set.",
+                ', '.join(self.mapped('name')) or '(none)')
+            return
         url = f"{url}/api/v1/odoo/product/add"
         _logger.info(f"🔹URL: {url}")
         headers = {
@@ -2560,6 +2566,22 @@ class SaleOrderLine(models.Model):
                 "Certificate %s is already on order %s. A stone cannot be used "
                 "on two open orders.", certificate, dup.order_id.name))
 
+    # Cut-quality words that ride along with a shape name; stripped so the
+    # website's short form ("round") matches IGI's full form ("Round Brilliant").
+    _SHAPE_NOISE_WORDS = {'brilliant', 'cut', 'modified', 'step', 'mixed', 'old'}
+
+    @staticmethod
+    def _normalize_shape(shape):
+        """Canonical shape token for matching: lower-cased core words with the
+        cut-quality descriptors removed, so 'Round Brilliant', 'round' and
+        'ROUND BRILLIANT CUT' all compare equal."""
+        if not shape:
+            return ''
+        cleaned = shape.strip().lower().replace('_', ' ').replace('-', ' ')
+        words = [w for w in cleaned.split()
+                 if w not in SaleOrderLine._SHAPE_NOISE_WORDS]
+        return ' '.join(words)
+
     def _replacement_check_hard_rules(self, product):
         """Wizard-time hard checks against the original line.
         Origin is also enforced by the _check_replacement_origin constraint, so
@@ -2578,8 +2600,8 @@ class SaleOrderLine(models.Model):
                 raise UserError(_(
                     "The original stone is certified — the replacement needs a "
                     "certificate number."))
-            orig_shape = (self.shapes or '').strip().lower()
-            new_shape = (product.shapes or '').strip().lower()
+            orig_shape = self._normalize_shape(self.shapes)
+            new_shape = self._normalize_shape(product.shapes)
             if orig_shape and new_shape and orig_shape != new_shape:
                 raise UserError(_(
                     "Shape must match: the original is %s, the replacement is %s.",
@@ -2847,8 +2869,7 @@ class SaleOrderLine(models.Model):
        help="LGD = certified individual stone; MELEE = non-certified parcel order.")
 
     # Lab Grown / Natural and Certified / Non-Certified on every stone line,
-    # so Procurement can work each kind of stone in its own list (PRD §5.7.1,
-    # §5.7.6). Keys match customer.rfq and purchase.order.line.
+    # so Procurement can work each kind of stone in its own list. Keys match customer.rfq and purchase.order.line.
     stone_type = fields.Selection(
         [('lab_grown', 'Lab Grown'), ('natural', 'Natural')],
         string="Stone Type", compute='_compute_stone_classification',
@@ -3209,20 +3230,31 @@ class SaleOrderLine(models.Model):
             ('state', 'in', ['draft', 'sent']),
             ('origin', 'ilike', order.name),
         ])
+
+        POL = self.env['purchase.order.line']
+        has_sale_link = 'sale_line_id' in POL._fields
+        has_sale_order = 'sale_order_id' in POL._fields
+
         for po in purchase_orders:
             origin_names = [n.strip() for n in (po.origin or '').split(',') if n.strip()]
             if order.name not in origin_names:
                 continue
 
-            # Find PO lines for this SO line (prefer sale_line_id link)
-            po_lines_for_so_line = po.order_line.filtered(
-                lambda pl: (
-                    (pl.sale_line_id and pl.sale_line_id.id == self.id)
-                    or (not pl.sale_line_id
-                        and pl.product_id.id == self.product_id.id
-                        and pl.sale_order_id and pl.sale_order_id.id == order.id)
+            # Find PO lines for this SO line (prefer the sale_line_id link).
+            if has_sale_link:
+                po_lines_for_so_line = po.order_line.filtered(
+                    lambda pl: (
+                        (pl.sale_line_id and pl.sale_line_id.id == self.id)
+                        or (not pl.sale_line_id
+                            and pl.product_id.id == self.product_id.id
+                            and (not has_sale_order
+                                 or (pl.sale_order_id and pl.sale_order_id.id == order.id)))
+                    )
                 )
-            )
+            else:
+                po_lines_for_so_line = po.order_line.filtered(
+                    lambda pl: pl.product_id.id == self.product_id.id
+                )
             # Fallback when origin is single-SO and no sale_line_id link
             if not po_lines_for_so_line and len(origin_names) == 1:
                 po_lines_for_so_line = po.order_line.filtered(
@@ -3235,7 +3267,7 @@ class SaleOrderLine(models.Model):
             if len(origin_names) == 1 and origin_names[0] == order.name:
                 other_so_lines = po.order_line.filtered(
                     lambda pl: pl.sale_order_id and pl.sale_order_id.id != order.id
-                )
+                ) if has_sale_order else POL
                 if not other_so_lines:
                     _logger.info(
                         "🚫 [AUTO-RFQ-CANCEL] Cancelling RFQ %s (single source: %s)",

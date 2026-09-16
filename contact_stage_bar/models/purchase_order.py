@@ -63,7 +63,7 @@ class PurchaseOrderLine(models.Model):
         for line in self:
             line.rupees_rate = line.bank_rate * line.price_unit
 
-    # ── Vendor discount / payment terms (PRD §5.5/§5.6) ─────────────────
+    # ── Vendor discount / payment terms ─────────────────
     # Procurement classifies the stone; discount % and payment days are then
     # derived from the vendor master's 4x4 matrix and snapshotted onto the
     # line — never typed, never re-read live from the vendor afterwards.
@@ -101,7 +101,7 @@ class PurchaseOrderLine(models.Model):
     def _get_vendor_terms(self, partner):
         """Look up (discount %, payment days) on the vendor master for this
         line's stone classification. Missing vendor terms resolve to
-        (0.0, 0) rather than raising, per PRD REQ-5.4.3."""
+        (0.0, 0) rather than raising."""
         self.ensure_one()
         key = (self.stone_type, self.stone_certification_type)
         field_names = _VENDOR_TERMS_FIELD_MAP.get(key)
@@ -181,7 +181,7 @@ class PurchaseOrder(models.Model):
             order.location = 'mumbai' if partner.country_id.code == 'IN' else 'surat'
 
             # Re-derive discount/payment terms for lines already classified
-            # by stone type + certification (PRD REQ-5.6.1). Terms are
+            # by stone type + certification. Terms are
             # snapshotted onto the line at this point, not referenced live —
             # renegotiating the vendor later does not affect this PO.
             for line in order.order_line:

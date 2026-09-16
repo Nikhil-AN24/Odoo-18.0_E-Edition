@@ -37,7 +37,11 @@
                         <field name="orig_certificate"/>
                     </group>
                     <group string="Replacement Stone">
-                        <field name="stone_type" required="1"/>
+                        <!-- Not view-required: these are filled by Fetch from
+                             IGI, and marking them required would block that
+                             button (it saves first). action_submit enforces
+                             them server-side instead. -->
+                        <field name="stone_type"/>
                         <field name="lab"/>
                         <field name="shapes"/>
                         <field name="weight_carat"/>
@@ -54,8 +58,8 @@
 
                 <group>
                     <group string="Vendor &amp; Buying Price">
-                        <field name="vendor_id" required="1"/>
-                        <field name="gross_price_per_carat" required="1"/>
+                        <field name="vendor_id"/>
+                        <field name="gross_price_per_carat"/>
                         <field name="carat_value"/>
                         <field name="gross_total"/>
                     </group>
@@ -82,7 +86,10 @@
             <form string="Reject Replacement">
                 <group>
                     <field name="line_id" invisible="1"/>
-                    <field name="reason" placeholder="Why is this replacement being rejected?"/>
+                    <field name="reason_ids" widget="many2many_tags"
+                           options="{'no_quick_create': False}"
+                           placeholder="Why is this replacement being rejected?"/>
+                    <field name="comment" placeholder="Add any detail worth keeping..."/>
                 </group>
                 <footer>
                     <button name="action_confirm" type="object"

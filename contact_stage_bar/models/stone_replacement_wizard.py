@@ -87,7 +87,7 @@ class StoneReplacement(models.TransientModel):
 
     def action_fetch_igi(self):
         """IGI mode: pull the spec from the report number and fill the fields
-        (REQ-5.2.5). On not_found / unavailable, drop to manual (REQ-5.2.6)."""
+        On not_found / unavailable, drop to manual"""
         self.ensure_one()
         from ..services import igi_service
         report = (self.igi_report_no or '').strip()
@@ -149,7 +149,7 @@ class StoneReplacement(models.TransientModel):
 
     def action_submit(self):
         """Validate, resolve the product, run the checks and price rule, then
-        create the replacement (REQ-5.2.7–5.2.22)."""
+        create the replacement."""
         self.ensure_one()
         line = self.sale_line_id
         if not self.vendor_confirmed:
@@ -201,15 +201,24 @@ class StoneReplacement(models.TransientModel):
 
 
 class StoneReplacementReject(models.TransientModel):
-    """Captures the mandatory reason when Sales rejects a replacement
-    (REQ-5.2.19)."""
+    """Captures the mandatory reason when Sales rejects a replacement."""
     _name = 'stone.replacement.reject'
     _description = 'Reject Stone Replacement'
 
     line_id = fields.Many2one('sale.order.line', required=True, readonly=True)
-    reason = fields.Text(string="Reason", required=True)
+    # Predefined reasons, reusing the same list as the RFQ/order Cancel flow,
+    # plus a free-text comment; so Reject asks for a reason the same way.
+    reason_ids = fields.Many2many(
+        'customer.rfq.cancel.reason', string="Reason", required=True,
+        help="Pick every reason that applies.")
+    comment = fields.Text(
+        string="Comment",
+        help="Any extra detail for whoever reviews this later.")
 
     def action_confirm(self):
         self.ensure_one()
-        self.line_id._replacement_do_reject(self.reason)
+        reason = ', '.join(self.reason_ids.mapped('name'))
+        if self.comment:
+            reason = f"{reason} — {self.comment}" if reason else self.comment
+        self.line_id._replacement_do_reject(reason)
         return {'type': 'ir.actions.client', 'tag': 'soft_reload'}
