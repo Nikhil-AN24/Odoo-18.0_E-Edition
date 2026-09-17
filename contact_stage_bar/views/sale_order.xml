@@ -550,7 +550,7 @@
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='tax_id']" position="replace">
-                <field name="tax_id" widget="many2many_tags" options="{'no_create': True}" context="{'search_view_ref': 'account.account_tax_view_search'}" domain="[('type_tax_use','=','sale'),('company_id','=',parent.company_id), ('country_id', '=', parent.tax_country_id)]" readonly="qty_invoiced &gt; 0" groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"/>
+                <field name="tax_id" widget="many2many_tags" options="{'no_create': True}" context="{'search_view_ref': 'account.account_tax_view_search'}" domain="[('type_tax_use','=','sale'),('company_id','=',parent.company_id), ('country_id', '=', parent.tax_country_id)]" readonly="qty_invoiced &gt; 0" column_invisible="1"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_subtotal']" position="attributes">
