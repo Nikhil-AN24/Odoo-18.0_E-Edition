@@ -80,7 +80,7 @@
                 <button name="action_open_cancel_request_wizard"
                         string="Cancel" type="object" class="btn-secondary"
                         invisible="state == 'cancel' or cancel_request_state in ('pending', 'approved')"
-                        groups="contact_stage_bar.group_lgd_sales"/>
+                        groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement"/>
                 <button name="action_approve_cancellation"
                         string="Approve Cancellation" type="object" class="btn-primary"
                         invisible="cancel_request_state != 'pending'"
@@ -328,7 +328,13 @@
                         <field name="display_type" column_invisible="True"/>
                         <field name="line_type" column_invisible="True"/>
                         <field name="is_melee_parent" column_invisible="True"/>
-                        <field name="availability_status" string="Availability"/>
+                        <field name="is_replaced" column_invisible="True"/>
+                        <!-- One Availability column: the editable status on
+                             normal orders; a read-only column (status label per
+                             row, "Replaced" on the replaced row) once the order
+                             has a replacement. -->
+                        <field name="availability_status" string="Availability" column_invisible="parent.has_replaced_line"/>
+                        <field name="availability_display" string="Availability" column_invisible="not parent.has_replaced_line"/>
                         <field name="order_number" readonly="1"/>
                         <field name="product_template_id" readonly="1"/>
                         <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
@@ -344,12 +350,29 @@
                 </field>
             </xpath>
 
+            <!-- No adding products from the Order Lines list (orders arrive from
+                 the website/API). Removes the standard "Add product" button controls for everyone. -->
+            <xpath expr="//field[@name='order_line']/list" position="attributes">
+                <attribute name="create">0</attribute>
+            </xpath>
+
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="before">
+                <!-- is_replaced drives the "Replaced" display: the editable
+                     Availability dropdown is hidden on replaced (cancelled)
+                     lines, which instead show a read-only "Replaced" label. -->
+                <field name="is_replaced" column_invisible="True"/>
+                <!-- One Availability column. On normal orders the editable
+                     status dropdown shows (group-specific readonly rules). Once
+                     the order has a replacement, that column is hidden and a
+                     single read-only column shows instead: the status label for
+                     every line, and "Replaced" for the replaced line. -->
                 <field name="availability_status" string="Availability"
                        groups="contact_stage_bar.group_lgd_sales"
+                       column_invisible="parent.has_replaced_line"
                        readonly="availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled'] or parent.state in ('sale', 'cancel')"/>
-                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement"/>
-                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement" readonly="availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled'] or parent.state in ('sale', 'cancel')"/>
+                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement" column_invisible="parent.has_replaced_line"/>
+                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement" column_invisible="parent.has_replaced_line" readonly="availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled'] or parent.state in ('sale', 'cancel')"/>
+                <field name="availability_display" string="Availability" column_invisible="not parent.has_replaced_line"/>
                 <field name="order_number" readonly="1"/>
             </xpath>
 
@@ -537,8 +560,8 @@
             <!-- {Confirm} calls action_confirm_wrapper.
                  {Save}    calls action_save_statuses. -->
             <xpath expr="//button[@name='action_confirm']" position="replace">
-                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_procurement" />
-                <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" groups="!contact_stage_bar.group_lgd_procurement" />
+                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" />
+                <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" />
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this
@@ -615,7 +638,7 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='order_line']" position="before">
-                <button name="%(action_sale_order_add_product_wizard)d" type="action" string="Add Product" class="btn-primary"/>
+                <button name="%(action_sale_order_add_product_wizard)d" type="action" string="Add Product" class="btn-primary" invisible="1"/>
                 <!-- Replace Stone banner: shown to Operations
                      when a certified line is Not available. -->
                 <field name="replacement_alert_count" invisible="1"/>

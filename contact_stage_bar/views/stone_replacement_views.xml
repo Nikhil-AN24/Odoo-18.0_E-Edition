@@ -63,10 +63,6 @@
                         <field name="carat_value"/>
                         <field name="gross_total"/>
                     </group>
-                    <group string="Confirmation">
-                        <field name="vendor_confirmed"/>
-                        <field name="no_attribute_worse"/>
-                    </group>
                 </group>
 
                 <footer>

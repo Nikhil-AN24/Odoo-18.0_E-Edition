@@ -49,10 +49,6 @@ class StoneReplacement(models.TransientModel):
         string="Carat", compute='_compute_wizard_carat', digits=(16, 2))
     gross_total = fields.Float(
         string="Gross Total", compute='_compute_gross_total', digits=(16, 2))
-    vendor_confirmed = fields.Boolean(
-        string="Vendor has confirmed this stone is available at this price")
-    no_attribute_worse = fields.Boolean(
-        string="No attribute is worse than the original")
 
     # ── Original stone, for side-by-side comparison ─────────────
     # No price shown: Procurement never sees the customer price.
@@ -152,10 +148,6 @@ class StoneReplacement(models.TransientModel):
         create the replacement."""
         self.ensure_one()
         line = self.sale_line_id
-        if not self.vendor_confirmed:
-            raise UserError(_(
-                "You must tick 'Vendor has confirmed this stone is available at "
-                "this price.' before submitting."))
         if not self.vendor_id:
             raise UserError(_("Select the vendor."))
         if not self.gross_price_per_carat:
@@ -178,10 +170,8 @@ class StoneReplacement(models.TransientModel):
             })
 
         gross_total = (self.gross_price_per_carat or 0.0) * (self.carat_value or 0.0)
-        outcome = line._replacement_price_outcome(
-            product, gross_total, self.no_attribute_worse)
-        line._create_replacement(
-            product, self.vendor_id, gross_total, outcome, self.no_attribute_worse)
+        outcome = line._replacement_price_outcome(product, gross_total)
+        line._create_replacement(product, self.vendor_id, gross_total, outcome)
 
         message = (
             _("Replacement created and sent to Sales for confirmation.")
@@ -198,7 +188,6 @@ class StoneReplacement(models.TransientModel):
                 'next': {'type': 'ir.actions.client', 'tag': 'soft_reload'},
             },
         }
-
 
 class StoneReplacementReject(models.TransientModel):
     """Captures the mandatory reason when Sales rejects a replacement."""
