@@ -34,6 +34,7 @@ class StoneReplacement(models.TransientModel):
     polish = fields.Char(string="Polish")
     symmetry = fields.Char(string="Symmetry")
     fluorescence_intensity = fields.Char(string="Fluorescence")
+    treatments = fields.Char(string="Treatments")
     measurements = fields.Char(string="Measurements")
     certificate = fields.Char(string="Certificate Number")
     stone_type = fields.Selection(
@@ -41,7 +42,9 @@ class StoneReplacement(models.TransientModel):
         string="Stone Type")
 
     # ── Vendor / price ─────────────────────────────────────
-    vendor_id = fields.Many2one('res.partner', string="Vendor")
+    vendor_id = fields.Many2one(
+        'res.partner', string="Vendor",
+        domain="[('partner_kind', '=', 'supplier')]")
     gross_price_per_carat = fields.Float(
         string="Gross Price / Carat", digits=(16, 2),
         help="The vendor's listed price before any partnership discount.")
@@ -111,7 +114,10 @@ class StoneReplacement(models.TransientModel):
             'cut': result.get('cut'),
             'polish': result.get('polish'),
             'symmetry': result.get('symmetry'),
-            'fluorescence_intensity': result.get('fluorescence'),
+            # IGI omits these for some stones — default to "None" so the column
+            # never renders blank on the replaced line.
+            'fluorescence_intensity': result.get('fluorescence') or 'None',
+            'treatments': self._igi_treatment_from_result(result),
             'measurements': result.get('measurements'),
             'certificate': result.get('report_number') or report,
             'lab': 'IGI',
@@ -126,6 +132,17 @@ class StoneReplacement(models.TransientModel):
             'name': _("Replace Stone"),
         }
 
+    @staticmethod
+    def _igi_treatment_from_result(result):
+
+        text = ' '.join(str(result.get(k) or '')
+                        for k in ('comments', 'description', 'raw')).upper()
+        if 'CVD' in text or 'CHEMICAL VAPOR' in text or 'CHEMICAL VAPOUR' in text:
+            return 'CVD'
+        if 'HPHT' in text or 'HIGH PRESSURE HIGH TEMPERATURE' in text:
+            return 'HPHT'
+        return 'None'
+
     def _spec_vals(self):
         self.ensure_one()
         return {
@@ -138,7 +155,9 @@ class StoneReplacement(models.TransientModel):
             'cut': self.cut,
             'polish': self.polish,
             'symmetry': self.symmetry,
-            'fluorescence_intensity': self.fluorescence_intensity,
+            # Never leave these blank on the replaced line.
+            'fluorescence_intensity': self.fluorescence_intensity or 'None',
+            'treatments': self.treatments or 'None',
             'measurements': self.measurements,
             'stone_type': self.stone_type,
         }
@@ -157,6 +176,7 @@ class StoneReplacement(models.TransientModel):
         if not self.weight_carat:
             raise UserError(_("Enter the carat weight."))
 
+        line = line.sudo()
         product = line._replacement_resolve_product(self._spec_vals())
         line._replacement_check_duplicate(product.certificate, exclude_line=line)
         line._replacement_check_hard_rules(product)
@@ -164,7 +184,7 @@ class StoneReplacement(models.TransientModel):
         # Make sure the chosen vendor is a seller on the product so the PO and
         # the line's vendor resolve.
         if self.vendor_id.id not in product.seller_ids.mapped('partner_id').ids:
-            self.env['product.supplierinfo'].create({
+            self.env['product.supplierinfo'].sudo().create({
                 'product_tmpl_id': product.id,
                 'partner_id': self.vendor_id.id,
             })

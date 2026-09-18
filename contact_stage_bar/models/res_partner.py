@@ -216,4 +216,14 @@ class ResPartner(models.Model):
         if to_tag:
             to_tag.sudo().write({'partner_kind': 'supplier'})
         return len(to_tag)
+
+    @api.depends('vat', 'state_id', 'country_id', 'fiscal_country_codes')
+    def _compute_l10n_in_gst_state_warning(self):
+
+        bad = self.filtered(lambda p: not isinstance(p.fiscal_country_codes, str))
+        for partner in bad:
+            partner.l10n_in_gst_state_warning = False
+        remaining = self - bad
+        if remaining:
+            super(ResPartner, remaining)._compute_l10n_in_gst_state_warning()
                 

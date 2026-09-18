@@ -68,12 +68,21 @@
         <field name="inherit_id" ref="base.view_partner_tree"/>
         <field name="arch" type="xml">
             <xpath expr="//list" position="inside">
-                <field name="vendor_discount" optional="show"/>
-                <field name="certified_payment_term" optional="show"/>
-                <field name="non_certified_payment_term" optional="show"/>
-                <!-- Supplier import-sheet columns, off by default to keep the
+                <!-- Vendor identity columns + GSTIN, shown by default. -->
+                <field name="vat" string="GSTIN" optional="show"/>
+                <field name="first_name" optional="show"/>
+                <field name="last_name" optional="show"/>
+                <!-- Accounts (buyer) list only: GST status, hidden from Procurement roles -->
+                <field name="gst_stages" optional="show"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
+                <!-- Vendors (supplier) list only: trading name, Procurement roles only -->
+                <field name="trading_name" optional="show"
+                       groups="contact_stage_bar.group_lgd_procurement"/>
+                <!-- Terms / import-sheet columns, off by default to keep the
                      list readable; togglable from the column picker. -->
-                <field name="trading_name" optional="hide"/>
+                <field name="vendor_discount" optional="hide"/>
+                <field name="certified_payment_term" optional="hide"/>
+                <field name="non_certified_payment_term" optional="hide"/>
                 <field name="kyc_company_name" optional="hide"/>
                 <field name="lg_cert_discount" optional="hide"/>
                 <field name="lg_non_cert_discount" optional="hide"/>
@@ -86,7 +95,8 @@
             </xpath>
             <!-- Hide Salesperson / Activities / City columns by default -->
             <xpath expr="//field[@name='user_id']" position="attributes">
-                <attribute name="optional">hide</attribute>
+                <attribute name="optional">show</attribute>
+                <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
             </xpath>
             <xpath expr="//field[@name='activity_ids']" position="attributes">
                 <attribute name="optional">hide</attribute>

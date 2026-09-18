@@ -4,6 +4,7 @@ access_partner_category,custom.category,model_custom_category,base.group_user,1,
 access_stock_picking_wizard,stock.picking.wizard,model_stock_picking_wizard,base.group_user,1,1,1,1
 access_sale_order_add_product_wizard,sale.order.add.product.wizard,model_sale_order_add_product_wizard,base.group_user,1,1,1,1
 access_stone_replacement_procurement,stone.replacement.procurement,model_stone_replacement,contact_stage_bar.group_lgd_procurement,1,1,1,1
+access_stone_replacement_superadmin,stone.replacement.superadmin,model_stone_replacement,contact_stage_bar.group_lgd_superadmin,1,1,1,1
 access_stone_replacement_system,stone.replacement.system,model_stone_replacement,base.group_system,1,1,1,1
 access_stone_replacement_reject_sales,stone.replacement.reject.sales,model_stone_replacement_reject,contact_stage_bar.group_lgd_sales,1,1,1,1
 access_stone_replacement_reject_system,stone.replacement.reject.system,model_stone_replacement_reject,base.group_system,1,1,1,1

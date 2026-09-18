@@ -1,5 +1,5 @@
 from odoo import models, _,api ,fields
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from datetime import datetime, timedelta
 import datetime
 
@@ -50,18 +50,26 @@ class PurchaseOrderLine(models.Model):
         currency_field='currency_id',
     )
 
-    # Bank Rate * Unit Price = Rupees Rate
+    # Bank Rate * Unit Price = Rupees Rate. Computed as a default, but editable:
+    # Procurement can type the actual rupee rate, which then drives the total.
     rupees_rate = fields.Float(
         string='Rupees Rate',
         compute='_compute_rupees_rate',
+        inverse='_inverse_rupees_rate',
         digits=(16, 2),
         store=True,
+        readonly=False,
     )
 
     @api.depends('bank_rate', 'price_unit')
     def _compute_rupees_rate(self):
         for line in self:
             line.rupees_rate = line.bank_rate * line.price_unit
+
+    def _inverse_rupees_rate(self):
+        # A manually typed Rupees Rate is stored as-is; nothing to propagate.
+        # (It is recomputed only if Bank Rate or Unit Price changes afterwards.)
+        return
 
     # ── Vendor discount / payment terms ─────────────────
     # Procurement classifies the stone; discount % and payment days are then
@@ -155,8 +163,58 @@ class PurchaseOrderLine(models.Model):
             })
         return res
 
+    # Price / monetary columns whose manual edits are logged on the PO chatter.
+    _TRACKED_MONETARY_FIELDS = {
+        'price_unit': 'Unit Price',
+        'rate_usd': 'Rate',
+        'rupees_rate': 'Rupees Rate',
+        'bank_rate': 'Bank Rate',
+        'weight': 'Weight',
+        'product_qty': 'Quantity',
+        'custom_discount': 'Discount',
+    }
+
+    @staticmethod
+    def _fmt_tracked_value(value):
+        if isinstance(value, float):
+            return '%.2f' % value
+        return '' if value in (False, None) else str(value)
+
+    def write(self, vals):
+        """Log any price/monetary column change to the parent PO's chatter, so a
+        manual edit by anyone is recorded (who + old → new)."""
+        tracked = [f for f in self._TRACKED_MONETARY_FIELDS if f in vals]
+        old = ({line.id: {f: line[f] for f in tracked} for line in self}
+               if tracked else {})
+        res = super().write(vals)
+        if tracked:
+            for line in self:
+                rows = []
+                for f in tracked:
+                    before = old.get(line.id, {}).get(f)
+                    after = line[f]
+                    if before != after:
+                        rows.append((self._TRACKED_MONETARY_FIELDS[f], before, after))
+                if rows and line.order_id:
+                    product = escape(line.product_id.display_name or line.name or _('Line'))
+                    items = Markup('').join(
+                        Markup('<li>%s: %s → %s</li>') % (
+                            lbl, self._fmt_tracked_value(b), self._fmt_tracked_value(a))
+                        for lbl, b, a in rows
+                    )
+                    line.order_id.message_post(
+                        body=Markup('<p><b>%s</b> — price/amount changed:</p><ul>%s</ul>')
+                        % (product, items))
+        return res
+
+
 class PurchaseOrder(models.Model):
     _inherit = 'purchase.order'
+    # Log currency and amount changes on the PO chatter.
+    currency_id = fields.Many2one(tracking=True)
+    amount_untaxed = fields.Monetary(tracking=True)
+    amount_tax = fields.Monetary(tracking=True)
+    amount_total = fields.Monetary(tracking=True)
     location = fields.Selection([('mumbai', 'India'), ('surat', 'USA')], string='Location')     
     vendor_street = fields.Char(related='partner_id.street', string="Street")
     vendor_street_2 = fields.Char(related='partner_id.street2', string="Street 2")
@@ -186,6 +244,20 @@ class PurchaseOrder(models.Model):
             # renegotiating the vendor later does not affect this PO.
             for line in order.order_line:
                 line._onchange_stone_classification_fill_vendor_terms()
+
+    @api.depends('partner_id')
+    def _compute_currency_id(self):
+        """Default vendor POs to INR. Augmont trades in INR even though the
+        company currency is USD, so fall back to INR (not the company currency)
+        when the vendor has no purchase currency of its own. A vendor's own
+        purchase currency still wins if one is set, and the field stays
+        user-editable while the PO is open."""
+        inr = self.env.ref('base.INR', raise_if_not_found=False)
+        for order in self:
+            company = order.company_id or self.env.company
+            vendor_cur = order.partner_id.with_company(company).property_purchase_currency_id \
+                if order.partner_id else False
+            order.currency_id = vendor_cur or inr or company.currency_id
 
     procurement_reference = fields.Char(
         string="Procurement Reference",

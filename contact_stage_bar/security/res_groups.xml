@@ -230,6 +230,10 @@
         <!-- Carry any lab picked in the removed "Lab" selection (lab_id) over to LAB (labs). Only fills products with no LAB. -->
         <function model="product.template" name="_lgd_backfill_labs_from_lab_id"/>
 
+        <!-- Older replaced lines were stored as 'cancelled'; move them to the
+             dedicated 'replaced' status so they read "Replaced". -->
+        <function model="sale.order.line" name="_lgd_backfill_replaced_status"/>
+
         <function name="write" model="ir.model.data">
             <function name="search" model="ir.model.data">
                 <value eval="[('module', '=', 'sale'), ('name', 'in', ['sale_order_personal_rule', 'sale_order_line_personal_rule'])]"/>

@@ -274,7 +274,7 @@ class SaleOrder(models.Model):
                 order.all_lines_final = False
             else:
                 order.all_lines_final = all(
-                    l.availability_status in ('confirmed', 'cancelled')
+                    l.availability_status in ('confirmed', 'cancelled', 'replaced')
                     for l in lines
                 )
 
@@ -354,7 +354,12 @@ class SaleOrder(models.Model):
                 _logger.info("📊 Order %s: no lines → Order Received", order.name)
                 continue
 
-            all_statuses = set(lines.mapped('availability_status'))
+            # A 'replaced' line is inactive exactly like a 'cancelled' one, so
+            # normalise it to 'cancelled' here — every rule below already keys on
+            # 'cancelled', so no rule needs to know about 'replaced'.
+            def _norm(s):
+                return 'cancelled' if s == 'replaced' else s
+            all_statuses = {_norm(s) for s in lines.mapped('availability_status')}
             all_statuses.discard(False)
 
             if not all_statuses:
@@ -364,10 +369,10 @@ class SaleOrder(models.Model):
             # ── Derived active sets ───────────────────────────────────────
             def active_set(ignore):
                 """Return set of unique statuses after filtering out ignore-set."""
-                return set(
-                    lines.filtered(lambda l: l.availability_status not in ignore)
-                         .mapped('availability_status')
-                ) - {False}
+                return {
+                    _norm(l.availability_status) for l in lines
+                    if _norm(l.availability_status) not in ignore
+                } - {False}
 
             c1_active = active_set(C1_IGNORE)   # only delivered / order_completed remain
             c3_active = active_set(C3_IGNORE)   # payment flow 
@@ -677,7 +682,7 @@ class SaleOrder(models.Model):
             # rather than firing a wrong transition. Already-'cancelled' lines are
             # fine and simply skipped below.
             unexpected = lines.filtered(
-                lambda l: l.availability_status not in ('not_available', 'cancelled')
+                lambda l: l.availability_status not in ('not_available', 'cancelled', 'replaced')
             )
             if unexpected:
                 raise UserError(_(
@@ -888,6 +893,13 @@ class SaleOrder(models.Model):
         
         return res
 
+    @api.model
+    def _lgd_inr_currency_id(self):
+        """The INR currency id vendor POs are always raised in INR."""
+        inr = self.env.ref('base.INR', raise_if_not_found=False) \
+            or self.env['res.currency'].search([('name', '=', 'INR')], limit=1)
+        return inr.id if inr else False
+
     def _auto_create_confirm_pos(self):
         """On confirm, raise a vendor PO for each available (confirmed) stone line
         from the line's own ``vendor_id`` — the same direct-create pattern the
@@ -895,7 +907,10 @@ class SaleOrder(models.Model):
         or per-product vendor pricing. One PO per vendor; idempotent (a product
         already on a live PO for this order+vendor is skipped)."""
         self.ensure_one()
-        POL = self.env['purchase.order.line']
+        # Raising the vendor PO is a system action; run it sudo so it works no
+        # matter who confirms the order (e.g. LGD Sales has no purchase access).
+        PO = self.env['purchase.order'].sudo()
+        POL = self.env['purchase.order.line'].sudo()
         has_sale_link = 'sale_line_id' in POL._fields
         lines = self.order_line.filtered(
             lambda l: l.availability_status == 'confirmed'
@@ -903,52 +918,59 @@ class SaleOrder(models.Model):
             and not l.is_replaced and (l.product_uom_qty or 0) > 0)
         if not lines:
             return
-        for vendor in lines.mapped('vendor_id'):
-            vlines = lines.filtered(lambda l: l.vendor_id == vendor)
-            po = self.env['purchase.order'].search([
-                ('origin', '=', self.name),
-                ('partner_id', '=', vendor.id),
-                ('state', 'in', ['draft', 'sent']),
-            ], limit=1)
-            for line in vlines:
-                # Skip a product already on a live (non-cancelled) PO for this
-                # order + vendor, so re-confirming never duplicates a PO line.
-                if POL.search([
+        # One PO per vendor, created within THIS run. We must NOT match existing
+        # POs by origin=name: order names are reused in this DB, so an old order's
+        # PO with the same name would wrongly satisfy the dedup and suppress this
+        # order's PO. Dedup precisely by the sale line instead.
+        po_by_vendor = {}
+        for line in lines:
+            vendor = line.vendor_id
+            if has_sale_link:
+                already = POL.search([
+                    ('sale_line_id', '=', line.id),
+                    ('order_id.state', '!=', 'cancel'),
+                ], limit=1)
+            else:
+                already = POL.search([
                     ('order_id.origin', '=', self.name),
                     ('order_id.partner_id', '=', vendor.id),
                     ('order_id.state', '!=', 'cancel'),
                     ('product_id', '=', line.product_id.id),
-                ], limit=1):
-                    continue
-                if not po:
-                    po = self.env['purchase.order'].create({
-                        'partner_id': vendor.id,
-                        'origin': self.name,
-                        'location': self.location,
-                        'order_number': self.sdk_augmont_number,
-                    })
-                cost = (line.product_id.standard_price
-                        or line.product_template_id.final_price
-                        or line.price_unit)
-                po_vals = {
-                    'order_id': po.id,
-                    'product_id': line.product_id.id,
-                    'name': line.product_id.name,
-                    'product_qty': line.product_uom_qty or 1,
-                    'price_unit': cost,
-                    'date_planned': fields.Datetime.now(),
-                    'stone_type': line.product_template_id.stone_type or line.stone_type,
-                    'stone_certification_type': line.stone_certification_type,
-                }
-                if has_sale_link:
-                    po_vals['sale_line_id'] = line.id
-                po_line = POL.create(po_vals)
-                discount, days = po_line._get_vendor_terms(vendor)
-                po_line.write({'discount_percent': discount, 'payment_days': days})
-            if po:
-                self.message_post(body=_(
-                    "Purchase order %(po)s raised to %(vendor)s on confirmation.",
-                    po=po.name, vendor=vendor.display_name))
+                ], limit=1)
+            if already:
+                continue
+            po = po_by_vendor.get(vendor.id)
+            if not po:
+                po = PO.create({
+                    'partner_id': vendor.id,
+                    'origin': self.name,
+                    'location': self.location,
+                    'order_number': self.sdk_augmont_number,
+                    'currency_id': self._lgd_inr_currency_id(),
+                })
+                po_by_vendor[vendor.id] = po
+            cost = (line.product_id.standard_price
+                    or line.product_template_id.final_price
+                    or line.price_unit)
+            po_vals = {
+                'order_id': po.id,
+                'product_id': line.product_id.id,
+                'name': line.product_id.name,
+                'product_qty': line.product_uom_qty or 1,
+                'price_unit': cost,
+                'date_planned': fields.Datetime.now(),
+                'stone_type': line.product_template_id.stone_type or line.stone_type,
+                'stone_certification_type': line.stone_certification_type,
+            }
+            if has_sale_link:
+                po_vals['sale_line_id'] = line.id
+            po_line = POL.create(po_vals)
+            discount, days = po_line._get_vendor_terms(vendor)
+            po_line.write({'discount_percent': discount, 'payment_days': days})
+        for vendor_id, po in po_by_vendor.items():
+            self.message_post(body=_(
+                "Purchase order %(po)s raised to %(vendor)s on confirmation.",
+                po=po.name, vendor=po.partner_id.display_name))
 
     def action_mark_not_available(self):
         """
@@ -1678,6 +1700,7 @@ class SaleOrder(models.Model):
             'confirmed':         'Confirmed',
             'not_available':     'Not available',
             'cancelled':         'Cancelled',
+            'replaced':          'Cancelled',
             'in_qc_process':     'In QC process',
             'qc_fail':           'QC Fail',
             'payment_pending':   'Payment Pending',
@@ -2590,6 +2613,20 @@ class SaleOrderLine(models.Model):
         for line in self:
             line.is_replaced = bool(line.replaced_by_line_id)
 
+    @api.model
+    def _lgd_backfill_replaced_status(self):
+        """One-time: older replaced lines were stored as 'cancelled'. Now that
+        'replaced' is a real status shown as "Replaced", move them over. Runs on
+        upgrade; idempotent."""
+        lines = self.sudo().search([
+            ('replaced_by_line_id', '!=', False),
+            ('availability_status', '=', 'cancelled'),
+        ])
+        if lines:
+            lines.with_context(from_replacement_engine=True).write(
+                {'availability_status': 'replaced'})
+        return len(lines)
+
     # Availability shown in lists: a replaced line stays 'cancelled' underneath
     # (so order-status/amount logic is unchanged) but reads "Replaced" for the
     # user. Non-replaced lines show their normal availability label.
@@ -2669,7 +2706,7 @@ class SaleOrderLine(models.Model):
             return
         domain = [
             ('certificate', '=', certificate),
-            ('availability_status', 'not in', ('cancelled', 'not_available')),
+            ('availability_status', 'not in', ('cancelled', 'not_available', 'replaced')),
         ]
         if exclude_line:
             domain.append(('id', '!=', exclude_line.id))
@@ -2776,6 +2813,7 @@ class SaleOrderLine(models.Model):
             'origin': order.name,
             'location': order.location,
             'order_number': order.sdk_augmont_number,
+            'currency_id': order._lgd_inr_currency_id(),
         })
         po_line = self.env['purchase.order.line'].create({
             'order_id': po.id,
@@ -2824,14 +2862,15 @@ class SaleOrderLine(models.Model):
 
     def _replacement_complete(self, new_line):
         """Link the pair and close the original: the old line goes
-        not_available -> cancelled and shows as "Replaced"; the new line stays
+        not_available -> replaced (a dedicated status shown as "Replaced" and
+        treated as cancelled by the status/API logic); the new line stays
         diamond_booked."""
         self.ensure_one()
         self.replaced_by_line_id = new_line.id
         if new_line.replaces_line_id.id != self.id:
             new_line.replaces_line_id = self.id
         self.with_context(from_replacement_engine=True).write(
-            {'availability_status': 'cancelled'})
+            {'availability_status': 'replaced'})
         # Figure-free, vendor-free, user-free chatter (REQ-5.2.23).
         self.order_id.message_post(body=_(
             "Stone replaced: %(old)s -> %(new)s.",
@@ -3107,6 +3146,7 @@ class SaleOrderLine(models.Model):
         ('confirmed', 'Confirmed'),
         ('not_available', 'Not available'),
         ('cancelled', 'Cancelled'),
+        ('replaced', 'Replaced'),
         ('in_qc_process', 'In QC process'),
         ('qc_fail', 'QC Fail'),
         ('payment_pending', 'Payment Pending'),
@@ -3146,9 +3186,9 @@ class SaleOrderLine(models.Model):
     def _compute_amount(self):
 
         zero_lines = self.filtered(
-            lambda l: l.availability_status in ('cancelled', 'not_available')
+            lambda l: l.availability_status in ('cancelled', 'not_available', 'replaced')
         )
-        # Hard-zero all monetary fields for cancelled / not-available lines.
+        # Hard-zero all monetary fields for cancelled / not-available / replaced lines.
         zero_lines.update({
             'price_subtotal': 0.0,
             'price_tax':      0.0,
@@ -3180,7 +3220,7 @@ class SaleOrderLine(models.Model):
                               shows a clear warning before the user can save
         """
         # ── qty sync (existing behaviour, unchanged) ──────────────────────
-        if self.availability_status in ['not_available', 'cancelled']:
+        if self.availability_status in ['not_available', 'cancelled', 'replaced']:
             self.product_uom_qty = 0
         elif self.availability_status in ['diamond_booked', 'confirmed']:
             self.product_uom_qty = 1
@@ -3625,7 +3665,7 @@ class SaleOrderLine(models.Model):
 
             # ── Zero out qty for cancelled/not_available (mirrors onchange for API calls) ──
             for line in self:
-                if line.availability_status in ('not_available', 'cancelled') and line.product_uom_qty != 0:
+                if line.availability_status in ('not_available', 'cancelled', 'replaced') and line.product_uom_qty != 0:
                     line.product_uom_qty = 0
 
             # ── Auto-cancel/reduce RFQ when line → cancelled/not_available ──
@@ -3785,9 +3825,9 @@ class SaleOrderLine(models.Model):
                     )
 
 
-                if vals.get('availability_status') in ('cancelled', 'not_available'):
+                if vals.get('availability_status') in ('cancelled', 'not_available', 'replaced'):
                     # Step 1 — refresh price_subtotal / price_tax on all lines
-                    #           (our override zeros cancelled/not_available ones)
+                    #           (our override zeros cancelled/not_available/replaced ones)
                     order.order_line._compute_amount()
 
                     # Step 2 — sum the freshly-computed line values
