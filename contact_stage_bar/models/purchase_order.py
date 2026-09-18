@@ -44,11 +44,27 @@ class PurchaseOrderLine(models.Model):
         string='Discount',
     )
 
-    # "Rate" column — Monetary field with $ symbol by default
+    # "Per ct. Rate" column — Monetary field with $ symbol by default
     rate_usd = fields.Monetary(
-        string='Rate',
+        string='Per ct. Rate',
         currency_field='currency_id',
     )
+
+    # True only for the roles allowed to edit the PO pricing columns
+    # (Vendor Discount %, Payment Terms, Per ct. Rate, Discount). For everyone
+    # else the whole Products grid is view-only. Defaults to False, so an
+    # un-privileged (or unresolved) user always gets the read-only columns.
+    can_edit_po_pricing = fields.Boolean(compute='_compute_can_edit_po_pricing')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_po_pricing(self):
+        priv = (
+            self.env.user.has_group('base.group_system')
+            or self.env.user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+            or self.env.user.has_group('contact_stage_bar.group_lgd_superadmin')
+        )
+        for line in self:
+            line.can_edit_po_pricing = priv
 
     # Bank Rate * Unit Price = Rupees Rate. Computed as a default, but editable:
     # Procurement can type the actual rupee rate, which then drives the total.
@@ -166,12 +182,14 @@ class PurchaseOrderLine(models.Model):
     # Price / monetary columns whose manual edits are logged on the PO chatter.
     _TRACKED_MONETARY_FIELDS = {
         'price_unit': 'Unit Price',
-        'rate_usd': 'Rate',
+        'rate_usd': 'Per ct. Rate',
         'rupees_rate': 'Rupees Rate',
         'bank_rate': 'Bank Rate',
         'weight': 'Weight',
         'product_qty': 'Quantity',
         'custom_discount': 'Discount',
+        'discount_percent': 'Vendor Discount %',
+        'payment_days': 'Payment Terms (Days)',
     }
 
     @staticmethod
@@ -210,6 +228,22 @@ class PurchaseOrderLine(models.Model):
 
 class PurchaseOrder(models.Model):
     _inherit = 'purchase.order'
+
+    # Header mirror of the line-level flag. The Products grid (order_line) stays
+    # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /
+    # LGD SuperAdmin), regardless of PO state; everyone else sees it view-only.
+    can_edit_po_pricing = fields.Boolean(compute='_compute_can_edit_po_pricing')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_po_pricing(self):
+        priv = (
+            self.env.user.has_group('base.group_system')
+            or self.env.user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+            or self.env.user.has_group('contact_stage_bar.group_lgd_superadmin')
+        )
+        for order in self:
+            order.can_edit_po_pricing = priv
+
     # Log currency and amount changes on the PO chatter.
     currency_id = fields.Many2one(tracking=True)
     amount_untaxed = fields.Monetary(tracking=True)
