@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- LGD Accounting = full Accounting (Invoicing group) + view-only
+             Sales/Procurement. Odoo's Invoicing group (account.group_account_invoice)
+             grants read+write on Sale and Purchase Orders by core design; lower
+             those four grants to read-only so accounting users can view every
+             order but not modify it. Full Accountants (account.group_account_user)
+             keep their own SO write via a separate ACL, so they are unaffected on
+             Sale Orders. Invoice/bill editing (account.move) is untouched. -->
+
+        <record id="sale.access_sale_order_invoicing_payments" model="ir.model.access">
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="sale.access_sale_order_line_invoicing_payments" model="ir.model.access">
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="purchase.access_purchase_order_invoicing_payments" model="ir.model.access">
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        <record id="purchase.access_purchase_order_line_invoicing_payments" model="ir.model.access">
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+    </data>
+</odoo>

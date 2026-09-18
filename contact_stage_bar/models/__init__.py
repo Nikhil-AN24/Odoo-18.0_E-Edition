@@ -8,6 +8,7 @@ from . import stock_picking
 from . import purchase_order
 from . import res_users
 from . import sale_order_add_product_wizard
+from . import stone_replacement_wizard
 from . import sale_order_cancel_request_wizard
 from . import sale_order_cancel_reject_wizard
 from . import augmont_api_retry

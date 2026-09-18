@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.16",
+    "version": "18.0.1.7.17",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -21,6 +21,7 @@
         'data/customer_rfq_grade_data.xml',
         'security/ir.model.access.csv',
         'security/sale_visibility_rules.xml',
+        'security/lgd_accounting_access.xml',
         "views/reports_label.xml",
         "views/contacts_stage_views.xml",
         "views/crm_lead.xml",
@@ -28,6 +29,7 @@
         "views/res_partner_category_views.xml",
         "views/sale_order.xml",
         "views/sale_order_add_product_wizard.xml",
+        "views/stone_replacement_views.xml",
         "views/sale_order_cancel_wizards.xml",
         "views/product_template_views.xml",
         "views/stock_picking_wizard_view.xml",

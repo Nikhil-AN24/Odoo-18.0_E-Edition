@@ -380,6 +380,10 @@
     <record id="action_dynamic_sales_orders" model="ir.actions.server">
         <field name="name">Sales Orders</field>
         <field name="model_id" ref="sale.model_sale_order"/>
+        <!-- With groups_id set, ir.actions.server.run() checks group membership
+             instead of write access on sale.order, so the view-only LGD
+             Accounting role can open this list (it has no SO write). -->
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_sales'), ref('contact_stage_bar.group_lgd_accounting'), ref('base.group_system')])]"/>
         <field name="state">code</field>
         <field name="code"><![CDATA[
 action_vals = dict(env.ref('sale.action_orders').sudo().read()[0])
@@ -388,6 +392,9 @@ action_vals['name'] = 'Sales'
 action_vals['display_name'] = 'Sales'
 action_vals.pop('path', None)
 action_vals.pop('xml_id', None)
+# Drop the salesman group restriction inherited from sale.action_orders so the
+# custom menu's own groups govern access (e.g. view-only LGD Accounting).
+action_vals.pop('groups_id', None)
 
 # No New button here either: orders reach this list from the RFQ and online
 # flows, they are not keyed in by hand. hide_cog_menu drops the control-panel
@@ -396,7 +403,10 @@ action_vals.pop('xml_id', None)
 # apply to this action only and leave sale.view_order_form usable elsewhere.
 action_vals['context'] = {'create': False, 'hide_cog_menu': True}
 
-if env.user.has_group('base.group_system') or env.user.has_group('contact_stage_bar.group_lgd_procurement'):
+if (env.user.has_group('base.group_system')
+        or env.user.has_group('contact_stage_bar.group_lgd_procurement')
+        or env.user.has_group('contact_stage_bar.group_lgd_accounting')):
+    # Admin, Procurement and view-only Accounting see every order.
     action_vals['domain'] = []
 elif env.user.has_group('contact_stage_bar.group_lgd_sales_manager'):
     # Manager sees ALL except Ankit and Aarav
@@ -416,11 +426,11 @@ action = action_vals
         <field name="action" ref="contact_stage_bar.action_dynamic_sales_orders"/>
         <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
         <field name="active" eval="True"/>
-        <field name="groups_id" eval="[(4, ref('contact_stage_bar.group_lgd_sales')), (4, ref('base.group_system'))]"/>
+        <field name="groups_id" eval="[(4, ref('contact_stage_bar.group_lgd_sales')), (4, ref('base.group_system')), (4, ref('contact_stage_bar.group_lgd_accounting'))]"/>
     </record>
 
     <!-- Customer RFQ menu under the custom Sales top-level menu -->
-    <menuitem id="menu_customer_rfq_sales" name="Customer RFQ" parent="menu_sales_3" action="action_customer_rfq_sales" sequence="15" groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
+    <menuitem id="menu_customer_rfq_sales" name="Customer RFQ" parent="menu_sales_3" action="action_customer_rfq_sales" sequence="15" groups="contact_stage_bar.group_lgd_sales,base.group_system,contact_stage_bar.group_lgd_accounting"/>
 
     <!-- Onboarding menu -->
     <!-- <menuitem id="menu_onboarding_sales" name="Onboarding" parent="menu_sales_3" action="contact_stage_bar.action_customer_onboarding" sequence="21" groups="contact_stage_bar.group_lgd_sales,base.group_system"/> -->
@@ -429,11 +439,15 @@ action = action_vals
     <function model="ir.ui.menu" name="_reparent_customer_rfq"/>
 
     <!-- Customer Orders menu under Purchase -->
-    <menuitem id="menu_customer_orders_procurement" name="Customer Quotations" parent="purchase.menu_purchase_root" action="action_customer_orders_procurement" sequence="-1" groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+    <menuitem id="menu_customer_orders_procurement" name="Customer Quotations" parent="purchase.menu_purchase_root" action="action_customer_orders_procurement" sequence="-1" groups="contact_stage_bar.group_lgd_procurement,base.group_system,contact_stage_bar.group_lgd_accounting"/>
     
+    <!-- groups_id on these sale.order server actions makes run() check group
+         membership instead of sale.order write access, so view-only LGD
+         Accounting (and every procurement variant) can open these lists. -->
     <record id="action_dynamic_cfq_orders_procurement" model="ir.actions.server">
         <field name="name">All Orders</field>
         <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('contact_stage_bar.group_lgd_procurement_manager'), ref('contact_stage_bar.group_lgd_accounting'), ref('base.group_system')])]"/>
         <field name="state">code</field>
         <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_dynamic_cfq_orders_procurement', 'All Orders')</field>
     </record>
@@ -441,6 +455,7 @@ action = action_vals
     <record id="action_procurement_orders_lab_grown_certified" model="ir.actions.server">
         <field name="name">LabGrown Certified</field>
         <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('contact_stage_bar.group_lgd_procurement_manager'), ref('contact_stage_bar.group_lgd_accounting'), ref('base.group_system')])]"/>
         <field name="state">code</field>
         <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_lab_grown_certified', 'LabGrown Certified', 'lab_grown_certified')</field>
     </record>
@@ -448,6 +463,7 @@ action = action_vals
     <record id="action_procurement_orders_lab_grown_melee" model="ir.actions.server">
         <field name="name">LabGrown Melle</field>
         <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('contact_stage_bar.group_lgd_procurement_manager'), ref('contact_stage_bar.group_lgd_accounting'), ref('base.group_system')])]"/>
         <field name="state">code</field>
         <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_lab_grown_melee', 'LabGrown Melle', 'lab_grown_melee')</field>
     </record>
@@ -455,6 +471,7 @@ action = action_vals
     <record id="action_procurement_orders_natural_certified" model="ir.actions.server">
         <field name="name">Natural Certified</field>
         <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('contact_stage_bar.group_lgd_procurement_manager'), ref('contact_stage_bar.group_lgd_accounting'), ref('base.group_system')])]"/>
         <field name="state">code</field>
         <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_natural_certified', 'Natural Certified', 'natural_certified')</field>
     </record>
@@ -462,6 +479,7 @@ action = action_vals
     <record id="action_procurement_orders_natural_melee" model="ir.actions.server">
         <field name="name">Natural Melle</field>
         <field name="model_id" ref="sale.model_sale_order"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('contact_stage_bar.group_lgd_procurement_manager'), ref('contact_stage_bar.group_lgd_accounting'), ref('base.group_system')])]"/>
         <field name="state">code</field>
         <field name="code">action = model._procurement_orders_action('contact_stage_bar.action_procurement_orders_natural_melee', 'Natural Melle', 'natural_melee')</field>
     </record>
@@ -471,10 +489,10 @@ action = action_vals
         <field name="parent_id" ref="purchase.menu_purchase_root"/>
         <field name="sequence">-2</field>
         <field name="action" eval="False"/>
-        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('base.group_system')])]"/>
+        <field name="groups_id" eval="[(6, 0, [ref('contact_stage_bar.group_lgd_procurement'), ref('base.group_system'), ref('contact_stage_bar.group_lgd_accounting')])]"/>
     </record>
 
-    <menuitem id="menu_cfq_orders_procurement_all" name="All Orders" parent="menu_cfq_orders_procurement" action="action_dynamic_cfq_orders_procurement" sequence="1" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_all_orders,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
+    <menuitem id="menu_cfq_orders_procurement_all" name="All Orders" parent="menu_cfq_orders_procurement" action="action_dynamic_cfq_orders_procurement" sequence="1" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_all_orders,contact_stage_bar.group_lgd_procurement_manager,base.group_system,contact_stage_bar.group_lgd_accounting"/>
     <menuitem id="menu_procurement_orders_lab_grown_certified" name="LabGrown Certified" parent="menu_cfq_orders_procurement" action="action_procurement_orders_lab_grown_certified" sequence="2" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_lab_grown_certified,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
     <menuitem id="menu_procurement_orders_lab_grown_melee" name="LabGrown Melle" parent="menu_cfq_orders_procurement" action="action_procurement_orders_lab_grown_melee" sequence="3" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_lab_grown_melee,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>
     <menuitem id="menu_procurement_orders_natural_certified" name="Natural Certified" parent="menu_cfq_orders_procurement" action="action_procurement_orders_natural_certified" sequence="4" groups="-contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_natural_certified,contact_stage_bar.group_lgd_procurement_manager,base.group_system"/>

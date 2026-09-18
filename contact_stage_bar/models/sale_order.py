@@ -8,7 +8,6 @@ import json
 import time
 import psycopg2
 from markupsafe import Markup
-#from odoo.addons.queue_job.tests.common import trap_jobs
 
 import  logging
 _logger = logging.getLogger(__name__)
@@ -34,6 +33,26 @@ ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
     email = fields.Char(related='partner_id.email', string="Email")
+
+    # Count of certified lines currently Not available drives the Replace Stone banner.
+    replacement_alert_count = fields.Integer(
+        compute='_compute_replacement_alert_count')
+
+    @api.depends('order_line.availability_status', 'order_line.line_type')
+    def _compute_replacement_alert_count(self):
+        for order in self:
+            order.replacement_alert_count = len(order.order_line.filtered(
+                lambda l: l.line_type == 'lgd'
+                and l.availability_status == 'not_available'))
+
+    # True when any line has been replaced used to show the "Replaced"
+    # Availability column only on orders that actually have a replacement.
+    has_replaced_line = fields.Boolean(compute='_compute_has_replaced_line')
+
+    @api.depends('order_line.is_replaced')
+    def _compute_has_replaced_line(self):
+        for order in self:
+            order.has_replaced_line = any(order.order_line.mapped('is_replaced'))
 
     # ── Cancellation-approval workflow ────────────────────────────────────────
     # LGD Sales cannot hard-cancel a sale.order — the cancel cascade hits
@@ -255,7 +274,7 @@ class SaleOrder(models.Model):
                 order.all_lines_final = False
             else:
                 order.all_lines_final = all(
-                    l.availability_status in ('confirmed', 'cancelled')
+                    l.availability_status in ('confirmed', 'cancelled', 'replaced')
                     for l in lines
                 )
 
@@ -335,7 +354,12 @@ class SaleOrder(models.Model):
                 _logger.info("📊 Order %s: no lines → Order Received", order.name)
                 continue
 
-            all_statuses = set(lines.mapped('availability_status'))
+            # A 'replaced' line is inactive exactly like a 'cancelled' one, so
+            # normalise it to 'cancelled' here — every rule below already keys on
+            # 'cancelled', so no rule needs to know about 'replaced'.
+            def _norm(s):
+                return 'cancelled' if s == 'replaced' else s
+            all_statuses = {_norm(s) for s in lines.mapped('availability_status')}
             all_statuses.discard(False)
 
             if not all_statuses:
@@ -345,10 +369,10 @@ class SaleOrder(models.Model):
             # ── Derived active sets ───────────────────────────────────────
             def active_set(ignore):
                 """Return set of unique statuses after filtering out ignore-set."""
-                return set(
-                    lines.filtered(lambda l: l.availability_status not in ignore)
-                         .mapped('availability_status')
-                ) - {False}
+                return {
+                    _norm(l.availability_status) for l in lines
+                    if _norm(l.availability_status) not in ignore
+                } - {False}
 
             c1_active = active_set(C1_IGNORE)   # only delivered / order_completed remain
             c3_active = active_set(C3_IGNORE)   # payment flow 
@@ -555,12 +579,6 @@ class SaleOrder(models.Model):
     
     def action_open_add_product_wizard(self):
         self.ensure_one()
-        # context = ({
-        #     'default_order_id': self.id,
-        #     'default_name': '[NEW]',
-        #     'default_is_storable': True,
-        #     'default_route_ids': [(6, 0, [1, 5])],
-        # })
         return {
             'name': "Add Product by Number",
             'type': 'ir.actions.act_window',
@@ -664,7 +682,7 @@ class SaleOrder(models.Model):
             # rather than firing a wrong transition. Already-'cancelled' lines are
             # fine and simply skipped below.
             unexpected = lines.filtered(
-                lambda l: l.availability_status not in ('not_available', 'cancelled')
+                lambda l: l.availability_status not in ('not_available', 'cancelled', 'replaced')
             )
             if unexpected:
                 raise UserError(_(
@@ -765,23 +783,43 @@ class SaleOrder(models.Model):
                 )
 
 
+            # sale.order.picking_ids is provided by the sale_stock module. It is
+            # present on the Enterprise/production database but may be absent on
+            # a plain community setup; guard so Confirm still completes there
+            # (there are no pickings to adjust in that case anyway).
+            pickings = (order.picking_ids
+                        if 'picking_ids' in order._fields
+                        else self.env['stock.picking'])
+
             # 1️⃣ Assign picking type
             picking_start = time.time()
             picking_type_map = {"mumbai": 2, "surat": 14}
             picking_type_id = picking_type_map.get(order.location)
-            if picking_type_id:
-                valid_pickings = order.picking_ids.filtered(lambda p: p.state not in ("done", "cancel"))
+            # These are hardcoded picking-type IDs. Only apply the override when
+            # the type actually belongs to the order's company (or is shared);
+            # otherwise a stale/cross-company id (e.g. a type on an archived
+            # duplicate company) raises a multi-company AccessError on confirm.
+            # In that case keep the delivery's own warehouse picking type.
+            pt = self.env['stock.picking.type'].sudo().browse(picking_type_id).exists() \
+                if picking_type_id else False
+            if pt and (not pt.company_id or pt.company_id.id == order.company_id.id):
+                valid_pickings = pickings.filtered(lambda p: p.state not in ("done", "cancel"))
                 valid_pickings.write({'picking_type_id': picking_type_id})
                 for picking in valid_pickings:
                     _logger.info(
                         "✅ Updated picking %s to operation type %s for SO %s",
                         picking.name, picking_type_id, order.name
                     )
+            elif picking_type_id:
+                _logger.warning(
+                    "⏭️ Skipping picking-type override for %s: type %s is not in "
+                    "the order's company %s — keeping the warehouse default.",
+                    order.name, picking_type_id, order.company_id.id)
             _logger.info("⏱ Picking type assignment took %.2fs", time.time() - picking_start)
 
             # 2️⃣ Remove unwanted moves
             moves_start = time.time()
-            unwanted_moves = order.picking_ids.move_ids_without_package.filtered(
+            unwanted_moves = pickings.move_ids_without_package.filtered(
                 lambda m: m.sale_line_id and m.sale_line_id.is_not_available
             )
             if unwanted_moves:
@@ -801,35 +839,13 @@ class SaleOrder(models.Model):
                     <p>Please follow up on the material outward process.</p>
                 """)
 
-                #Sending bulk emails to the internal team.
-                # self.env["mail.mail"].create({
-                #     "subject": subject,
-                #     "body_html": body_html,
-                #     "email_from": self.env.user.partner_id.email,
-                #     "email_to": ",".join(delivery_recipients),
-                # })
-
-                # Post message and create activities on picking
-                if order.picking_ids:
-                    first_picking = order.picking_ids[0]
+                if pickings:
+                    first_picking = pickings[0]
                     first_picking.message_post(
                         subject=subject, 
                         body=body_html,
                         subtype_xmlid='mail.mt_note' 
                     )
-
-                    # Create activities for delivery team users on picking record
-            #         for partner in delivery_partners:
-            #             self.env['mail.activity'].create({
-            #                 'res_model_id': self.env['ir.model']._get_id('stock.picking'),
-            #                 'res_id': first_picking.id,
-            #                 'activity_type_id': activity_type.id,
-            #                 'summary': "Follow up on outward process",
-            #                 'note': body_html,
-            #                 'user_id': partner.user_ids[:1].id if partner.user_ids else False,
-            #                 'date_deadline': fields.Date.today(),
-            #             })
-            # _logger.info("⏱ Delivery team notification took %.2fs", time.time() - delivery_start)
 
             # 4️⃣ Handle zero stock products
             stock_start = time.time()
@@ -849,44 +865,21 @@ class SaleOrder(models.Model):
                 """)
                 subject = "⚠️ Stock Alert: Zero On-hand Quantity"
 
-                
-                #Sending bulk emails to the internal team.
-                # self.env["mail.mail"].create({
-                #     "mail_server_id": 9,
-                #     "email_from": self.env.user.partner_id.email,
-                #     "subject": subject,
-                #     "body_html": body_html,
-                #     "email_to": ",".join(procurement_recipients),
-                # })
-
+    
                 order.message_post(
                     subject=subject, 
                     body=body_html,
                     subtype_xmlid='mail.mt_note'
                 )
 
-                # Create activities for procurement team on sale order
-                # for partner in procurement_partners:
-                #     self.env["mail.activity"].sudo().create({
-                #         "res_model_id": self.env["ir.model"]._get_id("sale.order"),
-                #         "res_id": order.id,
-                #         "activity_type_id": activity_type.id,
-                #         "summary": "Stock Alert — Restock Required",
-                #         "note": body_html,
-                #         "user_id": partner.user_ids[:1].id if partner.user_ids else False,
-                #         "date_deadline": fields.Date.today(),
-                #     })
             _logger.info("⏱ Zero stock handling took %.2fs", time.time() - stock_start)
 
-            _logger.info("⏱ Finished SO %s in %.2fs", order.name, time.time() - order_start)
+            # Raise a vendor PO for each available (confirmed) stone line from
+            # the line's own vendor — a PO is generated on confirm without needing
+            # the standard MTO route or per-product vendor setup.
+            order._auto_create_confirm_pos()
 
-        # Send all queued emails after loop
-        # mail_start = time.time()
-        # queued_mails = self.env["mail.mail"].search([("state", "=", "outgoing")])
-        # if queued_mails:
-        #     _logger.info("📧 Sending %d queued emails...", len(queued_mails))
-        #     queued_mails.send()
-        #     _logger.info("⏱ Email sending took %.2fs", time.time() - mail_start)
+            _logger.info("⏱ Finished SO %s in %.2fs", order.name, time.time() - order_start)
 
         total_time = time.time() - start_time
         _logger.info("✅ Completed action_confirm for %d SOs in %.2fs", len(self), total_time)
@@ -900,6 +893,84 @@ class SaleOrder(models.Model):
         
         return res
 
+    @api.model
+    def _lgd_inr_currency_id(self):
+        """The INR currency id vendor POs are always raised in INR."""
+        inr = self.env.ref('base.INR', raise_if_not_found=False) \
+            or self.env['res.currency'].search([('name', '=', 'INR')], limit=1)
+        return inr.id if inr else False
+
+    def _auto_create_confirm_pos(self):
+        """On confirm, raise a vendor PO for each available (confirmed) stone line
+        from the line's own ``vendor_id`` — the same direct-create pattern the
+        Replacement flow uses, so a PO is generated without the standard MTO route
+        or per-product vendor pricing. One PO per vendor; idempotent (a product
+        already on a live PO for this order+vendor is skipped)."""
+        self.ensure_one()
+        # Raising the vendor PO is a system action; run it sudo so it works no
+        # matter who confirms the order (e.g. LGD Sales has no purchase access).
+        PO = self.env['purchase.order'].sudo()
+        POL = self.env['purchase.order.line'].sudo()
+        has_sale_link = 'sale_line_id' in POL._fields
+        lines = self.order_line.filtered(
+            lambda l: l.availability_status == 'confirmed'
+            and l.vendor_id and l.product_id and not l.display_type
+            and not l.is_replaced and (l.product_uom_qty or 0) > 0)
+        if not lines:
+            return
+        # One PO per vendor, created within THIS run. We must NOT match existing
+        # POs by origin=name: order names are reused in this DB, so an old order's
+        # PO with the same name would wrongly satisfy the dedup and suppress this
+        # order's PO. Dedup precisely by the sale line instead.
+        po_by_vendor = {}
+        for line in lines:
+            vendor = line.vendor_id
+            if has_sale_link:
+                already = POL.search([
+                    ('sale_line_id', '=', line.id),
+                    ('order_id.state', '!=', 'cancel'),
+                ], limit=1)
+            else:
+                already = POL.search([
+                    ('order_id.origin', '=', self.name),
+                    ('order_id.partner_id', '=', vendor.id),
+                    ('order_id.state', '!=', 'cancel'),
+                    ('product_id', '=', line.product_id.id),
+                ], limit=1)
+            if already:
+                continue
+            po = po_by_vendor.get(vendor.id)
+            if not po:
+                po = PO.create({
+                    'partner_id': vendor.id,
+                    'origin': self.name,
+                    'location': self.location,
+                    'order_number': self.sdk_augmont_number,
+                    'currency_id': self._lgd_inr_currency_id(),
+                })
+                po_by_vendor[vendor.id] = po
+            cost = (line.product_id.standard_price
+                    or line.product_template_id.final_price
+                    or line.price_unit)
+            po_vals = {
+                'order_id': po.id,
+                'product_id': line.product_id.id,
+                'name': line.product_id.name,
+                'product_qty': line.product_uom_qty or 1,
+                'price_unit': cost,
+                'date_planned': fields.Datetime.now(),
+                'stone_type': line.product_template_id.stone_type or line.stone_type,
+                'stone_certification_type': line.stone_certification_type,
+            }
+            if has_sale_link:
+                po_vals['sale_line_id'] = line.id
+            po_line = POL.create(po_vals)
+            discount, days = po_line._get_vendor_terms(vendor)
+            po_line.write({'discount_percent': discount, 'payment_days': days})
+        for vendor_id, po in po_by_vendor.items():
+            self.message_post(body=_(
+                "Purchase order %(po)s raised to %(vendor)s on confirmation.",
+                po=po.name, vendor=po.partner_id.display_name))
 
     def action_mark_not_available(self):
         """
@@ -1282,14 +1353,7 @@ class SaleOrder(models.Model):
         
         # Get country code from partner
         country_code = self.partner_id.country_id.phone_code or "91"
-        
-        # Validation: Send either GST (SGST+CGST) OR IGST, not both
-        # if igst_rate > 0 and (sgst_rate > 0 or cgst_rate > 0):
-        #     raise ValidationError(_(
-        #         'Invalid GST configuration: Cannot send both IGST and GST (SGST/CGST) together. '
-        #         'Please verify the tax configuration on order lines.'
-        #     ))
-        
+               
         # If IGST is present, send only IGST rate
         if igst_rate > 0:
             gst_updates["igst"] = round(igst_rate, 2)
@@ -1386,6 +1450,12 @@ class SaleOrder(models.Model):
     def action_send_product_to_api(self):
         Param = self.env['ir.config_parameter'].sudo()
         url = Param.get_param('base_augmont_url')
+
+        if not url:
+            _logger.warning(
+                "Augmont product push skipped for %s: base_augmont_url is not set.",
+                ', '.join(self.mapped('name')) or '(none)')
+            return
         url = f"{url}/api/v1/odoo/product/add"
         _logger.info(f"🔹URL: {url}")
         headers = {
@@ -1518,23 +1588,31 @@ class SaleOrder(models.Model):
         for order in self:
             old_status = order.sdk_augmont_status
             status = False
-            
+
+            # delivery_status and picking_ids come from the sale_stock module,
+            # present on production/Enterprise but possibly absent on a plain
+            # community DB. Read them safely so the status still computes there
+            # (the stock-driven branches simply don't apply without pickings).
+            has_stock = 'delivery_status' in order._fields
+            delivery = order.delivery_status if has_stock else False
+            pickings = order.picking_ids if has_stock else self.env['stock.picking']
+
             # Define status based on conditions (order matters - most specific first)
             if order.state == 'cancel':
                 status = 'Cancelled'
             elif order.state == 'draft':
                 status = 'Diamond Booked'
-            elif order.invoice_status == 'invoiced' and order.delivery_status == 'full':
+            elif order.invoice_status == 'invoiced' and delivery == 'full':
                 status = 'Order Completed'
-            elif order.picking_ids and any(pick.return_id for pick in order.picking_ids):
+            elif pickings and any(pick.return_id for pick in pickings):
                 status = 'Return of Order'
-            elif order.delivery_status == 'full':
+            elif delivery == 'full':
                 status = 'Delivered'
             elif order.payment_ids and any(payment.state == 'paid' for payment in order.payment_ids):
                 status = 'Payment Completed'
             elif order.payment_ids and any(payment.state in ['draft', 'in_process'] for payment in order.payment_ids):
                 status = 'Payment Pending'
-            elif order.delivery_status == 'started':
+            elif delivery == 'started':
                 status = 'In QC process'
             elif order.state == 'sale':
                 status = 'Confirmed'
@@ -1622,6 +1700,7 @@ class SaleOrder(models.Model):
             'confirmed':         'Confirmed',
             'not_available':     'Not available',
             'cancelled':         'Cancelled',
+            'replaced':          'Cancelled',
             'in_qc_process':     'In QC process',
             'qc_fail':           'QC Fail',
             'payment_pending':   'Payment Pending',
@@ -1880,10 +1959,29 @@ class SaleOrder(models.Model):
                 f"Please update each order number to [Confirmed] or "
                 f"[Cancelled] and click {{Save}} before confirming."
             )
-        return self.action_confirm()
+        # Sanctioned action. Procurement has only availability write access, so
+        # the confirm cascade (state change, PO creation, reads on system models)
+        # is run elevated for them; Sales/admin keep their normal (attributed) run.
+        target = self.sudo() if self._lgd_proc_needs_elevation() else self
+        return target.with_context(lgd_proc_action=True).action_confirm()
+
+    def _lgd_proc_needs_elevation(self):
+        """True for a plain LGD Procurement user (not admin/manager). Used to run
+        sanctioned workflow buttons past their availability-only field guard."""
+        u = self.env.user
+        return (not self.env.su
+                and u.has_group('contact_stage_bar.group_lgd_procurement')
+                and not u.has_group('base.group_system')
+                and not u.has_group('base.group_erp_manager'))
 
     def action_save_statuses(self):
         self.ensure_one()
+        # Sanctioned action: let this method's cascade (auto-QC POs, status push,
+        # optional cancel) run past the procurement field-guard; elevate for a
+        # plain procurement user so QC PO creation / system reads don't wall.
+        if self._lgd_proc_needs_elevation():
+            self = self.sudo()
+        self = self.with_context(lgd_proc_action=True)
 
         # ── Auto-QC: Check for lines needing confirmed → in_qc_process flow ──
         if not self.env.context.get('skip_auto_procurement'):
@@ -2116,7 +2214,10 @@ class SaleOrder(models.Model):
                         order.name, _old, new_status, _api_err
                     )
 
-    _LGD_PROC_SO_WRITE_ALLOWLIST = {'order_line', 'sdk_augmont_status'}
+    # 'procurement_line_ids' is the restricted one2many the Procurement form
+    # saves availability edits through; the individual line writes still pass the
+    # line-level guard (_LGD_PROC_SOL_WRITE_ALLOWLIST), so allowing it here is safe.
+    _LGD_PROC_SO_WRITE_ALLOWLIST = {'order_line', 'procurement_line_ids', 'sdk_augmont_status'}
 
     def write(self, vals):
 
@@ -2125,6 +2226,9 @@ class SaleOrder(models.Model):
             and self.env.user.has_group('contact_stage_bar.group_lgd_procurement')
             and not self.env.user.has_group('base.group_system')
             and not self.env.user.has_group('base.group_erp_manager')
+            # Sanctioned workflow actions (Confirm / Save) set this flag so their
+            # cascading writes pass; ad-hoc form field edits still don't.
+            and not self.env.context.get('lgd_proc_action')
         ):
             bad = set(vals) - self._LGD_PROC_SO_WRITE_ALLOWLIST
             if bad:
@@ -2418,17 +2522,14 @@ class SaleOrder(models.Model):
         action_vals['display_name'] = name
         action_vals.pop('path', None)
         action_vals.pop('xml_id', None)
-
-        # Procurement reads the orders Sales has raised; it never raises them here, so
-        # the New button and the control-panel cog (Import / Export / Duplicate /
-        # Delete) are both dropped. Setting them on the action context scopes this to
-        # these actions alone, rather than create="0" on the view, which would take the
-        # button away from every other place sale.view_order_form is used.
+        # menu's own groups govern access (e.g. view-only LGD Accounting).
+        action_vals.pop('groups_id', None)
         action_vals['context'] = {'create': False, 'hide_cog_menu': True}
 
         user = self.env.user
-        if user.has_group('base.group_system'):
-            # Admin sees every order without any restriction.
+        if (user.has_group('base.group_system')
+                or user.has_group('contact_stage_bar.group_lgd_accounting')):
+            # Admin and view-only Accounting see every order.
             domain = []
         elif (user.has_group('contact_stage_bar.group_lgd_procurement')
                 or user.has_group('contact_stage_bar.group_lgd_sales_manager')):
@@ -2488,9 +2589,394 @@ class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
     
     translated_product_name = fields.Char(string="Translated Product Name")
-    
+
     order_number = fields.Char(string="Order Number")
     is_custom_product = fields.Boolean()
+
+    # ── Stone replacement links ──────────────────────
+    # On the ORIGINAL (unavailable) line once its replacement completes.
+    replaced_by_line_id = fields.Many2one(
+        'sale.order.line', string="Replaced By", copy=False, index=True)
+    # On the NEW (replacement) line, pointing back at the stone it replaces.
+    replaces_line_id = fields.Many2one(
+        'sale.order.line', string="Replaces", copy=False, index=True)
+    # True on the original once replaced — drives the "Replaced" badge.
+    is_replaced = fields.Boolean(
+        string="Is Replaced", compute='_compute_is_replaced', store=True)
+    # Set on a replacement line that still needs Sales confirmation
+    # Cleared on Confirm, the line stays otherwise.
+    replacement_pending_sales = fields.Boolean(
+        string="Replacement Pending Sales", copy=False)
+
+    @api.depends('replaced_by_line_id')
+    def _compute_is_replaced(self):
+        for line in self:
+            line.is_replaced = bool(line.replaced_by_line_id)
+
+    @api.model
+    def _lgd_backfill_replaced_status(self):
+        """One-time: older replaced lines were stored as 'cancelled'. Now that
+        'replaced' is a real status shown as "Replaced", move them over. Runs on
+        upgrade; idempotent."""
+        lines = self.sudo().search([
+            ('replaced_by_line_id', '!=', False),
+            ('availability_status', '=', 'cancelled'),
+        ])
+        if lines:
+            lines.with_context(from_replacement_engine=True).write(
+                {'availability_status': 'replaced'})
+        return len(lines)
+
+    # Availability shown in lists: a replaced line stays 'cancelled' underneath
+    # (so order-status/amount logic is unchanged) but reads "Replaced" for the
+    # user. Non-replaced lines show their normal availability label.
+    availability_display = fields.Char(
+        string="Availability", compute='_compute_availability_display')
+
+    @api.depends('availability_status', 'is_replaced')
+    def _compute_availability_display(self):
+        labels = dict(self._fields['availability_status'].selection)
+        for line in self:
+            if line.is_replaced:
+                line.availability_display = _("Replaced")
+            else:
+                line.availability_display = labels.get(line.availability_status, '')
+
+    @staticmethod
+    def _replacement_origin(line):
+        """The line's stone origin (lab_grown / natural). Prefer the product's
+        own stone_type (real data set from IGI or manual entry); fall back to
+        the line-level classification for website stones that predate it."""
+        return line.product_template_id.stone_type or line.stone_type
+
+    @api.constrains('replaces_line_id')
+    def _check_replacement_origin(self):
+        """Hard block lab-grown can never replace natural and vice
+        versa. Enforced as a model constraint so it cannot be bypassed via RPC,
+        not only in the Replace Stone wizard."""
+        for line in self:
+            original = line.replaces_line_id
+            if not original:
+                continue
+            orig_origin = self._replacement_origin(original)
+            new_origin = self._replacement_origin(line)
+            if orig_origin and new_origin and orig_origin != new_origin:
+                labels = {'lab_grown': 'Lab Grown', 'natural': 'Natural'}
+                raise ValidationError(_(
+                    "A %s stone cannot replace a %s stone. The replacement's "
+                    "origin must match the original.",
+                    labels.get(new_origin, new_origin),
+                    labels.get(orig_origin, orig_origin),
+                ))
+
+    # Manual Stone Replacement — reusable logic 
+    # Kept on the model, not inside the wizard, so the deferred
+    # Replacement Engine can call the same code. The wizard only collects input and calls these.
+
+    @api.model
+    def _replacement_resolve_product(self, vals):
+        """Find an existing product by certificate / vendor / LGD stock number
+        else create one from the given spec vals. Used for both the
+        IGI-filled and the manually typed stone."""
+        Product = self.env['product.template']
+        pairs = [
+            ('certificate', (vals.get('certificate') or '').strip()),
+            ('stock_number', (vals.get('stock_number') or '').strip()),
+            ('lgd_stock_number', (vals.get('lgd_stock_number') or '').strip()),
+        ]
+        domain = [(f, '=', v) for f, v in pairs if v]
+        product = Product
+        if domain:
+            product = Product.search(['|'] * (len(domain) - 1) + domain, limit=1)
+        if product:
+            return product
+        create_vals = dict(vals)
+        create_vals.setdefault('name', '[NEW]')
+        product = Product.create(create_vals)
+        composed = product._name_from_self()
+        if composed:
+            product.name = composed
+        return product
+
+    @api.model
+    def _replacement_check_duplicate(self, certificate, exclude_line=None):
+        """Refuse a certificate already on another open order line
+        (any status except cancelled / not_available), across all orders."""
+        if not certificate:
+            return
+        domain = [
+            ('certificate', '=', certificate),
+            ('availability_status', 'not in', ('cancelled', 'not_available', 'replaced')),
+        ]
+        if exclude_line:
+            domain.append(('id', '!=', exclude_line.id))
+        dup = self.env['sale.order.line'].sudo().search(domain, limit=1)
+        if dup:
+            raise UserError(_(
+                "Certificate %s is already on order %s. A stone cannot be used "
+                "on two open orders.", certificate, dup.order_id.name))
+
+    # Cut-quality words that ride along with a shape name; stripped so the
+    # website's short form ("round") matches IGI's full form ("Round Brilliant").
+    _SHAPE_NOISE_WORDS = {'brilliant', 'cut', 'modified', 'step', 'mixed', 'old'}
+
+    @staticmethod
+    def _normalize_shape(shape):
+        """Canonical shape token for matching: lower-cased core words with the
+        cut-quality descriptors removed, so 'Round Brilliant', 'round' and
+        'ROUND BRILLIANT CUT' all compare equal."""
+        if not shape:
+            return ''
+        cleaned = shape.strip().lower().replace('_', ' ').replace('-', ' ')
+        words = [w for w in cleaned.split()
+                 if w not in SaleOrderLine._SHAPE_NOISE_WORDS]
+        return ' '.join(words)
+
+    def _replacement_check_hard_rules(self, product):
+        """Wizard-time hard checks against the original line.
+        Origin is also enforced by the _check_replacement_origin constraint, so
+        it holds even against a raw RPC write."""
+        self.ensure_one()
+        labels = {'lab_grown': 'Lab Grown', 'natural': 'Natural'}
+        orig_origin = self._replacement_origin(self)
+        new_origin = product.stone_type
+        if orig_origin and new_origin and orig_origin != new_origin:
+            raise UserError(_(
+                "A %s stone cannot replace a %s stone.",
+                labels.get(new_origin, new_origin),
+                labels.get(orig_origin, orig_origin)))
+        if self.stone_certification_type == 'certified':
+            if not product.certificate:
+                raise UserError(_(
+                    "The original stone is certified — the replacement needs a "
+                    "certificate number."))
+            orig_shape = self._normalize_shape(self.shapes)
+            new_shape = self._normalize_shape(product.shapes)
+            if orig_shape and new_shape and orig_shape != new_shape:
+                raise UserError(_(
+                    "Shape must match: the original is %s, the replacement is %s.",
+                    self.shapes, product.shapes))
+
+    def _replacement_customer_price(self, product, gross_total):
+        """Replacement customer price. Platform stones use the
+        website sell price; IGI / manual stones use gross x (1 + margin band %).
+        Never falls back to vendor cost."""
+        self.ensure_one()
+        if product.website_product_id and product.final_price_margin > 0:
+            return product.final_price_margin
+        margin_pct = self.env['lgd.margin']._get_margin_pct_for_carat(
+            product.carat_value)
+        return gross_total * (1 + margin_pct / 100.0)
+
+    def _replacement_price_outcome(self, product, gross_total):
+        """Compare replacement vs original customer price and decide whether
+        Sales must confirm. Server-side; the caller shows
+        each figure only to the right audience."""
+        self.ensure_one()
+        original_price = self.price_unit  #never subtotal / total
+        replacement_price = self._replacement_customer_price(product, gross_total)
+        increase_pct = 0.0
+        if original_price:
+            increase_pct = (replacement_price - original_price) / original_price * 100.0
+        threshold = self.env['lgd.margin']._get_replacement_threshold_pct()
+        within_threshold = increase_pct <= threshold
+        lab_changed = ((self.labs or '').strip().upper()
+                       != (product.labs or '').strip().upper())
+        reasons = []
+        if not within_threshold:
+            reasons.append(_("price is %.2f%% above the original (limit %.2f%%)",
+                             increase_pct, threshold))
+        if lab_changed:
+            reasons.append(_("the lab differs from the original"))
+        # Absorbed a replacement within threshold — or cheaper —
+        # keeps the original price_unit; above threshold carries the new price.
+        final_price_unit = original_price if within_threshold else replacement_price
+        return {
+            'original_price': original_price,
+            'replacement_price': replacement_price,
+            'increase_pct': increase_pct,
+            'threshold': threshold,
+            'within_threshold': within_threshold,
+            'needs_sales': bool(reasons),
+            'reasons': reasons,
+            'final_price_unit': final_price_unit,
+        }
+
+    def _replacement_create_po(self, product, vendor, gross_total):
+        """Raise the vendor PO for the replacement: origin,
+        order_number and location like the Add Product wizard, priced at gross
+        cost, with vendor terms filled from the stone classification."""
+        self.ensure_one()
+        order = self.order_id
+        po = self.env['purchase.order'].create({
+            'partner_id': vendor.id,
+            'origin': order.name,
+            'location': order.location,
+            'order_number': order.sdk_augmont_number,
+            'currency_id': order._lgd_inr_currency_id(),
+        })
+        po_line = self.env['purchase.order.line'].create({
+            'order_id': po.id,
+            'product_id': product.product_variant_id.id,
+            'name': product.name,
+            'product_qty': 1,
+            'price_unit': gross_total,
+            'date_planned': fields.Datetime.now(),
+            'stone_type': product.stone_type or self.stone_type,
+            'stone_certification_type': self.stone_certification_type,
+        })
+        discount, days = po_line._get_vendor_terms(vendor)
+        po_line.write({'discount_percent': discount, 'payment_days': days})
+        return po
+
+    def _create_replacement(self, product, vendor, gross_total, price_outcome):
+        """Create the replacement line and its PO, then complete immediately or
+        leave it pending Sales confirmation."""
+        self.ensure_one()
+        order = self.order_id
+        needs_sales = price_outcome['needs_sales']
+        new_line = self.env['sale.order.line'].with_context(
+            from_replacement_engine=True,
+        ).create({
+            'order_id': order.id,
+            'is_custom_product': True,
+            'product_id': product.product_variant_id.id,
+            'product_template_id': product.id,
+            'name': product.name,
+            'product_uom_qty': 1,
+            'price_unit': price_outcome['final_price_unit'],
+            'vendor_id': vendor.id,
+            'order_number': self.order_number,
+            'availability_status': 'diamond_booked',
+            'replaces_line_id': self.id,
+            'replacement_pending_sales': needs_sales,
+        })
+        self._replacement_create_po(product, vendor, gross_total)
+        # Mark the original "Replaced" immediately on Submit — both paths.
+        # When the change still needs Sales sign-off we ALSO raise the activity;
+        # a later rejection reverts the original back to Not available.
+        self._replacement_complete(new_line)
+        if needs_sales:
+            self._replacement_request_sales_confirmation(new_line, price_outcome)
+        return new_line
+
+    def _replacement_complete(self, new_line):
+        """Link the pair and close the original: the old line goes
+        not_available -> replaced (a dedicated status shown as "Replaced" and
+        treated as cancelled by the status/API logic); the new line stays
+        diamond_booked."""
+        self.ensure_one()
+        self.replaced_by_line_id = new_line.id
+        if new_line.replaces_line_id.id != self.id:
+            new_line.replaces_line_id = self.id
+        self.with_context(from_replacement_engine=True).write(
+            {'availability_status': 'replaced'})
+        # Figure-free, vendor-free, user-free chatter (REQ-5.2.23).
+        self.order_id.message_post(body=_(
+            "Stone replaced: %(old)s -> %(new)s.",
+            old=self.product_template_id.display_name or self.id,
+            new=new_line.product_template_id.display_name or new_line.id))
+
+    def _replacement_request_sales_confirmation(self, new_line, price_outcome):
+        """Assign a Sales activity. Sales sees the spec change and
+        the proposed customer price only — never vendor or cost."""
+        self.ensure_one()
+        order = self.order_id
+        note = _(
+            "Replacement pending your confirmation on %(invoice)s.<br/>"
+            "Original: %(orig)s<br/>Replacement: %(repl)s<br/>"
+            "Proposed price: %(price).2f (was %(was).2f)<br/>Reason: %(reasons)s"
+        ) % {
+            'invoice': order.sdk_augmont_number or order.name,
+            'orig': self.product_template_id.display_name,
+            'repl': new_line.product_template_id.display_name,
+            'price': price_outcome['replacement_price'],
+            'was': price_outcome['original_price'],
+            'reasons': '; '.join(price_outcome['reasons']),
+        }
+        order.activity_schedule(
+            'mail.mail_activity_data_todo',
+            summary=_("Confirm stone replacement"),
+            note=note,
+            user_id=(order.user_id.id or self.env.user.id))
+
+    def _replacement_close_activity(self, feedback=None):
+        """Mark the Sales confirmation activity done."""
+        order = (self.replaces_line_id.order_id or self.order_id)
+        acts = self.env['mail.activity'].search([
+            ('res_model', '=', 'sale.order'),
+            ('res_id', '=', order.id),
+            ('summary', '=', 'Confirm stone replacement'),
+        ])
+        for act in acts:
+            act.action_feedback(feedback=feedback or '')
+
+    def action_replacement_confirm(self):
+        """Sales confirms a pending replacement. The original was already marked
+        Replaced at Submit time, so confirmation only clears the pending flag and
+        closes the activity."""
+        self.ensure_one()
+        if not self.replacement_pending_sales:
+            raise UserError(_("This line is not pending replacement confirmation."))
+        self.replacement_pending_sales = False
+        self._replacement_close_activity(feedback="Confirmed")
+
+    def action_replacement_reject(self):
+        """Open the reject-reason wizard."""
+        self.ensure_one()
+        if not self.replacement_pending_sales:
+            raise UserError(_("This line is not pending replacement confirmation."))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _("Reject Replacement"),
+            'res_model': 'stone.replacement.reject',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_line_id': self.id},
+        }
+
+    def action_open_replace_stone(self):
+        """Open the Replace Stone wizard for this unavailable line
+        Operations roles only — enforced by the
+        wizard's ACL and by the button's group on the view."""
+        self.ensure_one()
+        if self.line_type != 'lgd' or self.availability_status != 'not_available':
+            raise UserError(_(
+                "Replace Stone applies only to a certified (LGD) line whose "
+                "availability is Not available."))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _("Replace Stone"),
+            'res_model': 'stone.replacement',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_sale_line_id': self.id},
+        }
+
+    def _replacement_do_reject(self, reason):
+        """Reject a pending replacement. Cancel the replacement line and revert
+        the original — marked Replaced at Submit time — back to Not available so
+        it can be replaced again or cancelled. Draft POs are cleaned up by the
+        cancel write."""
+        self.ensure_one()
+        original = self.replaces_line_id
+        self.replacement_pending_sales = False
+        self.with_context(from_replacement_engine=True).write(
+            {'availability_status': 'cancelled'})
+        # Undo the "Replaced" state on the original: unlink the pair and put it
+        # back to Not available.
+        if original:
+            original.with_context(from_replacement_engine=True).write({
+                'replaced_by_line_id': False,
+                'availability_status': 'not_available',
+            })
+        self._replacement_close_activity(feedback=reason)
+        if original:
+            original.order_id.message_post(body=_(
+                "Replacement for %(stone)s was rejected by Sales; the stone "
+                "stays not available. Reason: %(reason)s",
+                stone=original.product_template_id.display_name or original.id,
+                reason=reason or _("(none given)")))
     certificate = fields.Char(related='product_template_id.certificate', string="Certificate Number")
     carat_weight = fields.Char(related='product_template_id.weight_carat', string="Carat Weight")
     polish = fields.Char(string='Polish', related='product_template_id.polish')
@@ -2541,8 +3027,7 @@ class SaleOrderLine(models.Model):
        help="LGD = certified individual stone; MELEE = non-certified parcel order.")
 
     # Lab Grown / Natural and Certified / Non-Certified on every stone line,
-    # so Procurement can work each kind of stone in its own list (PRD §5.7.1,
-    # §5.7.6). Keys match customer.rfq and purchase.order.line.
+    # so Procurement can work each kind of stone in its own list. Keys match customer.rfq and purchase.order.line.
     stone_type = fields.Selection(
         [('lab_grown', 'Lab Grown'), ('natural', 'Natural')],
         string="Stone Type", compute='_compute_stone_classification',
@@ -2661,6 +3146,7 @@ class SaleOrderLine(models.Model):
         ('confirmed', 'Confirmed'),
         ('not_available', 'Not available'),
         ('cancelled', 'Cancelled'),
+        ('replaced', 'Replaced'),
         ('in_qc_process', 'In QC process'),
         ('qc_fail', 'QC Fail'),
         ('payment_pending', 'Payment Pending'),
@@ -2700,9 +3186,9 @@ class SaleOrderLine(models.Model):
     def _compute_amount(self):
 
         zero_lines = self.filtered(
-            lambda l: l.availability_status in ('cancelled', 'not_available')
+            lambda l: l.availability_status in ('cancelled', 'not_available', 'replaced')
         )
-        # Hard-zero all monetary fields for cancelled / not-available lines.
+        # Hard-zero all monetary fields for cancelled / not-available / replaced lines.
         zero_lines.update({
             'price_subtotal': 0.0,
             'price_tax':      0.0,
@@ -2734,7 +3220,7 @@ class SaleOrderLine(models.Model):
                               shows a clear warning before the user can save
         """
         # ── qty sync (existing behaviour, unchanged) ──────────────────────
-        if self.availability_status in ['not_available', 'cancelled']:
+        if self.availability_status in ['not_available', 'cancelled', 'replaced']:
             self.product_uom_qty = 0
         elif self.availability_status in ['diamond_booked', 'confirmed']:
             self.product_uom_qty = 1
@@ -2790,6 +3276,7 @@ class SaleOrderLine(models.Model):
             'from_website_api',
             'dispatch_validation',
             'skip_availability_check',
+            'from_replacement_engine',
         )
         if any(self.env.context.get(c) for c in bypass_contexts):
             return
@@ -2902,20 +3389,31 @@ class SaleOrderLine(models.Model):
             ('state', 'in', ['draft', 'sent']),
             ('origin', 'ilike', order.name),
         ])
+
+        POL = self.env['purchase.order.line']
+        has_sale_link = 'sale_line_id' in POL._fields
+        has_sale_order = 'sale_order_id' in POL._fields
+
         for po in purchase_orders:
             origin_names = [n.strip() for n in (po.origin or '').split(',') if n.strip()]
             if order.name not in origin_names:
                 continue
 
-            # Find PO lines for this SO line (prefer sale_line_id link)
-            po_lines_for_so_line = po.order_line.filtered(
-                lambda pl: (
-                    (pl.sale_line_id and pl.sale_line_id.id == self.id)
-                    or (not pl.sale_line_id
-                        and pl.product_id.id == self.product_id.id
-                        and pl.sale_order_id and pl.sale_order_id.id == order.id)
+            # Find PO lines for this SO line (prefer the sale_line_id link).
+            if has_sale_link:
+                po_lines_for_so_line = po.order_line.filtered(
+                    lambda pl: (
+                        (pl.sale_line_id and pl.sale_line_id.id == self.id)
+                        or (not pl.sale_line_id
+                            and pl.product_id.id == self.product_id.id
+                            and (not has_sale_order
+                                 or (pl.sale_order_id and pl.sale_order_id.id == order.id)))
+                    )
                 )
-            )
+            else:
+                po_lines_for_so_line = po.order_line.filtered(
+                    lambda pl: pl.product_id.id == self.product_id.id
+                )
             # Fallback when origin is single-SO and no sale_line_id link
             if not po_lines_for_so_line and len(origin_names) == 1:
                 po_lines_for_so_line = po.order_line.filtered(
@@ -2928,7 +3426,7 @@ class SaleOrderLine(models.Model):
             if len(origin_names) == 1 and origin_names[0] == order.name:
                 other_so_lines = po.order_line.filtered(
                     lambda pl: pl.sale_order_id and pl.sale_order_id.id != order.id
-                )
+                ) if has_sale_order else POL
                 if not other_so_lines:
                     _logger.info(
                         "🚫 [AUTO-RFQ-CANCEL] Cancelling RFQ %s (single source: %s)",
@@ -3128,6 +3626,9 @@ class SaleOrderLine(models.Model):
             and self.env.user.has_group('contact_stage_bar.group_lgd_procurement')
             and not self.env.user.has_group('base.group_system')
             and not self.env.user.has_group('base.group_erp_manager')
+            # Sanctioned workflow actions (Confirm / Save) set this flag so their
+            # cascading line writes pass; ad-hoc form field edits still don't.
+            and not self.env.context.get('lgd_proc_action')
         ):
             bad = set(vals) - self._LGD_PROC_SOL_WRITE_ALLOWLIST
             if bad:
@@ -3164,7 +3665,7 @@ class SaleOrderLine(models.Model):
 
             # ── Zero out qty for cancelled/not_available (mirrors onchange for API calls) ──
             for line in self:
-                if line.availability_status in ('not_available', 'cancelled') and line.product_uom_qty != 0:
+                if line.availability_status in ('not_available', 'cancelled', 'replaced') and line.product_uom_qty != 0:
                     line.product_uom_qty = 0
 
             # ── Auto-cancel/reduce RFQ when line → cancelled/not_available ──
@@ -3324,9 +3825,9 @@ class SaleOrderLine(models.Model):
                     )
 
 
-                if vals.get('availability_status') in ('cancelled', 'not_available'):
+                if vals.get('availability_status') in ('cancelled', 'not_available', 'replaced'):
                     # Step 1 — refresh price_subtotal / price_tax on all lines
-                    #           (our override zeros cancelled/not_available ones)
+                    #           (our override zeros cancelled/not_available/replaced ones)
                     order.order_line._compute_amount()
 
                     # Step 2 — sum the freshly-computed line values

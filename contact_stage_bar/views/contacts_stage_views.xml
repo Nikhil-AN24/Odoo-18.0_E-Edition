@@ -132,7 +132,7 @@
         <field name="name">My Accounts</field>
         <field name="path">contacts_all_mine</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('user_id', '=', uid)]</field>
@@ -140,6 +140,7 @@
 
     <record id="contacts.action_contacts" model="ir.actions.act_window">
         <field name="name">Accounts India (My)</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('user_id', '=', uid), ('country_id', '=', 104)]</field>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
     </record>
@@ -148,7 +149,7 @@
         <field name="name">Accounts International (My)</field>
         <field name="path">contacts_usa</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('user_id', '=', uid), ('country_id', '!=', 104), ('country_id', '!=', False)]</field>
@@ -158,7 +159,7 @@
         <field name="name">All Accounts</field>
         <field name="path">contacts_all</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
@@ -168,7 +169,7 @@
         <field name="name">Accounts India (All)</field>
         <field name="path">contacts_1</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '=', 104), ('country_id', '!=', False), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
@@ -178,7 +179,7 @@
         <field name="name">Accounts International (All)</field>
         <field name="path">contacts_usa_admin</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '!=', 104), ('country_id', '!=', False), '|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]</field>
@@ -187,7 +188,7 @@
     <record id="action_contacts_custom_all_sysadmin" model="ir.actions.act_window">
         <field name="name">All Accounts (Admin)</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer')]</field>
@@ -196,7 +197,7 @@
     <record id="action_contacts_custom_sysadmin" model="ir.actions.act_window">
         <field name="name">Accounts India (Admin)</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '=', 104), ('country_id', '!=', False)]</field>
@@ -205,7 +206,7 @@
     <record id="action_contacts_custom_usa_sysadmin" model="ir.actions.act_window">
         <field name="name">Accounts International (Admin)</field>
         <field name="res_model">res.partner</field>
-        <field name="view_mode">kanban,list,form,activity</field>
+        <field name="view_mode">list,kanban,form,activity</field>
         <field name="search_view_id" ref="base.view_res_partner_filter"/>
         <field name="context">{'default_is_company': True,'search_default_type_company': 1,'default_partner_kind': 'buyer'}</field>
         <field name="domain">[('partner_kind', '=', 'buyer'), ('country_id', '!=', 104), ('country_id', '!=', False)]</field>

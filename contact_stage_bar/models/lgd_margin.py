@@ -35,19 +35,55 @@ class LgdMargin(models.Model):
              'which no band covers.',
     )
 
+    replacement_price_threshold_pct = fields.Float(
+        string='Replacement Price Threshold (%)',
+        digits=(5, 2),
+        default=2.0,
+        help='Manual Stone Replacement: a replacement priced '
+             'up to this many percent above the original is absorbed and keeps '
+             'the original customer price. Above it, Sales must confirm.',
+    )
+
     @api.constrains('default_margin_percentage')
     def _check_default_margin_percentage(self):
         for rec in self:
             if rec.default_margin_percentage < 0:
                 raise ValidationError(_('Default margin percentage cannot be negative.'))
 
+    @api.constrains('replacement_price_threshold_pct')
+    def _check_replacement_price_threshold_pct(self):
+        for rec in self:
+            if rec.replacement_price_threshold_pct < 0:
+                raise ValidationError(_('Replacement price threshold cannot be negative.'))
+
+    @api.model
+    def _get_replacement_threshold_pct(self):
+        """The Director-set absorb threshold, or 2.0 when never configured."""
+        config = self.sudo().search([], limit=1)
+        return config.replacement_price_threshold_pct if config else 2.0
+
+    @api.model
+    def _get_margin_pct_for_carat(self, carat):
+        """House markup % for a carat weight: the carat band's percentage from
+        the table, else the default. sudo() because Sales/Procurement price
+        stones but cannot read lgd.margin (same reason as the RFQ compute)."""
+        config = self.sudo().search([], limit=1)
+        if not config:
+            return 0.0
+        band = self.env['customer.rfq']._carat_to_band(carat) if carat else None
+        if band:
+            line = self.env['lgd.margin.line'].sudo().search([
+                ('margin_id', '=', config.id),
+                ('carat_range', '=', band),
+            ], limit=1)
+            if line:
+                return line.percentage
+        return config.default_margin_percentage
+
     @api.model
     def _get_default_margin_percentage(self):
         """The house markup, or 0.0 when Margins has never been opened.
-
-        sudo() because Sales and Procurement price RFQs but cannot read
-        lgd.margin -- the same reason _compute_pricing_totals already sudoes
-        its lookup of the carat table.
+        sudo() because Sales and Procurement price RFQs but cannot read lgd.margin.
         """
         config = self.sudo().search([], limit=1)
         return config.default_margin_percentage if config else 0.0

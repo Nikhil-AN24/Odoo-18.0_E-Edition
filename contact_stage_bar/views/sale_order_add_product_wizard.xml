@@ -36,7 +36,7 @@
                 <button name="%(action_sale_order_add_product_wizard)d"
                         type="action" string="Add Product"
                         class="btn-primary"
-                        invisible="order_source == 'offline'"/>
+                        invisible="1"/>
             </xpath>
         </field>
     </record>

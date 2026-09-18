@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════ Replace Stone wizard ═══════════ -->
+    <record id="view_stone_replacement_form" model="ir.ui.view">
+        <field name="name">stone.replacement.form</field>
+        <field name="model">stone.replacement</field>
+        <field name="arch" type="xml">
+            <form string="Replace Stone">
+                <group>
+                    <field name="sale_line_id" invisible="1"/>
+                    <field name="mode" widget="radio" options="{'horizontal': True}"/>
+                </group>
+
+                <group string="IGI Lookup" invisible="mode != 'igi'">
+                    <div class="o_row">
+                        <field name="igi_report_no" placeholder="IGI report number"/>
+                        <button name="action_fetch_igi" type="object"
+                                string="Fetch from IGI" class="btn-secondary"/>
+                    </div>
+                    <div colspan="2" class="text-muted">
+                        Enter the IGI report number and click Fetch — the spec
+                        fills in below. For GIA or any other lab, switch Source
+                        to Manual and type the spec.
+                    </div>
+                </group>
+
+                <group>
+                    <group string="Original Stone">
+                        <field name="orig_product_name"/>
+                        <field name="orig_stone_type"/>
+                        <field name="orig_shapes"/>
+                        <field name="orig_carat"/>
+                        <field name="orig_color"/>
+                        <field name="orig_clarity"/>
+                        <field name="orig_cut"/>
+                        <field name="orig_certificate"/>
+                    </group>
+                    <group string="Replacement Stone">
+                        <!-- Not view-required: these are filled by Fetch from
+                             IGI, and marking them required would block that
+                             button (it saves first). action_submit enforces
+                             them server-side instead. -->
+                        <field name="stone_type"/>
+                        <field name="lab"/>
+                        <field name="shapes"/>
+                        <field name="weight_carat"/>
+                        <field name="color"/>
+                        <field name="clarity"/>
+                        <field name="cut"/>
+                        <field name="polish"/>
+                        <field name="symmetry"/>
+                        <field name="fluorescence_intensity"/>
+                        <field name="treatments"/>
+                        <field name="measurements"/>
+                        <field name="certificate"/>
+                    </group>
+                </group>
+
+                <group>
+                    <group string="Vendor &amp; Buying Price">
+                        <field name="vendor_id"/>
+                        <field name="gross_price_per_carat"/>
+                        <field name="carat_value"/>
+                        <field name="gross_total"/>
+                    </group>
+                </group>
+
+                <footer>
+                    <button name="action_submit" type="object"
+                            string="Submit Replacement" class="btn-primary"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- ═══════════ Reject-reason wizard ═══════════ -->
+    <record id="view_stone_replacement_reject_form" model="ir.ui.view">
+        <field name="name">stone.replacement.reject.form</field>
+        <field name="model">stone.replacement.reject</field>
+        <field name="arch" type="xml">
+            <form string="Reject Replacement">
+                <group>
+                    <field name="line_id" invisible="1"/>
+                    <field name="reason_ids" widget="many2many_tags"
+                           options="{'no_quick_create': False}"
+                           placeholder="Why is this replacement being rejected?"/>
+                    <field name="comment" placeholder="Add any detail worth keeping..."/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Reject" class="btn-danger"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

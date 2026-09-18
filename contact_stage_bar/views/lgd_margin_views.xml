@@ -10,6 +10,7 @@
                 <sheet>
                     <group>
                         <field name="default_margin_percentage"/>
+                        <field name="replacement_price_threshold_pct"/>
                     </group>
                     <separator string="Carat – Margin Table"/>
                     <field name="line_ids">
