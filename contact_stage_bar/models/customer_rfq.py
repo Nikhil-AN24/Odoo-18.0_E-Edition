@@ -1,6 +1,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 from markupsafe import Markup
+import json
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -116,6 +117,30 @@ class CustomerRfq(models.Model):
     partner_id = fields.Many2one(
         'res.partner', string='Company Name', tracking=True, required=True,
     )
+
+    # Domain for the "Company Name" dropdown. It must only offer Accounts
+    # (partner_kind = 'buyer'), never the untagged contacts or vendors. A plain
+    # LGD Sales rep sees only the Accounts assigned to them (user_id); managers,
+    # regional heads, superadmin and system admins see every Account. This
+    # mirrors the Sales > Leads > Accounts menu visibility.
+    partner_domain = fields.Char(compute='_compute_partner_domain')
+
+    @api.depends('owner_id')
+    @api.depends_context('uid')
+    def _compute_partner_domain(self):
+        user = self.env.user
+        sees_all = (
+            user.has_group('contact_stage_bar.group_lgd_sales_manager')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('base.group_system')
+        )
+        if user.has_group('contact_stage_bar.group_lgd_sales') and not sees_all:
+            dom = ['&', ('partner_kind', '=', 'buyer'), ('user_id', '=', user.id)]
+        else:
+            dom = [('partner_kind', '=', 'buyer')]
+        dom_str = json.dumps(dom)
+        for rec in self:
+            rec.partner_domain = dom_str
 
     # Owner: defaults to whoever creates the record, but unlike create_uid
     # this is a normal editable field so the record can be reassigned.

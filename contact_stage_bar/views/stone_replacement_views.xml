@@ -51,6 +51,7 @@
                         <field name="polish"/>
                         <field name="symmetry"/>
                         <field name="fluorescence_intensity"/>
+                        <field name="fluorescence_color"/>
                         <field name="treatments"/>
                         <field name="measurements"/>
                         <field name="certificate"/>

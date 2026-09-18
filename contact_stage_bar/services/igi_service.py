@@ -103,6 +103,12 @@ def _normalise(raw):
     out['is_fancy_color'] = bool(
         out.get('color') and out['color'].strip().upper().startswith('FANCY')
     )
+    # Growth treatment (CVD / HPHT / None) parsed from the report comments,
+    # and fluorescence split into intensity + colour (IGI returns one string,
+    # e.g. "MEDIUM BLUE"). All default to "None" so downstream columns never render blank.
+    out['treatment'] = _derive_treatment(out)
+    out['fluorescence_intensity'], out['fluorescence_color'] = \
+        _split_fluorescence(out.get('fluorescence'))
     return out
 
 
@@ -142,3 +148,28 @@ def _is_lab_grown(description, report_number):
     if report_number and str(report_number).upper().startswith('LG'):
         return True
     return False
+
+
+_FLUOR_INTENSITIES = ('VERY STRONG', 'STRONG', 'MEDIUM', 'FAINT', 'NONE')
+_FLUOR_COLORS = ('BLUE', 'YELLOW', 'GREEN', 'ORANGE', 'RED', 'WHITE', 'VIOLET', 'PINK')
+
+def _derive_treatment(out):
+    """CVD / HPHT / None, parsed from the report comments + description."""
+    text = ' '.join(str(out.get(k) or '')
+                    for k in ('comments', 'description')).upper()
+    if 'CVD' in text or 'CHEMICAL VAPOR' in text or 'CHEMICAL VAPOUR' in text:
+        return 'CVD'
+    if 'HPHT' in text or 'HIGH PRESSURE HIGH TEMPERATURE' in text:
+        return 'HPHT'
+    return 'None'
+
+def _split_fluorescence(raw):
+    """Split an IGI fluorescence string (e.g. "MEDIUM BLUE") into
+    (intensity, colour). Both fall back to "None"."""
+    text = (raw or '').strip().upper()
+    if not text:
+        return 'None', 'None'
+    intensity = next((i for i in _FLUOR_INTENSITIES if i in text), None)
+    colour = next((c for c in _FLUOR_COLORS if c in text), None)
+    return (intensity.title() if intensity else 'None',
+            colour.title() if colour else 'None')

@@ -86,7 +86,9 @@
                     </group>
                     <group>
                         <group>
+                            <field name="partner_domain" invisible="1"/>
                             <field name="partner_id" string="Company Name"
+                                   domain="partner_domain or [('partner_kind', '=', 'buyer')]"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
                                    readonly="state != 'draft'"/>
                             <field name="customer_phone" invisible="1"/>

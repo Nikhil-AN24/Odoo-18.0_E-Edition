@@ -2689,6 +2689,18 @@ class SaleOrderLine(models.Model):
         if domain:
             product = Product.search(['|'] * (len(domain) - 1) + domain, limit=1)
         if product:
+
+            fill = {}
+            if not product.treatments:
+                fill['treatments'] = vals.get('treatments') or 'None'
+            if not product.fluorescence_intensity:
+                fill['fluorescence_intensity'] = (
+                    vals.get('fluorescence_intensity') or 'None')
+            if not product.fluorescence_color:
+                fill['fluorescence_color'] = (
+                    vals.get('fluorescence_color') or 'None')
+            if fill:
+                product.write(fill)
             return product
         create_vals = dict(vals)
         create_vals.setdefault('name', '[NEW]')
