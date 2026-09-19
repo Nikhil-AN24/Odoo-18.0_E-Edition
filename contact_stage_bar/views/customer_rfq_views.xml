@@ -86,7 +86,9 @@
                     </group>
                     <group>
                         <group>
+                            <field name="partner_domain" invisible="1"/>
                             <field name="partner_id" string="Company Name"
+                                   domain="partner_domain or [('partner_kind', '=', 'buyer')]"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
                                    readonly="state != 'draft'"/>
                             <field name="customer_phone" invisible="1"/>
@@ -175,7 +177,17 @@
                                  sent back to Sales for Non-Certified + Different
                                  prices — per-row Sales Price/Carat inside the
                                  Quantity & Size table replaces it. -->
-                            <field name="total_price" string="Sales Price/carat"
+                            <field name="sale_rate_per_carat" string="Sales Price/carat"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales')"
+                                   groups="!contact_stage_bar.group_lgd_procurement"/>
+                            <field name="sale_price_per_stone" string="Sales Price/Stone"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales')"
+                                   groups="!contact_stage_bar.group_lgd_procurement"/>
+                            <field name="order_total" string="Order Total"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
                                    invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales')"
@@ -183,7 +195,8 @@
 
                             <field name="owner_id" string="Owner"
                                    options="{'no_create': True}"
-                                   readonly="state != 'draft'"/>
+                                   readonly="state != 'draft'"
+                                   groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_procurement_manager"/>
                         </group>
                     </group>
 

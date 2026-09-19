@@ -1,6 +1,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 from markupsafe import Markup
+import json
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -116,6 +117,30 @@ class CustomerRfq(models.Model):
     partner_id = fields.Many2one(
         'res.partner', string='Company Name', tracking=True, required=True,
     )
+
+    # Domain for the "Company Name" dropdown. It must only offer Accounts
+    # (partner_kind = 'buyer'), never the untagged contacts or vendors. A plain
+    # LGD Sales rep sees only the Accounts assigned to them (user_id); managers,
+    # regional heads, superadmin and system admins see every Account. This
+    # mirrors the Sales > Leads > Accounts menu visibility.
+    partner_domain = fields.Char(compute='_compute_partner_domain')
+
+    @api.depends('owner_id')
+    @api.depends_context('uid')
+    def _compute_partner_domain(self):
+        user = self.env.user
+        sees_all = (
+            user.has_group('contact_stage_bar.group_lgd_sales_manager')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('base.group_system')
+        )
+        if user.has_group('contact_stage_bar.group_lgd_sales') and not sees_all:
+            dom = ['&', ('partner_kind', '=', 'buyer'), ('user_id', '=', user.id)]
+        else:
+            dom = [('partner_kind', '=', 'buyer')]
+        dom_str = json.dumps(dom)
+        for rec in self:
+            rec.partner_domain = dom_str
 
     # Owner: defaults to whoever creates the record, but unlike create_uid
     # this is a normal editable field so the record can be reassigned.
@@ -312,11 +337,11 @@ class CustomerRfq(models.Model):
         tracking=True,
     )
 
-    carat = fields.Float(string='Carat', tracking=True)
+    carat = fields.Float(string='Carat / Stone', tracking=True)
     color = fields.Char(string='Color', tracking=True)
     clarity = fields.Char(string='Clarity', tracking=True)
     size = fields.Char(string='Size', tracking=True)
-    quantity = fields.Float(string='Quantity', tracking=True)
+    quantity = fields.Integer(string='Quantity', tracking=True)
     cut = fields.Char(string='Cut', tracking=True)        # Free-text Cut for Lab-grown + Non-Certified stones (no grading lab).
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
@@ -399,12 +424,43 @@ class CustomerRfq(models.Model):
     )
 
     total_price = fields.Monetary(
+        string='Sales Order Value',
+        currency_field='currency_id',
+        compute='_compute_pricing_totals',
+        store=False,
+        help='Extended amount (money), not a rate: '
+             '(Procurement Price/carat × Carat) + Margin. No tax.',
+    )
+
+    # Genuine per-carat RATE that Sales quotes — a rate in, a rate out, carat
+    # weight never enters this number (it only selects the margin band).
+    sale_rate_per_carat = fields.Monetary(
         string='Sales Price/carat',
         currency_field='currency_id',
         compute='_compute_pricing_totals',
         store=False,
-        help='What Sales quotes the customer: '
-             '(Procurement Price/carat × Carat) + Margin. No tax.',
+        help='Genuine per-carat rate: Procurement Price/carat + Margin. '
+             'Carat weight never enters this value — multiplying it by Carat '
+             'gives the per-stone price (see Sales Price/Stone).',
+    )
+
+    # Per-stone price = Procurement sent Rate × carat/stone. 
+    sale_price_per_stone = fields.Monetary(
+        string='Sales Price/Stone',
+        currency_field='currency_id',
+        compute='_compute_pricing_totals',
+        store=False,
+        help='Per-stone price = Sales Price/carat × Carat/Stone.',
+    )
+
+    # Full quote value = per-stone price × number of stones. Equals exactly the sum of the lines the Offline Order will create.
+    order_total = fields.Monetary(
+        string='Order Total',
+        currency_field='currency_id',
+        compute='_compute_pricing_totals',
+        store=False,
+        help='Full quote value = Sales Price/Stone × number of stones '
+             '(the total the Offline Order will sum to).',
     )
 
     @staticmethod
@@ -478,7 +534,29 @@ class CustomerRfq(models.Model):
                 if not sl.costing:
                     sl.costing = rec.price
 
+    def _rfq_stone_count(self):
+        """Number of stones this RFQ will spawn on the Offline Order.
+
+        Mirrors _build_offline_order_lines exactly so that Order Total equals
+        the sum of the generated per-stone lines (each priced at total_price):
+          - size lines present → sum of per-row counts
+            (int for pieces, round for carats),
+          - legacy fallback     → the header Quantity (min 1).
+        """
+        self.ensure_one()
+        if self.size_line_ids:
+            unit_is_pieces = (self.unit_type or 'carats') == 'pieces'
+            total = 0
+            for sl in self.size_line_ids:
+                raw = sl.quantity or 0.0
+                count = int(raw) if unit_is_pieces else int(round(raw))
+                if count > 0:
+                    total += count
+            return total
+        return max(1, int(self.quantity)) if self.quantity else 1
+
     @api.depends('price', 'carat', 'tax_ids', 'different_prices',
+                 'quantity', 'unit_type',
                  'size_line_ids', 'size_line_ids.quantity',
                  'size_line_ids.costing')
     def _compute_pricing_totals(self):
@@ -547,18 +625,35 @@ class CustomerRfq(models.Model):
             taxable_amount = rec_base_price + rec_margin_amount
             rec_tax_amount = 0.0
 
-            # ── 5. Assign back ───────────────────────────────────────────────
-            rec.base_price        = rec_base_price
-            rec.margin_percentage = rec_margin_pct
-            rec.margin_amount     = rec_margin_amount
-            rec.tax_amount        = rec_tax_amount
-            rec.total_price       = taxable_amount + rec_tax_amount
+            # ── 5. Rate vs money ─────────────────────────────────────────────
+            # RULE: carat weight must never appear in a formula that produces a
+            # rate. The rate is the extended amount divided back out by the same
+            # effective carat weight, so (rate × effective_carat) == total again.
+            # This yields the correct blended rate for both the flat and the
+            # Different-prices paths. Per-stone money is rate × carat/stone.
+            rec_total = taxable_amount + rec_tax_amount
+            rec_rate = (rec_total / effective_carat) if effective_carat else rec.price
 
+            # ── 6. Assign back ───────────────────────────────────────────────
+            rec.base_price           = rec_base_price
+            rec.margin_percentage    = rec_margin_pct
+            rec.margin_amount        = rec_margin_amount
+            rec.tax_amount           = rec_tax_amount
+            rec.total_price          = rec_total
+            rec.sale_rate_per_carat  = rec_rate
+            rec.sale_price_per_stone = rec_rate * (rec.carat or 0.0)
+            # Order Total mirrors the Offline Order exactly: every generated
+            # line is priced at total_price, and there are stone-count lines.
+            rec.order_total          = rec_total * rec._rfq_stone_count()
+
+    @api.depends('state')
     @api.depends_context('uid')
     def _compute_is_price_visible_for_user(self):
         """Visibility rules:
         - Procurement or Admin: always visible
-        - Sales: visible only once Procurement has sent the RFQ back (state == 'sent_back_to_sales')
+        - Sales: visible once Procurement has sent the RFQ back and stays
+          visible through the Offline Order Created stage
+          (state in ('sent_back_to_sales', 'offline_order_created'))
         """
         user = self.env.user
         is_procurement = user.has_group('contact_stage_bar.group_lgd_procurement')
@@ -567,7 +662,9 @@ class CustomerRfq(models.Model):
             if is_procurement or is_admin:
                 rec.is_price_visible_for_user = True
             else:
-                rec.is_price_visible_for_user = (rec.state == 'sent_back_to_sales')
+                rec.is_price_visible_for_user = (
+                    rec.state in ('sent_back_to_sales', 'offline_order_created')
+                )
 
     @api.depends('state')
     @api.depends_context('uid')
@@ -662,6 +759,15 @@ class CustomerRfq(models.Model):
             [('category', '=', 'polish'), ('code', 'in', polish_codes)])
         self.symmetry_grade_ids = Grade.search(
             [('category', '=', 'symmetry'), ('code', 'in', sym_codes)])
+
+    @api.constrains('quantity', 'stone_certification_type')
+    def _check_quantity_positive_integer(self):
+        for rec in self:
+            if rec.stone_certification_type == 'non_certified':
+                continue
+            if rec.quantity <= 0:
+                raise ValidationError(_(
+                    "Quantity must be a whole number greater than zero."))
 
     @api.constrains('shape_ids')
     def _check_single_shape(self):

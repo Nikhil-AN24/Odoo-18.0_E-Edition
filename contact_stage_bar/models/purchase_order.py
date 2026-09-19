@@ -44,11 +44,48 @@ class PurchaseOrderLine(models.Model):
         string='Discount',
     )
 
-    # "Rate" column — Monetary field with $ symbol by default
+    # "Per ct. Rate" column — Monetary field with $ symbol by default
     rate_usd = fields.Monetary(
-        string='Rate',
+        string='Per ct. Rate',
         currency_field='currency_id',
     )
+
+    # True only for the roles allowed to edit the PO pricing columns
+    # (Vendor Discount %, Payment Terms, Per ct. Rate, Discount). For everyone
+    # else the whole Products grid is view-only. Defaults to False, so an
+    # un-privileged (or unresolved) user always gets the read-only columns.
+    can_edit_po_pricing = fields.Boolean(compute='_compute_can_edit_po_pricing')
+    # Plain LGD Procurement may additionally edit "Per ct. Rate" (only).
+    can_edit_rate = fields.Boolean(compute='_compute_can_edit_po_pricing')
+    currency_name = fields.Char(related='currency_id.name')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_po_pricing(self):
+        user = self.env.user
+        priv = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        can_rate = priv or user.has_group('contact_stage_bar.group_lgd_procurement')
+        for line in self:
+            line.can_edit_po_pricing = priv
+            line.can_edit_rate = can_rate
+
+    def action_open_line_info(self):
+        """Open this line's Additional / Purchase Information tabs in a dialog
+        (the (i) button on the Products list)."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Line Information'),
+            'res_model': 'purchase.order.line',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'views': [(self.env.ref(
+                'contact_stage_bar.view_purchase_order_line_info_form').id, 'form')],
+            'target': 'new',
+        }
 
     # Bank Rate * Unit Price = Rupees Rate. Computed as a default, but editable:
     # Procurement can type the actual rupee rate, which then drives the total.
@@ -94,17 +131,31 @@ class PurchaseOrderLine(models.Model):
         readonly=True, copy=False,
         help="Derived automatically from the vendor's payment-terms matrix.",
     )
+    per_ct_discounted_rate = fields.Monetary(
+        string='Per ct. Discounted Rate', currency_field='currency_id',
+        compute='_compute_per_ct_discounted_rate', store=True, readonly=True,
+        help="Per ct. Rate less the vendor discount %. e.g. 100 - 1% = 99.",
+    )
+    # Numeric carat weight of the stone (parsed on the product), used to turn the
+    # per-carat discounted rate into the line's expected net.
+    carat_value = fields.Float(
+        string='Carat', related='product_id.product_tmpl_id.carat_value')
     expected_net = fields.Monetary(
         string='Expected Net', currency_field='currency_id',
         compute='_compute_expected_net', store=True, readonly=True,
-        help="Gross x (1 - discount%). What Accounting should expect to pay.",
+        help="Per ct. Discounted Rate x Carat. What Accounting should expect to pay.",
     )
 
-    @api.depends('price_unit', 'product_qty', 'discount_percent')
+    @api.depends('rate_usd', 'discount_percent')
+    def _compute_per_ct_discounted_rate(self):
+        for line in self:
+            line.per_ct_discounted_rate = (line.rate_usd or 0.0) * (
+                1 - (line.discount_percent or 0.0) / 100.0)
+
+    @api.depends('per_ct_discounted_rate', 'carat_value')
     def _compute_expected_net(self):
         for line in self:
-            gross = line.price_unit * line.product_qty
-            line.expected_net = gross * (1 - (line.discount_percent or 0.0) / 100.0)
+            line.expected_net = line.per_ct_discounted_rate * (line.carat_value or 0.0)
 
     def _get_vendor_terms(self, partner):
         """Look up (discount %, payment days) on the vendor master for this
@@ -166,12 +217,14 @@ class PurchaseOrderLine(models.Model):
     # Price / monetary columns whose manual edits are logged on the PO chatter.
     _TRACKED_MONETARY_FIELDS = {
         'price_unit': 'Unit Price',
-        'rate_usd': 'Rate',
+        'rate_usd': 'Per ct. Rate',
         'rupees_rate': 'Rupees Rate',
         'bank_rate': 'Bank Rate',
         'weight': 'Weight',
         'product_qty': 'Quantity',
         'custom_discount': 'Discount',
+        'discount_percent': 'Vendor Discount %',
+        'payment_days': 'Payment Terms (Days)',
     }
 
     @staticmethod
@@ -210,11 +263,52 @@ class PurchaseOrderLine(models.Model):
 
 class PurchaseOrder(models.Model):
     _inherit = 'purchase.order'
+
+    # Header mirror of the line-level flag. The Products grid (order_line) stays
+    # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /
+    # LGD SuperAdmin), regardless of PO state; everyone else sees it view-only.
+    can_edit_po_pricing = fields.Boolean(compute='_compute_can_edit_po_pricing')
+    can_edit_rate = fields.Boolean(compute='_compute_can_edit_po_pricing')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_po_pricing(self):
+        user = self.env.user
+        priv = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        can_rate = priv or user.has_group('contact_stage_bar.group_lgd_procurement')
+        for order in self:
+            order.can_edit_po_pricing = priv
+            order.can_edit_rate = can_rate
+
     # Log currency and amount changes on the PO chatter.
     currency_id = fields.Many2one(tracking=True)
     amount_untaxed = fields.Monetary(tracking=True)
     amount_tax = fields.Monetary(tracking=True)
     amount_total = fields.Monetary(tracking=True)
+
+    # PO totals shown to Procurement: "Expected Net" (sum of each line's
+    # net-of-vendor-discount cost) = untaxed, a flat 1.5% GST, and the Total.
+    # These replace the standard tax_totals widget in the form footer.
+    expected_net_total = fields.Monetary(
+        string="Expected Net", compute='_compute_expected_net_totals',
+        currency_field='currency_id')
+    gst_amount = fields.Monetary(
+        string="GST +1.5%", compute='_compute_expected_net_totals',
+        currency_field='currency_id')
+    grand_total = fields.Monetary(
+        string="Total", compute='_compute_expected_net_totals',
+        currency_field='currency_id')
+
+    @api.depends('order_line.expected_net')
+    def _compute_expected_net_totals(self):
+        for order in self:
+            net = sum(order.order_line.mapped('expected_net'))
+            order.expected_net_total = net
+            order.gst_amount = net * 0.015
+            order.grand_total = net * 1.015
     location = fields.Selection([('mumbai', 'India'), ('surat', 'USA')], string='Location')     
     vendor_street = fields.Char(related='partner_id.street', string="Street")
     vendor_street_2 = fields.Char(related='partner_id.street2', string="Street 2")

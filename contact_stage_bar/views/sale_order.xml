@@ -239,6 +239,12 @@
                 <field name="shipping_charges" string="Shipping" widget="monetary" options="{'currency_field': 'currency_id'}" invisible="shipping_charges == 0.0" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
             </xpath>
 
+            <!-- Hide the Untaxed Amount / Total summary block for everyone —
+                 these values are not required as of now. -->
+            <xpath expr="//field[@name='tax_totals']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
             <xpath expr="//field[@name='partner_id']" position="attributes">
                 <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 <!-- Drop show_address so the customer name renders without the  multi-line address block underneath. -->
@@ -342,7 +348,8 @@
                                 invisible="line_type != 'lgd' or availability_status != 'not_available'"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
-                        <field name="vendor_id" readonly="1"/>
+                        <field name="can_edit_vendor" column_invisible="True"/>
+                        <field name="vendor_id" readonly="not can_edit_vendor"/>
                         <field name="stock_number" readonly="1" string="Vendor SKU"/>
                         <field name="vendor_city" readonly="1" optional="show"/>
                         <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
@@ -392,7 +399,8 @@
                         invisible="not replacement_pending_sales"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
-                <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="1"/>
+                <field name="can_edit_vendor" column_invisible="True"/>
+                <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="not can_edit_vendor"/>
                 <field name="stock_number" readonly="1" string="Vendor SKU"
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>

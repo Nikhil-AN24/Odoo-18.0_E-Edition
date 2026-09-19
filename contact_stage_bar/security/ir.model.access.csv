@@ -38,3 +38,8 @@ access_sale_order_cancel_reject_wizard,sale.order.cancel.reject.wizard,model_sal
 access_customer_rfq_size_line_user,customer.rfq.size.line.user,model_customer_rfq_size_line,base.group_user,1,1,1,1
 access_customer_rfq_grade_user,customer.rfq.grade.user,model_customer_rfq_grade,base.group_user,1,0,0,0
 access_customer_rfq_grade_admin,customer.rfq.grade.admin,model_customer_rfq_grade,base.group_system,1,1,1,1
+access_sale_order_option_lgd_procurement,sale.order.option.lgd.procurement,sale_management.model_sale_order_option,contact_stage_bar.group_lgd_procurement,1,0,0,0
+access_sale_order_spreadsheet_lgd_procurement,sale.order.spreadsheet.lgd.procurement,spreadsheet_sale_management.model_sale_order_spreadsheet,contact_stage_bar.group_lgd_procurement,1,0,0,0
+access_sale_order_template_lgd_procurement,sale.order.template.lgd.procurement,sale_management.model_sale_order_template,contact_stage_bar.group_lgd_procurement,1,0,0,0
+access_sale_order_template_line_lgd_procurement,sale.order.template.line.lgd.procurement,sale_management.model_sale_order_template_line,contact_stage_bar.group_lgd_procurement,1,0,0,0
+access_sale_order_template_option_lgd_procurement,sale.order.template.option.lgd.procurement,sale_management.model_sale_order_template_option,contact_stage_bar.group_lgd_procurement,1,0,0,0

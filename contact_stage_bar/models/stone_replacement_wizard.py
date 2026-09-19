@@ -34,6 +34,7 @@ class StoneReplacement(models.TransientModel):
     polish = fields.Char(string="Polish")
     symmetry = fields.Char(string="Symmetry")
     fluorescence_intensity = fields.Char(string="Fluorescence")
+    fluorescence_color = fields.Char(string="Fluorescence Color")
     treatments = fields.Char(string="Treatments")
     measurements = fields.Char(string="Measurements")
     certificate = fields.Char(string="Certificate Number")
@@ -116,8 +117,9 @@ class StoneReplacement(models.TransientModel):
             'symmetry': result.get('symmetry'),
             # IGI omits these for some stones — default to "None" so the column
             # never renders blank on the replaced line.
-            'fluorescence_intensity': result.get('fluorescence') or 'None',
-            'treatments': self._igi_treatment_from_result(result),
+            'fluorescence_intensity': result.get('fluorescence_intensity') or 'None',
+            'fluorescence_color': result.get('fluorescence_color') or 'None',
+            'treatments': result.get('treatment') or 'None',
             'measurements': result.get('measurements'),
             'certificate': result.get('report_number') or report,
             'lab': 'IGI',
@@ -155,8 +157,8 @@ class StoneReplacement(models.TransientModel):
             'cut': self.cut,
             'polish': self.polish,
             'symmetry': self.symmetry,
-            # Never leave these blank on the replaced line.
             'fluorescence_intensity': self.fluorescence_intensity or 'None',
+            'fluorescence_color': self.fluorescence_color or 'None',
             'treatments': self.treatments or 'None',
             'measurements': self.measurements,
             'stone_type': self.stone_type,
