@@ -342,7 +342,8 @@
                                 invisible="line_type != 'lgd' or availability_status != 'not_available'"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
-                        <field name="vendor_id" readonly="1"/>
+                        <field name="can_edit_vendor" column_invisible="True"/>
+                        <field name="vendor_id" readonly="not can_edit_vendor"/>
                         <field name="stock_number" readonly="1" string="Vendor SKU"/>
                         <field name="vendor_city" readonly="1" optional="show"/>
                         <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
@@ -392,7 +393,8 @@
                         invisible="not replacement_pending_sales"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
-                <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="1"/>
+                <field name="can_edit_vendor" column_invisible="True"/>
+                <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="not can_edit_vendor"/>
                 <field name="stock_number" readonly="1" string="Vendor SKU"
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>

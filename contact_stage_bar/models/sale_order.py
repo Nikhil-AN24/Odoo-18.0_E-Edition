@@ -3002,7 +3002,23 @@ class SaleOrderLine(models.Model):
     final_price_margin = fields.Float(related='product_template_id.final_price_margin', string="Final Price")
     stock_number = fields.Char(related='product_template_id.stock_number', string="Vendor SKU")
     lgd_stock_number = fields.Char(related='product_template_id.lgd_stock_number', string="LGD SKU")
-    vendor_id = fields.Many2one('res.partner',string="Vendor Company")
+    vendor_id = fields.Many2one(
+        'res.partner', string="Vendor Company",
+        domain="[('partner_kind', '=', 'supplier')]")
+    # Vendor Company is editable by Procurement roles (+ Admin / SuperAdmin);
+    # everyone else sees it read-only.
+    can_edit_vendor = fields.Boolean(compute='_compute_can_edit_vendor')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_vendor(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+        )
+        for line in self:
+            line.can_edit_vendor = allowed
     vendor_city = fields.Char(string="Vendor City",related='vendor_id.city')
     is_block = fields.Boolean(string="Block", default=False,readonly=True)
     is_available = fields.Boolean(string="Pass Check",default=False,copy=False)

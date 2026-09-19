@@ -47,12 +47,13 @@
             </xpath>
             <xpath expr="//field[@name='order_line']" position="before">
                 <field name="can_edit_po_pricing" invisible="1"/>
+                <field name="can_edit_rate" invisible="1"/>
             </xpath>
-            <!-- Products grid: editable only for Admin / LGD Procurement Manager /
-                 LGD SuperAdmin (any state); view-only for everyone else. Column-level
-                 readonly then keeps all but the 4 pricing fields locked. -->
+            <!-- Products grid editable for anyone who can edit at least one column:
+                 plain LGD Procurement (Per ct. Rate only) and Managers/Admin/SuperAdmin
+                 (all 4 pricing fields). Column-level readonly then gates each field. -->
             <xpath expr="//field[@name='order_line']" position="attributes">
-                <attribute name="readonly">not can_edit_po_pricing</attribute>
+                <attribute name="readonly">not can_edit_rate</attribute>
             </xpath>
             <xpath expr="//field[@name='picking_type_id']" position="attributes">
                 <attribute name="invisible">1</attribute>
@@ -61,6 +62,7 @@
             <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="attributes">
                 <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 <attribute name="readonly">1</attribute>
+                <attribute name="options">{'no_open': True}</attribute>
             </xpath>
 
             <!-- Hide the "Description" column (standard field 'name') in the Products list, for everyone. -->
@@ -73,15 +75,19 @@
                  re-enabled for privileged roles via can_edit_po_pricing above. -->
             <xpath expr="//field[@name='order_line']/list/field[@name='product_qty']" position="attributes">
                 <attribute name="readonly">1</attribute>
+                <attribute name="column_invisible">1</attribute>
             </xpath>
             <xpath expr="//field[@name='order_line']/list/field[@name='product_uom']" position="attributes">
                 <attribute name="readonly">1</attribute>
+                <attribute name="column_invisible">1</attribute>
             </xpath>
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="attributes">
                 <attribute name="readonly">1</attribute>
+                <attribute name="column_invisible">1</attribute>
             </xpath>
             <xpath expr="//field[@name='order_line']/list/field[@name='date_planned']" position="attributes">
                 <attribute name="readonly">1</attribute>
+                <attribute name="column_invisible">1</attribute>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="after">
@@ -90,12 +96,20 @@
                        groups="contact_stage_bar.group_lgd_procurement"
                        readonly="1"
                        options="{'no_open': True}"/>
-                <field name="shapes" optional="show" readonly="1"/>
-                <field name="color" string="Colour" optional="show" readonly="1"/>
-                <field name="cut" optional="show" readonly="1"/>
-                <field name="clarity" optional="show" readonly="1"/>
-                <field name="carat_weight" string="Carat" optional="show" readonly="1"/>
+                <!-- (i) info button: opens Additional / Purchase Information tabs.
+                     Shape/Colour/Clarity/Cut/Carat/Quantity live in those tabs now. -->
+                <button name="action_open_line_info" type="object"
+                        icon="fa-info-circle" title="Information"/>
             </xpath>
+
+            <!-- Remove the add-line controls (Add a product / section / note, Catalog). -->
+            <xpath expr="//field[@name='order_line']/list/control" position="replace"/>
+
+            <xpath expr="//field[@name='order_line']/list" position="attributes">
+                <attribute name="create">0</attribute>
+            </xpath>
+
+            <xpath expr="//field[@name='order_line']/list/button[@name='action_purchase_history']" position="replace"/>
 
             <xpath expr="//field[@name='partner_id']" position="after">
                 <field name="phone_number"/>
@@ -121,25 +135,23 @@
                 <attribute name="optional">hide</attribute>
             </xpath>
 
+            <!-- Total Amount (price_subtotal) removed from the Products grid. -->
             <xpath expr="//field[@name='order_line']/list/field[@name='price_subtotal']" position="attributes">
-                <attribute name="string">Total Amount</attribute>
+                <attribute name="column_invisible">1</attribute>
             </xpath>
 
+            <!-- Kept columns beside Product: Discount, Per ct. Rate, Vendor Discount %,
+                 Payment Terms, Expected Net. The 4 pricing ones are editable only for
+                 Admin / LGD Procurement Manager / LGD SuperAdmin. -->
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="before">
-                <!-- Only Admin / LGD Procurement Manager / LGD SuperAdmin may edit
-                     the pricing columns (Discount, Per ct. Rate, Vendor Discount %,
-                     Payment Terms). Everyone else sees the whole grid view-only. -->
                 <field name="can_edit_po_pricing" column_invisible="1"/>
+                <field name="can_edit_rate" column_invisible="1"/>
                 <field name="custom_discount" string="Discount" optional="show" readonly="not can_edit_po_pricing"/>
-                <field name="rate_usd" string="Per ct. Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="not can_edit_po_pricing"/>
-                <field name="bank_rate" string="Bank Rate" optional="show" readonly="1"/>
-                <field name="stone_type" optional="show" readonly="1"/>
-                <field name="stone_certification_type" string="Certification" optional="show" readonly="1"/>
+                <field name="rate_usd" string="Per ct. Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="not can_edit_rate"/>
+                <field name="per_ct_discounted_rate" string="Per ct. Discounted Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="1"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
-                <field name="rupees_rate" string="Rupees Rate" optional="show" readonly="1"/>
-                <field name="weight" string="Weight" optional="show" readonly="1"/>
                 <field name="discount_percent" string="Vendor Discount %" optional="show" readonly="not can_edit_po_pricing"/>
                 <field name="payment_days" string="Payment Terms (Days)" optional="show" readonly="not can_edit_po_pricing"/>
                 <field name="expected_net" string="Expected Net" widget="monetary" optional="show" readonly="1"/>
@@ -158,7 +170,63 @@
                 <attribute name="invisible">1</attribute>
             </xpath>
 
+            <!-- Hide the "Print RFQ" buttons (both draft and sent states). -->
+            <xpath expr="//button[@name='print_quotation'][@invisible=&quot;state != 'draft'&quot;]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//button[@name='print_quotation'][@invisible=&quot;state != 'sent'&quot;]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
+            <!-- Totals footer: Expected Net (untaxed) → GST +1.5% → Total,
+                 replacing the standard tax_totals widget. -->
+            <xpath expr="//field[@name='tax_totals']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='tax_totals']" position="after">
+                <field name="expected_net_total" widget="monetary"/>
+                <field name="gst_amount" widget="monetary"/>
+                <field name="grand_total" widget="monetary" class="oe_subtotal_footer_separator"/>
+            </xpath>
+
             <!-- Draft-state RFQ mail button keeps its native label ("Send by Email"). -->
+        </field>
+    </record>
+
+    <!-- Line-info dialog opened by the (i) button on the Products grid. -->
+    <record id="view_purchase_order_line_info_form" model="ir.ui.view">
+        <field name="name">purchase.order.line.info.form</field>
+        <field name="model">purchase.order.line</field>
+        <field name="arch" type="xml">
+            <form string="Line Information" create="false" edit="false">
+                <sheet>
+                    <notebook>
+                        <page string="Additional Information">
+                            <group>
+                                <field name="shapes" string="Shape" readonly="1"/>
+                                <field name="color" string="Colour" readonly="1"/>
+                                <field name="clarity" string="Clarity" readonly="1"/>
+                                <field name="cut" string="Cut" readonly="1"/>
+                                <field name="carat_weight" string="Carat" readonly="1"/>
+                                <field name="product_qty" string="Quantity" readonly="1"/>
+                            </group>
+                        </page>
+                        <page string="Purchase Information">
+                            <group>
+                                <field name="currency_name" invisible="1"/>
+                                <!-- Bank Rate only matters for foreign (USD) buys;
+                                     hidden when the PO currency is INR. -->
+                                <field name="bank_rate" string="Bank Rate" readonly="1"
+                                       invisible="currency_name == 'INR'"/>
+                                <field name="stone_type" string="Stone Type" readonly="1"/>
+                                <field name="stone_certification_type" string="Certification" readonly="1"/>
+                                <field name="price_unit" string="Unit Price" readonly="1"/>
+                                <field name="weight" string="Weight" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
         </field>
     </record>
 
