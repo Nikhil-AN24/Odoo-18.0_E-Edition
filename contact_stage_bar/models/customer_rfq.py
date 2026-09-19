@@ -424,12 +424,43 @@ class CustomerRfq(models.Model):
     )
 
     total_price = fields.Monetary(
+        string='Sales Order Value',
+        currency_field='currency_id',
+        compute='_compute_pricing_totals',
+        store=False,
+        help='Extended amount (money), not a rate: '
+             '(Procurement Price/carat × Carat) + Margin. No tax.',
+    )
+
+    # Genuine per-carat RATE that Sales quotes — a rate in, a rate out, carat
+    # weight never enters this number (it only selects the margin band).
+    sale_rate_per_carat = fields.Monetary(
         string='Sales Price/carat',
         currency_field='currency_id',
         compute='_compute_pricing_totals',
         store=False,
-        help='What Sales quotes the customer: '
-             '(Procurement Price/carat × Carat) + Margin. No tax.',
+        help='Genuine per-carat rate: Procurement Price/carat + Margin. '
+             'Carat weight never enters this value — multiplying it by Carat '
+             'gives the per-stone price (see Sales Price/Stone).',
+    )
+
+    # Per-stone price = Procurement sent Rate × carat/stone. 
+    sale_price_per_stone = fields.Monetary(
+        string='Sales Price/Stone',
+        currency_field='currency_id',
+        compute='_compute_pricing_totals',
+        store=False,
+        help='Per-stone price = Sales Price/carat × Carat/Stone.',
+    )
+
+    # Full quote value = per-stone price × number of stones. Equals exactly the sum of the lines the Offline Order will create.
+    order_total = fields.Monetary(
+        string='Order Total',
+        currency_field='currency_id',
+        compute='_compute_pricing_totals',
+        store=False,
+        help='Full quote value = Sales Price/Stone × number of stones '
+             '(the total the Offline Order will sum to).',
     )
 
     @staticmethod
@@ -503,7 +534,29 @@ class CustomerRfq(models.Model):
                 if not sl.costing:
                     sl.costing = rec.price
 
+    def _rfq_stone_count(self):
+        """Number of stones this RFQ will spawn on the Offline Order.
+
+        Mirrors _build_offline_order_lines exactly so that Order Total equals
+        the sum of the generated per-stone lines (each priced at total_price):
+          - size lines present → sum of per-row counts
+            (int for pieces, round for carats),
+          - legacy fallback     → the header Quantity (min 1).
+        """
+        self.ensure_one()
+        if self.size_line_ids:
+            unit_is_pieces = (self.unit_type or 'carats') == 'pieces'
+            total = 0
+            for sl in self.size_line_ids:
+                raw = sl.quantity or 0.0
+                count = int(raw) if unit_is_pieces else int(round(raw))
+                if count > 0:
+                    total += count
+            return total
+        return max(1, int(self.quantity)) if self.quantity else 1
+
     @api.depends('price', 'carat', 'tax_ids', 'different_prices',
+                 'quantity', 'unit_type',
                  'size_line_ids', 'size_line_ids.quantity',
                  'size_line_ids.costing')
     def _compute_pricing_totals(self):
@@ -572,12 +625,26 @@ class CustomerRfq(models.Model):
             taxable_amount = rec_base_price + rec_margin_amount
             rec_tax_amount = 0.0
 
-            # ── 5. Assign back ───────────────────────────────────────────────
-            rec.base_price        = rec_base_price
-            rec.margin_percentage = rec_margin_pct
-            rec.margin_amount     = rec_margin_amount
-            rec.tax_amount        = rec_tax_amount
-            rec.total_price       = taxable_amount + rec_tax_amount
+            # ── 5. Rate vs money ─────────────────────────────────────────────
+            # RULE: carat weight must never appear in a formula that produces a
+            # rate. The rate is the extended amount divided back out by the same
+            # effective carat weight, so (rate × effective_carat) == total again.
+            # This yields the correct blended rate for both the flat and the
+            # Different-prices paths. Per-stone money is rate × carat/stone.
+            rec_total = taxable_amount + rec_tax_amount
+            rec_rate = (rec_total / effective_carat) if effective_carat else rec.price
+
+            # ── 6. Assign back ───────────────────────────────────────────────
+            rec.base_price           = rec_base_price
+            rec.margin_percentage    = rec_margin_pct
+            rec.margin_amount        = rec_margin_amount
+            rec.tax_amount           = rec_tax_amount
+            rec.total_price          = rec_total
+            rec.sale_rate_per_carat  = rec_rate
+            rec.sale_price_per_stone = rec_rate * (rec.carat or 0.0)
+            # Order Total mirrors the Offline Order exactly: every generated
+            # line is priced at total_price, and there are stone-count lines.
+            rec.order_total          = rec_total * rec._rfq_stone_count()
 
     @api.depends('state')
     @api.depends_context('uid')
