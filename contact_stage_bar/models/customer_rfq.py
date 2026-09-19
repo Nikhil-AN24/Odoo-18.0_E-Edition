@@ -967,22 +967,26 @@ class CustomerRfq(models.Model):
             'order_line':      [(0, 0, vals) for vals in line_vals],
         })
 
+        order.action_confirm_offline_order()
+
         self.message_post(body=_(
-            "Offline Order %(order)s created with %(count)d line(s)."
-        ) % {'order': order.name, 'count': len(line_vals)})
+            "Offline Order %(order)s created with %(count)d line(s) "
+            "and confirmed (Sale Order %(so)s)."
+        ) % {
+            'order': order.name,
+            'count': len(line_vals),
+            'so': order.sale_order_id.name or '-',
+        })
 
         # Advance the RFQ so the "Create Offline Order" button hides and a second
         # offline order can't be created from the same RFQ.
         self.state = 'offline_order_created'
 
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Offline Order'),
-            'res_model': 'custom.sale.order',
-            'res_id': order.id,
-            'view_mode': 'form',
-            'target': 'current',
-        }
+        # Stay on the Customer RFQ instead of opening the (already created and
+        # confirmed) offline order. Returning nothing makes the web client reload
+        # this record, so the RFQ refreshes to the "Offline Order Created" stage;
+        # the Sale Order / Offline Orders smart buttons remain for navigation.
+        return True
 
     def _build_offline_order_lines(self, base_vals):
         """Expand every size_line row into N per-stone dicts.

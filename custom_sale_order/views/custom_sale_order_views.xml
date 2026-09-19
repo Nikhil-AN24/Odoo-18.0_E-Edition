@@ -71,7 +71,7 @@
                             type="object"
                             invisible="sale_state != 'cancel'"/>
                     <field name="sale_state" widget="statusbar"
-                           statusbar_visible="draft,sent,sale"/>
+                           statusbar_visible="draft,sale"/>
                 </header>
                  
                 <sheet>
