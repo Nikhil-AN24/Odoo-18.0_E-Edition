@@ -239,6 +239,12 @@
                 <field name="shipping_charges" string="Shipping" widget="monetary" options="{'currency_field': 'currency_id'}" invisible="shipping_charges == 0.0" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
             </xpath>
 
+            <!-- Hide the Untaxed Amount / Total summary block for everyone —
+                 these values are not required as of now. -->
+            <xpath expr="//field[@name='tax_totals']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+
             <xpath expr="//field[@name='partner_id']" position="attributes">
                 <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
                 <!-- Drop show_address so the customer name renders without the  multi-line address block underneath. -->

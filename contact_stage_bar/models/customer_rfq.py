@@ -337,11 +337,11 @@ class CustomerRfq(models.Model):
         tracking=True,
     )
 
-    carat = fields.Float(string='Carat', tracking=True)
+    carat = fields.Float(string='Carat / Stone', tracking=True)
     color = fields.Char(string='Color', tracking=True)
     clarity = fields.Char(string='Clarity', tracking=True)
     size = fields.Char(string='Size', tracking=True)
-    quantity = fields.Float(string='Quantity', tracking=True)
+    quantity = fields.Integer(string='Quantity', tracking=True)
     cut = fields.Char(string='Cut', tracking=True)        # Free-text Cut for Lab-grown + Non-Certified stones (no grading lab).
 
     currency_id = fields.Many2one('res.currency', string='Currency', default=lambda self: self.env.ref('base.USD').id)
@@ -579,11 +579,14 @@ class CustomerRfq(models.Model):
             rec.tax_amount        = rec_tax_amount
             rec.total_price       = taxable_amount + rec_tax_amount
 
+    @api.depends('state')
     @api.depends_context('uid')
     def _compute_is_price_visible_for_user(self):
         """Visibility rules:
         - Procurement or Admin: always visible
-        - Sales: visible only once Procurement has sent the RFQ back (state == 'sent_back_to_sales')
+        - Sales: visible once Procurement has sent the RFQ back and stays
+          visible through the Offline Order Created stage
+          (state in ('sent_back_to_sales', 'offline_order_created'))
         """
         user = self.env.user
         is_procurement = user.has_group('contact_stage_bar.group_lgd_procurement')
@@ -592,7 +595,9 @@ class CustomerRfq(models.Model):
             if is_procurement or is_admin:
                 rec.is_price_visible_for_user = True
             else:
-                rec.is_price_visible_for_user = (rec.state == 'sent_back_to_sales')
+                rec.is_price_visible_for_user = (
+                    rec.state in ('sent_back_to_sales', 'offline_order_created')
+                )
 
     @api.depends('state')
     @api.depends_context('uid')
@@ -687,6 +692,15 @@ class CustomerRfq(models.Model):
             [('category', '=', 'polish'), ('code', 'in', polish_codes)])
         self.symmetry_grade_ids = Grade.search(
             [('category', '=', 'symmetry'), ('code', 'in', sym_codes)])
+
+    @api.constrains('quantity', 'stone_certification_type')
+    def _check_quantity_positive_integer(self):
+        for rec in self:
+            if rec.stone_certification_type == 'non_certified':
+                continue
+            if rec.quantity <= 0:
+                raise ValidationError(_(
+                    "Quantity must be a whole number greater than zero."))
 
     @api.constrains('shape_ids')
     def _check_single_shape(self):
