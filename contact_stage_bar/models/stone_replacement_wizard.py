@@ -47,7 +47,7 @@ class StoneReplacement(models.TransientModel):
         'res.partner', string="Vendor",
         domain="[('partner_kind', '=', 'supplier')]")
     gross_price_per_carat = fields.Float(
-        string="Gross Price / Carat", digits=(16, 2),
+        string="Vendor Price / Carat", digits=(16, 2),
         help="The vendor's listed price before any partnership discount.")
     carat_value = fields.Float(
         string="Carat", compute='_compute_wizard_carat', digits=(16, 2))

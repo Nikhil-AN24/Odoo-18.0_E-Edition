@@ -296,6 +296,121 @@
         </field>
     </record>
 
+    <!-- Offline orders: surface the RFQ pricing on the Sale Order lines.
+         Inherits contact_stage_bar's order-line view so lgd_stock_number exists;
+         columns show only for offline orders (order_source == 'offline'). -->
+    <record id="view_order_form_offline_rfq_pricing" model="ir.ui.view">
+        <field name="name">sale.order.form.offline.rfq.pricing</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="contact_stage_bar.view_order_form_inherit_payment_button"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/list/field[@name='lgd_stock_number']" position="after">
+                <field name="rfq_currency_id" column_invisible="True"/>
+                <field name="procurement_price_per_carat" string="Procurement Price/carat"
+                       readonly="not can_edit_vendor" optional="show"
+                       column_invisible="parent.order_source != 'offline'"
+                       groups="!contact_stage_bar.group_lgd_sales"/>
+                <!-- Sales prices are hidden from Procurement (and Procurement
+                     Manager, who implies Procurement) — they only see the
+                     Procurement Price. Sales / admin still see these. -->
+                <field name="sales_price_per_carat" string="Sales Price/carat"
+                       readonly="1" optional="show"
+                       column_invisible="parent.order_source != 'offline'"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="sales_price_per_stone" string="Sales Price/Stone"
+                       readonly="1" optional="show"
+                       column_invisible="parent.order_source != 'offline'"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
+            </xpath>
+
+            <!-- Restricted Procurement list (procurement_line_ids) — Procurement
+                 users see this table, so surface Procurement Price/carat here too
+                 (Sales-price columns stay off the procurement view). -->
+            <xpath expr="//field[@name='procurement_line_ids']/list/field[@name='lgd_stock_number']" position="after">
+                <field name="rfq_currency_id" column_invisible="True"/>
+                <field name="procurement_price_per_carat" string="Procurement Price/carat"
+                       readonly="not can_edit_vendor" optional="show"
+                       column_invisible="parent.order_source != 'offline'"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Order-aware info popup for the (i) button on a Sale Order line.
+         General Information = the product spec (related to the line's product);
+         Sales = this line's Sales Price/carat + the order's Order Total;
+         Purchase = the line's vendor + procurement rate. -->
+    <record id="view_sale_order_line_info_popup" model="ir.ui.view">
+        <field name="name">sale.order.line.info.popup</field>
+        <field name="model">sale.order.line</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <form string="Product">
+                <sheet>
+                    <field name="can_edit_vendor" invisible="1"/>
+                    <field name="rfq_currency_id" invisible="1"/>
+                    <notebook>
+                        <page string="General Information" name="general_information">
+                            <group>
+                                <group>
+                                    <field name="labs"/>
+                                    <field name="lgd_stock_number"/>
+                                    <field name="shapes"/>
+                                    <field name="carat_weight" string="Carat"/>
+                                    <field name="clarity"/>
+                                    <field name="color"/>
+                                    <field name="luster"/>
+                                    <field name="shade"/>
+                                    <field name="fluorescence_color"/>
+                                    <field name="fluorescence_intensity"/>
+                                    <field name="certificate"/>
+                                    <!-- Fetch from IGI — Procurement roles + Admin/SuperAdmin only. -->
+                                    <button name="action_line_fetch_from_igi" type="object"
+                                            string="Fetch from IGI" class="btn-secondary"
+                                            groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
+                                    <field name="measurements"/>
+                                </group>
+                                <group>
+                                    <field name="length"/>
+                                    <field name="width"/>
+                                    <field name="depth"/>
+                                    <field name="eye_clean"/>
+                                    <field name="cut"/>
+                                    <field name="polish"/>
+                                    <field name="symmetry"/>
+                                    <field name="treatments"/>
+                                    <field name="order_specific"/>
+                                    <field name="popup_item_notes"/>
+                                    <field name="customer_reference_note"/>
+                                    <field name="popup_default_qc_requirements"/>
+                                </group>
+                            </group>
+                        </page>
+                        <!-- Sales figures — hidden from Procurement. -->
+                        <page string="Sales" name="sales"
+                              groups="!contact_stage_bar.group_lgd_procurement">
+                            <group>
+                                <field name="sales_price_per_carat"/>
+                                <field name="sales_price_per_stone"/>
+                            </group>
+                        </page>
+                        <!-- Procurement figures — hidden from Sales. -->
+                        <page string="Purchase" name="purchase"
+                              groups="!contact_stage_bar.group_lgd_sales">
+                            <group>
+                                <field name="vendor_id" readonly="not can_edit_vendor"/>
+                                <field name="procurement_price_per_carat" readonly="not can_edit_vendor"/>
+                                <field name="vendor_total_price"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Align existing offline orders' currency to their RFQ (idempotent). -->
+    <function model="sale.order" name="_backfill_offline_order_currency"/>
+
     <data noupdate="1">
         <record id="seq_custom_sale_order" model="ir.sequence">
             <field name="name">Custom Sale Order</field>

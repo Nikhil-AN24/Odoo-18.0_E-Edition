@@ -11,6 +11,11 @@
             </xpath>
 
             <xpath expr="//field[@name='currency_id']" position="after">
+                <!-- Bank Rate under Currency — only for USD purchases. -->
+                <field name="currency_name" invisible="1"/>
+                <field name="bank_rate" string="Bank Rate"
+                       invisible="currency_name != 'USD'"
+                       readonly="state not in ('draft', 'sent')"/>
                 <field name="location" readonly="state != 'draft'"/>
             </xpath>
 
@@ -143,17 +148,19 @@
             <!-- Kept columns beside Product: Discount, Per ct. Rate, Vendor Discount %,
                  Payment Terms, Expected Net. The 4 pricing ones are editable only for
                  Admin / LGD Procurement Manager / LGD SuperAdmin. -->
+            <!-- Column order: Discount, Per ct. Rate, Vendor Discount %,
+                 Payment Terms (Days), Per ct. Discounted Rate, Expected Net. -->
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="before">
                 <field name="can_edit_po_pricing" column_invisible="1"/>
                 <field name="can_edit_rate" column_invisible="1"/>
-                <field name="custom_discount" string="Discount" optional="show" readonly="not can_edit_po_pricing"/>
+                <field name="custom_discount" string="Discount" column_invisible="1" readonly="not can_edit_po_pricing"/>
                 <field name="rate_usd" string="Per ct. Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="not can_edit_rate"/>
+                <field name="discount_percent" string="Vendor Discount %" optional="show" readonly="not can_edit_po_pricing"/>
+                <field name="payment_days" string="Payment Terms (Days)" optional="show" readonly="not can_edit_po_pricing"/>
                 <field name="per_ct_discounted_rate" string="Per ct. Discounted Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="1"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
-                <field name="discount_percent" string="Vendor Discount %" optional="show" readonly="not can_edit_po_pricing"/>
-                <field name="payment_days" string="Payment Terms (Days)" optional="show" readonly="not can_edit_po_pricing"/>
                 <field name="expected_net" string="Expected Net" widget="monetary" optional="show" readonly="1"/>
             </xpath>
 
@@ -277,4 +284,8 @@
             </xpath>
         </field>
     </record>
+
+    <!-- Seed rate_usd_base from existing rate_usd so the USD/INR toggle has a
+         base to revert to (idempotent). -->
+    <function model="purchase.order" name="_backfill_rate_usd_base"/>
 </odoo>

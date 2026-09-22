@@ -49,6 +49,12 @@ class PurchaseOrderLine(models.Model):
         string='Per ct. Rate',
         currency_field='currency_id',
     )
+    # The Per ct. Rate as fetched (from the SO Procurement Price/carat), kept so
+    # we can revert after a USD bank-rate conversion is undone (back to INR).
+    rate_usd_base = fields.Monetary(
+        string='Per ct. Rate (Base)',
+        currency_field='currency_id',
+        help="Per ct. Rate before any USD bank-rate conversion.")
 
     # True only for the roles allowed to edit the PO pricing columns
     # (Vendor Discount %, Payment Terms, Per ct. Rate, Discount). For everyone
@@ -263,6 +269,37 @@ class PurchaseOrderLine(models.Model):
 
 class PurchaseOrder(models.Model):
     _inherit = 'purchase.order'
+
+    # Header-level Bank Rate — shown under Currency, only for USD purchases
+    # (same purpose as the line-level Bank Rate). currency_name drives the
+    # USD-only visibility.
+    currency_name = fields.Char(related='currency_id.name')
+    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2))
+
+    @api.onchange('currency_id', 'bank_rate')
+    def _onchange_apply_bank_rate_to_lines(self):
+        """USD → each line's Per ct. Rate becomes Bank Rate × its base rate;
+        back on INR → it reverts to the fetched base rate."""
+        is_usd = bool(self.currency_id and self.currency_id.name == 'USD')
+        for line in self.order_line:
+            # Capture the base the first time we touch a line that has no base.
+            if not line.rate_usd_base and line.rate_usd:
+                line.rate_usd_base = line.rate_usd
+            base = line.rate_usd_base
+            if is_usd and self.bank_rate:
+                line.rate_usd = self.bank_rate * base
+            else:
+                line.rate_usd = base
+
+    @api.model
+    def _backfill_rate_usd_base(self):
+        """Seed rate_usd_base from the current rate_usd for existing PO lines so
+        the USD/INR toggle has a base to revert to. Idempotent."""
+        POL = self.env['purchase.order.line'].sudo()
+        lines = POL.search([('rate_usd', '!=', 0), ('rate_usd_base', '=', 0)])
+        for line in lines:
+            line.rate_usd_base = line.rate_usd
+        return len(lines)
 
     # Header mirror of the line-level flag. The Products grid (order_line) stays
     # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /

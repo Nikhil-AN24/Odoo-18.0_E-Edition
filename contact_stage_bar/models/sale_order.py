@@ -138,6 +138,22 @@ class SaleOrder(models.Model):
                         sp.name, order.partner_id.name
                     )
 
+    # ── AUTO-FETCH GST / EIN FROM THE ACCOUNT ────────────────────────────────
+    @api.onchange('partner_id')
+    def _onchange_partner_id_fetch_kyc(self):
+        """Pull GST Number (GSTIN, stored in res.partner.vat) and EIN Number
+        from the selected Account so Sales doesn't retype what the Account
+        already holds. Offline orders — created in code, which does not fire
+        onchange — populate the same two fields in
+        custom.sale.order._create_sale_order."""
+        for order in self:
+            if order.partner_id:
+                order.vat = order.partner_id.vat or False
+                order.ein_number = order.partner_id.ein_number or False
+            else:
+                order.vat = False
+                order.ein_number = False
+
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
         Augmont Tax Invoice PDF, in one click.
@@ -962,6 +978,12 @@ class SaleOrder(models.Model):
                 'stone_type': line.product_template_id.stone_type or line.stone_type,
                 'stone_certification_type': line.stone_certification_type,
             }
+            # Seed the PO's "Per ct. Rate" from the Sale line's Procurement
+            # Price/carat (set by Procurement on the order before confirming).
+            ppc = getattr(line, 'procurement_price_per_carat', 0.0)
+            if ppc:
+                po_vals['rate_usd'] = ppc
+                po_vals['rate_usd_base'] = ppc
             if has_sale_link:
                 po_vals['sale_line_id'] = line.id
             po_line = POL.create(po_vals)
@@ -1959,6 +1981,27 @@ class SaleOrder(models.Model):
                 f"Please update each order number to [Confirmed] or "
                 f"[Cancelled] and click {{Save}} before confirming."
             )
+        # Offline orders: Procurement must fill Vendor Company AND Procurement
+        # Price/carat on every confirmed stone line before the order can be
+        # confirmed (these are the vendor + rate the PO is raised against).
+        if self.order_source == 'offline':
+            incomplete = self.order_line.filtered(
+                lambda l: not l.display_type
+                and l.line_type == 'lgd'
+                and l.availability_status == 'confirmed'
+                and (not l.vendor_id
+                     or not getattr(l, 'procurement_price_per_carat', 0.0))
+            )
+            if incomplete:
+                nums = ', '.join(
+                    l.order_number or '(no number)' for l in incomplete
+                )
+                raise UserError(
+                    f"Cannot confirm order {self.name}.\n\n"
+                    f"Vendor Company and Procurement Price/carat are required "
+                    f"on every confirmed stone line. Please fill them for:\n"
+                    f"{nums}"
+                )
         # Sanctioned action. Procurement has only availability write access, so
         # the confirm cascade (state change, PO creation, reads on system models)
         # is run elevated for them; Sales/admin keep their normal (attributed) run.
@@ -2989,7 +3032,10 @@ class SaleOrderLine(models.Model):
                 "stays not available. Reason: %(reason)s",
                 stone=original.product_template_id.display_name or original.id,
                 reason=reason or _("(none given)")))
-    certificate = fields.Char(related='product_template_id.certificate', string="Certificate Number")
+    # Editable so the (i) popup can enter a Certificate Number and Fetch from
+    # IGI (writes through to the product). The order-line lists show it with an
+    # explicit readonly="1", so they stay read-only.
+    certificate = fields.Char(related='product_template_id.certificate', string="Certificate Number", readonly=False)
     carat_weight = fields.Char(related='product_template_id.weight_carat', string="Carat Weight")
     polish = fields.Char(string='Polish', related='product_template_id.polish')
     symmetry = fields.Char(string='Symmetry', related='product_template_id.symmetry')
@@ -3033,6 +3079,15 @@ class SaleOrderLine(models.Model):
     measurements = fields.Char(string="Measurement", related='product_template_id.measurements')
     luster = fields.Char(string="Luster", related='product_template_id.luster')
     shade = fields.Char(string="Shade", related='product_template_id.shade')
+    # Product spec surfaced on the order-line info popup (the (i) button).
+    length = fields.Float(string="Length", related='product_template_id.length')
+    width = fields.Float(string="Width", related='product_template_id.width')
+    depth = fields.Float(string="Depth", related='product_template_id.depth')
+    eye_clean = fields.Char(string="Eye Clean", related='product_template_id.eye_clean')
+    order_specific = fields.Char(string="Order Specific Notes", related='product_template_id.order_specific')
+    customer_reference_note = fields.Char(string="Customer Reference Note", related='product_template_id.customer_reference_note')
+    popup_item_notes = fields.Char(string="General Order Notes", related='product_template_id.item_notes')
+    popup_default_qc_requirements = fields.Char(string="Default Qc Requirements", related='product_template_id.default_qc_requirements')
 
     # ── Added for the Order Lines CSV export column reorder ──
     vendor_sku = fields.Char(string="Vendor SKU", related='product_template_id.stock_number')
@@ -3199,9 +3254,11 @@ class SaleOrderLine(models.Model):
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'res_model': 'product.product',
+            'res_model': 'product.template',
             'view_mode': 'form',
-            'res_id': self.product_id.id,
+            'views': [(self.env.ref(
+                'contact_stage_bar.view_product_popup_general_info').id, 'form')],
+            'res_id': self.product_id.product_tmpl_id.id,
             'target': 'new',  # popup instead of new page
         }
 
@@ -3628,6 +3685,14 @@ class SaleOrderLine(models.Model):
     _LGD_PROC_SOL_WRITE_ALLOWLIST = {
         'availability_status',
         'product_uom_qty',
+        # Procurement fills these on the offline order (gated in the view by
+        # can_edit_vendor: Procurement / Procurement Manager / Admin / SuperAdmin),
+        # so their form save must be allowed past this guard.
+        'vendor_id',
+        'procurement_price_per_carat',
+        # Certificate Number is entered by Procurement in the (i) info popup so
+        # they can Fetch from IGI (it writes through to the product).
+        'certificate',
         # Odoo recomputes these when qty flips to 0 (line auto-blanks on
         # not_available / cancelled). Included so procurement's status change
         # can save without tripping the guard on ORM-supplied side-effects.

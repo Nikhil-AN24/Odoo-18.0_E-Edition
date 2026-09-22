@@ -423,6 +423,10 @@ class CustomSaleOrder(models.Model):
             'sdk_augmont_number': self.name,
             'order_source': 'offline',
             'custom_sale_order_id': self.id,
+            # Auto-fetch KYC from the Account (create() does not fire the
+            # partner onchange). GST Number = res.partner.vat (GSTIN).
+            'vat': self.partner_id.vat or False,
+            'ein_number': self.partner_id.ein_number or False,
         }
 
         sale_order = self.env['sale.order'].create(sale_order_vals)
@@ -656,6 +660,8 @@ class CustomSaleOrderLine(models.Model):
             'type': 'ir.actions.act_window',
             'res_model': 'product.template',
             'view_mode': 'form',
+            'views': [(self.env.ref(
+                'contact_stage_bar.view_product_popup_general_info').id, 'form')],
             'res_id': self.product_template_id.id,
             'target': 'new',  # popup instead of new page
         }

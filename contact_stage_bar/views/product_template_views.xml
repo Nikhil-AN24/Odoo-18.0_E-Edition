@@ -371,5 +371,75 @@
             </field>
         </record>
 
+        <!-- Trimmed product form shown ONLY by the (i) button on order lines
+             (action_open_product_popup). A PRIMARY inherited view: it starts
+             from the full product.template form (so it keeps the Sales &
+             Purchase notebook pages) but its changes are scoped to this view,
+             leaving the Products-menu form untouched. -->
+        <record id="view_product_popup_general_info" model="ir.ui.view">
+            <field name="name">product.template.popup.general.info</field>
+            <field name="model">product.template</field>
+            <field name="inherit_id" ref="product.product_template_only_form_view"/>
+            <field name="mode">primary</field>
+            <field name="priority">99</field>
+            <field name="arch" type="xml">
+                <!-- General Information: the diamond fields only. -->
+                <xpath expr="//page[@name='general_information']" position="replace">
+                    <page string="General Information" name="general_information">
+                        <group>
+                            <group>
+                                <field name="labs"/>
+                                <field name="lgd_stock_number"/>
+                                <field name="shapes"/>
+                                <field name="weight_carat"/>
+                                <field name="clarity"/>
+                                <field name="color"/>
+                                <field name="luster"/>
+                                <field name="shade"/>
+                                <field name="fluorescence_color"/>
+                                <field name="fluorescence_intensity"/>
+                                <field name="certificate"/>
+                                <field name="measurements"/>
+                            </group>
+                            <group>
+                                <field name="length"/>
+                                <field name="width"/>
+                                <field name="depth"/>
+                                <field name="eye_clean"/>
+                                <field name="cut"/>
+                                <field name="polish"/>
+                                <field name="symmetry"/>
+                                <field name="treatments"/>
+                                <field name="order_specific"/>
+                                <field name="item_notes"/>
+                                <field name="customer_reference_note"/>
+                                <field name="default_qc_requirements"/>
+                            </group>
+                        </group>
+                    </page>
+                </xpath>
+                <!-- Show BOTH the Sales and Purchase pages to everyone here
+                     (clear the group restriction and any purchase_ok gating). -->
+                <xpath expr="//page[@name='sales']" position="attributes">
+                    <attribute name="groups"></attribute>
+                    <attribute name="invisible">0</attribute>
+                </xpath>
+                <xpath expr="//page[@name='purchase']" position="attributes">
+                    <attribute name="groups"></attribute>
+                    <attribute name="invisible">0</attribute>
+                </xpath>
+                <!-- Hide the Can be Sold / Can be Purchased checkboxes — their
+                     content is now shown in the Sales / Purchase pages. -->
+                <xpath expr="//field[@name='sale_ok']" position="attributes">
+                    <attribute name="groups"></attribute>
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+                <xpath expr="//field[@name='purchase_ok']" position="attributes">
+                    <attribute name="groups"></attribute>
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+            </field>
+        </record>
+
     </data>
 </odoo>
