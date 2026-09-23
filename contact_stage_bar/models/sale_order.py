@@ -138,6 +138,22 @@ class SaleOrder(models.Model):
                         sp.name, order.partner_id.name
                     )
 
+    # ── AUTO-FETCH GST / EIN FROM THE ACCOUNT ────────────────────────────────
+    @api.onchange('partner_id')
+    def _onchange_partner_id_fetch_kyc(self):
+        """Pull GST Number (GSTIN, stored in res.partner.vat) and EIN Number
+        from the selected Account so Sales doesn't retype what the Account
+        already holds. Offline orders — created in code, which does not fire
+        onchange — populate the same two fields in
+        custom.sale.order._create_sale_order."""
+        for order in self:
+            if order.partner_id:
+                order.vat = order.partner_id.vat or False
+                order.ein_number = order.partner_id.ein_number or False
+            else:
+                order.vat = False
+                order.ein_number = False
+
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
         Augmont Tax Invoice PDF, in one click.
@@ -946,7 +962,11 @@ class SaleOrder(models.Model):
                     'origin': self.name,
                     'location': self.location,
                     'order_number': self.sdk_augmont_number,
-                    'currency_id': self._lgd_inr_currency_id(),
+                    # Raise the PO in the Sale Order's own currency (the RFQ
+                    # currency for offline orders — USD or INR), so a USD-priced
+                    # order shows Currency = USD and reveals the Bank Rate. Falls
+                    # back to INR if the SO has no currency.
+                    'currency_id': self.currency_id.id or self._lgd_inr_currency_id(),
                 })
                 po_by_vendor[vendor.id] = po
             cost = (line.product_id.standard_price
@@ -962,6 +982,11 @@ class SaleOrder(models.Model):
                 'stone_type': line.product_template_id.stone_type or line.stone_type,
                 'stone_certification_type': line.stone_certification_type,
             }
+            # Seed the PO's "Per ct. Rate" from the Sale line's Procurement
+            # Price/carat (set by Procurement on the order before confirming).
+            ppc = getattr(line, 'procurement_price_per_carat', 0.0)
+            if ppc:
+                po_vals['rate_usd'] = ppc
             if has_sale_link:
                 po_vals['sale_line_id'] = line.id
             po_line = POL.create(po_vals)
@@ -1959,6 +1984,27 @@ class SaleOrder(models.Model):
                 f"Please update each order number to [Confirmed] or "
                 f"[Cancelled] and click {{Save}} before confirming."
             )
+        # Offline orders: Procurement must fill Vendor Company AND Procurement
+        # Price/carat on every confirmed stone line before the order can be
+        # confirmed (these are the vendor + rate the PO is raised against).
+        if self.order_source == 'offline':
+            incomplete = self.order_line.filtered(
+                lambda l: not l.display_type
+                and l.line_type == 'lgd'
+                and l.availability_status == 'confirmed'
+                and (not l.vendor_id
+                     or not getattr(l, 'procurement_price_per_carat', 0.0))
+            )
+            if incomplete:
+                nums = ', '.join(
+                    l.order_number or '(no number)' for l in incomplete
+                )
+                raise UserError(
+                    f"Cannot confirm order {self.name}.\n\n"
+                    f"Vendor Company and Procurement Price/carat are required "
+                    f"on every confirmed stone line. Please fill them for:\n"
+                    f"{nums}"
+                )
         # Sanctioned action. Procurement has only availability write access, so
         # the confirm cascade (state change, PO creation, reads on system models)
         # is run elevated for them; Sales/admin keep their normal (attributed) run.
@@ -2825,7 +2871,9 @@ class SaleOrderLine(models.Model):
             'origin': order.name,
             'location': order.location,
             'order_number': order.sdk_augmont_number,
-            'currency_id': order._lgd_inr_currency_id(),
+            # Match the Sale Order's currency (USD/INR) so the Bank Rate shows
+            # for USD orders; fall back to INR when the SO has no currency.
+            'currency_id': order.currency_id.id or order._lgd_inr_currency_id(),
         })
         po_line = self.env['purchase.order.line'].create({
             'order_id': po.id,
@@ -2989,7 +3037,10 @@ class SaleOrderLine(models.Model):
                 "stays not available. Reason: %(reason)s",
                 stone=original.product_template_id.display_name or original.id,
                 reason=reason or _("(none given)")))
-    certificate = fields.Char(related='product_template_id.certificate', string="Certificate Number")
+    # Editable so the (i) popup can enter a Certificate Number and Fetch from
+    # IGI (writes through to the product). The order-line lists show it with an
+    # explicit readonly="1", so they stay read-only.
+    certificate = fields.Char(related='product_template_id.certificate', string="Certificate Number", readonly=False)
     carat_weight = fields.Char(related='product_template_id.weight_carat', string="Carat Weight")
     polish = fields.Char(string='Polish', related='product_template_id.polish')
     symmetry = fields.Char(string='Symmetry', related='product_template_id.symmetry')
@@ -3019,6 +3070,25 @@ class SaleOrderLine(models.Model):
         )
         for line in self:
             line.can_edit_vendor = allowed
+
+    # Who may change the Availability selection on the Sale Order: Admin /
+    # LGD SuperAdmin / LGD Procurement / LGD Procurement Manager (the last two
+    # via the group_lgd_procurement membership). Everyone else — the Sales
+    # family and any other internal group — sees it read-only.
+    can_edit_availability = fields.Boolean(compute='_compute_can_edit_availability')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_availability(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        for line in self:
+            line.can_edit_availability = allowed
+
     vendor_city = fields.Char(string="Vendor City",related='vendor_id.city')
     is_block = fields.Boolean(string="Block", default=False,readonly=True)
     is_available = fields.Boolean(string="Pass Check",default=False,copy=False)
@@ -3033,6 +3103,15 @@ class SaleOrderLine(models.Model):
     measurements = fields.Char(string="Measurement", related='product_template_id.measurements')
     luster = fields.Char(string="Luster", related='product_template_id.luster')
     shade = fields.Char(string="Shade", related='product_template_id.shade')
+    # Product spec surfaced on the order-line info popup (the (i) button).
+    length = fields.Float(string="Length", related='product_template_id.length')
+    width = fields.Float(string="Width", related='product_template_id.width')
+    depth = fields.Float(string="Depth", related='product_template_id.depth')
+    eye_clean = fields.Char(string="Eye Clean", related='product_template_id.eye_clean')
+    order_specific = fields.Char(string="Order Specific Notes", related='product_template_id.order_specific')
+    customer_reference_note = fields.Char(string="Customer Reference Note", related='product_template_id.customer_reference_note')
+    popup_item_notes = fields.Char(string="General Order Notes", related='product_template_id.item_notes')
+    popup_default_qc_requirements = fields.Char(string="Default Qc Requirements", related='product_template_id.default_qc_requirements')
 
     # ── Added for the Order Lines CSV export column reorder ──
     vendor_sku = fields.Char(string="Vendor SKU", related='product_template_id.stock_number')
@@ -3199,9 +3278,11 @@ class SaleOrderLine(models.Model):
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'res_model': 'product.product',
+            'res_model': 'product.template',
             'view_mode': 'form',
-            'res_id': self.product_id.id,
+            'views': [(self.env.ref(
+                'contact_stage_bar.view_product_popup_general_info').id, 'form')],
+            'res_id': self.product_id.product_tmpl_id.id,
             'target': 'new',  # popup instead of new page
         }
 
@@ -3229,128 +3310,15 @@ class SaleOrderLine(models.Model):
             super(SaleOrderLine, active_lines)._compute_amount()
 
 
-    # Dependent dropdown — allowed transitions per UI status ─────
-    # Defines which values a user is ALLOWED to pick from the Availability
-    # dropdown based on the line's CURRENT (before-change) status.
-    _AVAILABILITY_TRANSITIONS = {
-        'diamond_booked': {'confirmed', 'not_available'},
-        'confirmed':      {'confirmed', 'cancelled', 'in_qc_process'},
-        'not_available':  {'cancelled'},
-    }
-
     @api.onchange('availability_status')
     def _onchange_availability_status(self):
-        """
-        Two responsibilities:
-        1. qty sync  — sets product_uom_qty to 0 or 1 based on new status
-                       (existing behaviour, preserved unchanged)
-        2. transition guard — resets invalid dropdown picks immediately and
-                              shows a clear warning before the user can save
-        """
-        # ── qty sync (existing behaviour, unchanged) ──────────────────────
+        """qty sync — sets product_uom_qty to 0 or 1 based on the new status.
+        (The status-transition guard was removed: Procurement / Admin may move
+        Availability to any status freely, so no reset/warning here anymore.)"""
         if self.availability_status in ['not_available', 'cancelled', 'replaced']:
             self.product_uom_qty = 0
         elif self.availability_status in ['diamond_booked', 'confirmed']:
             self.product_uom_qty = 1
-
-        # transition guard ────────────────────────────────────
-        # self._origin holds the record values BEFORE this onchange fired,
-        # so _origin.availability_status is the OLD (current DB) value.
-        old_status = self._origin.availability_status
-        new_status = self.availability_status
-
-        # Only validate transitions that are in our UI-editable map.
-        # In-flight statuses (QC, payment, dispatch) are set by the workflow and bypass this guard entirely.
-        if old_status in self._AVAILABILITY_TRANSITIONS:
-            allowed = self._AVAILABILITY_TRANSITIONS[old_status]
-            if new_status not in allowed:
-                # Reset to old value so the user sees no change in the cell.
-                self.availability_status = old_status
-                # Restore qty to match the reset status.
-                if old_status in ['not_available', 'cancelled']:
-                    self.product_uom_qty = 0
-                elif old_status in ['diamond_booked', 'confirmed']:
-                    self.product_uom_qty = 1
-
-                labels = {
-                    'diamond_booked': 'Diamond Booked',
-                    'confirmed':      'Confirmed',
-                    'not_available':  'Not available',
-                    'cancelled':      'Cancelled',
-                }
-                allowed_labels = ' / '.join(
-                    f'[{labels.get(a, a)}]' for a in sorted(allowed)
-                )
-                return {
-                    'warning': {
-                        'title': 'Invalid Status Transition',
-                        'message': (
-                            f"Cannot change Availability from "
-                            f"[{labels.get(old_status, old_status)}] "
-                            f"to [{labels.get(new_status, new_status)}].\n\n"
-                            f"Allowed option(s) from "
-                            f"[{labels.get(old_status, old_status)}]: "
-                            f"{allowed_labels}"
-                        ),
-                    }
-                }
-
-    @api.constrains('availability_status')
-    def _constrains_availability_status_transition(self):
-        # Contexts that are allowed to make any transition freely.
-        bypass_contexts = (
-            'from_quality_module',
-            'from_pack_wizard',
-            'from_website_api',
-            'dispatch_validation',
-            'skip_availability_check',
-            'from_replacement_engine',
-        )
-        if any(self.env.context.get(c) for c in bypass_contexts):
-            return
-
-        labels = {
-            'diamond_booked': 'Diamond Booked',
-            'confirmed':      'Confirmed',
-            'not_available':  'Not available',
-            'cancelled':      'Cancelled',
-        }
-
-        for line in self:
-            new_status = line.availability_status
-
-            # Read the previous value directly from the DB (pre-write).
-            self.env.cr.execute(
-                "SELECT availability_status FROM sale_order_line WHERE id = %s",
-                (line.id,)
-            )
-            row = self.env.cr.fetchone()
-            if not row:
-                continue  # new record — no transition to validate
-            old_status = row[0]
-
-            if old_status == new_status:
-                continue
-
-            # Only validate transitions that start from a UI-editable status.
-            if old_status not in self._AVAILABILITY_TRANSITIONS:
-                continue
-
-            allowed = self._AVAILABILITY_TRANSITIONS[old_status]
-            if new_status not in allowed:
-                allowed_labels = ', '.join(
-                    f"[{labels.get(a, a)}]" for a in sorted(allowed)
-                )
-                raise ValidationError(
-                    f"Order {line.order_id.name} — "
-                    f"line {line.order_number or ''}:\n"
-                    f"Cannot change Availability from "
-                    f"[{labels.get(old_status, old_status)}] "
-                    f"to [{labels.get(new_status, new_status)}].\n\n"
-                    f"Allowed from "
-                    f"[{labels.get(old_status, old_status)}]: "
-                    f"{allowed_labels}"
-                )
 
     # ── Server-side guard: only 3 values allowed from the UI ─────────────────
     @api.model_create_multi
@@ -3628,6 +3596,14 @@ class SaleOrderLine(models.Model):
     _LGD_PROC_SOL_WRITE_ALLOWLIST = {
         'availability_status',
         'product_uom_qty',
+        # Procurement fills these on the offline order (gated in the view by
+        # can_edit_vendor: Procurement / Procurement Manager / Admin / SuperAdmin),
+        # so their form save must be allowed past this guard.
+        'vendor_id',
+        'procurement_price_per_carat',
+        # Certificate Number is entered by Procurement in the (i) info popup so
+        # they can Fetch from IGI (it writes through to the product).
+        'certificate',
         # Odoo recomputes these when qty flips to 0 (line auto-blanks on
         # not_available / cancelled). Included so procurement's status change
         # can save without tripping the guard on ORM-supplied side-effects.

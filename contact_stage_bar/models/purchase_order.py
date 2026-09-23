@@ -27,7 +27,6 @@ class PurchaseOrderLine(models.Model):
     )
     
     weight = fields.Float(string="Weight")
-    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2))
 
     shapes = fields.Char(string="Shape", related='product_id.product_tmpl_id.shapes')
     color = fields.Char(string="Colour", related='product_id.product_tmpl_id.color')
@@ -44,11 +43,31 @@ class PurchaseOrderLine(models.Model):
         string='Discount',
     )
 
-    # "Per ct. Rate" column — Monetary field with $ symbol by default
+
     rate_usd = fields.Monetary(
-        string='Per ct. Rate',
-        currency_field='currency_id',
+        string='Procurement Price/carat',
+        currency_field='source_currency_id',
     )
+
+    source_currency_id = fields.Many2one(
+        'res.currency', string='Rate Currency',
+        compute='_compute_source_currency_id', store=True, readonly=False)
+    # Fixed INR currency for the amounts that must ALWAYS show ₹ (Expected Net,
+    # and via the header, GST / Total) irrespective of the rate's own currency.
+    inr_currency_id = fields.Many2one(
+        'res.currency', string='INR Currency',
+        compute='_compute_inr_currency_id')
+
+    @api.depends('sale_line_id.currency_id', 'currency_id')
+    def _compute_source_currency_id(self):
+        for line in self:
+            line.source_currency_id = line.sale_line_id.currency_id or line.currency_id
+
+    def _compute_inr_currency_id(self):
+        inr = self.env.ref('base.INR', raise_if_not_found=False) \
+            or self.env['res.currency'].search([('name', '=', 'INR')], limit=1)
+        for line in self:
+            line.inr_currency_id = inr
 
     # True only for the roles allowed to edit the PO pricing columns
     # (Vendor Discount %, Payment Terms, Per ct. Rate, Discount). For everyone
@@ -73,9 +92,21 @@ class PurchaseOrderLine(models.Model):
             line.can_edit_rate = can_rate
 
     def action_open_line_info(self):
-        """Open this line's Additional / Purchase Information tabs in a dialog
-        (the (i) button on the Products list)."""
+        """(i) button on the PO Products list. Show the SAME General Information
+        / Purchase details Procurement sees on the Sale Order"""
         self.ensure_one()
+        popup = self.env.ref(
+            'custom_sale_order.view_po_line_info_popup', raise_if_not_found=False)
+        if self.sale_line_id and popup:
+            return {
+                'type': 'ir.actions.act_window',
+                'name': _('Product'),
+                'res_model': 'sale.order.line',
+                'res_id': self.sale_line_id.id,
+                'view_mode': 'form',
+                'views': [(popup.id, 'form')],
+                'target': 'new',
+            }
         return {
             'type': 'ir.actions.act_window',
             'name': _('Line Information'),
@@ -87,26 +118,11 @@ class PurchaseOrderLine(models.Model):
             'target': 'new',
         }
 
-    # Bank Rate * Unit Price = Rupees Rate. Computed as a default, but editable:
-    # Procurement can type the actual rupee rate, which then drives the total.
+    # Rupees Rate — entered by Procurement; drives the line total (with Weight).
     rupees_rate = fields.Float(
         string='Rupees Rate',
-        compute='_compute_rupees_rate',
-        inverse='_inverse_rupees_rate',
         digits=(16, 2),
-        store=True,
-        readonly=False,
     )
-
-    @api.depends('bank_rate', 'price_unit')
-    def _compute_rupees_rate(self):
-        for line in self:
-            line.rupees_rate = line.bank_rate * line.price_unit
-
-    def _inverse_rupees_rate(self):
-        # A manually typed Rupees Rate is stored as-is; nothing to propagate.
-        # (It is recomputed only if Bank Rate or Unit Price changes afterwards.)
-        return
 
     # ── Vendor discount / payment terms ─────────────────
     # Procurement classifies the stone; discount % and payment days are then
@@ -132,18 +148,19 @@ class PurchaseOrderLine(models.Model):
         help="Derived automatically from the vendor's payment-terms matrix.",
     )
     per_ct_discounted_rate = fields.Monetary(
-        string='Per ct. Discounted Rate', currency_field='currency_id',
+        string='Per ct. Discounted Rate', currency_field='source_currency_id',
         compute='_compute_per_ct_discounted_rate', store=True, readonly=True,
-        help="Per ct. Rate less the vendor discount %. e.g. 100 - 1% = 99.",
+        help="Procurement Price/carat less the vendor discount %. "
+             "e.g. 100 - 1% = 99. Shown in the SO/RFQ currency.",
     )
     # Numeric carat weight of the stone (parsed on the product), used to turn the
     # per-carat discounted rate into the line's expected net.
     carat_value = fields.Float(
         string='Carat', related='product_id.product_tmpl_id.carat_value')
     expected_net = fields.Monetary(
-        string='Expected Net', currency_field='currency_id',
+        string='Expected Net', currency_field='inr_currency_id',
         compute='_compute_expected_net', store=True, readonly=True,
-        help="Per ct. Discounted Rate x Carat. What Accounting should expect to pay.",
+        help="Per ct. Discounted Rate x Carat. Always shown in INR.",
     )
 
     @api.depends('rate_usd', 'discount_percent')
@@ -152,10 +169,21 @@ class PurchaseOrderLine(models.Model):
             line.per_ct_discounted_rate = (line.rate_usd or 0.0) * (
                 1 - (line.discount_percent or 0.0) / 100.0)
 
-    @api.depends('per_ct_discounted_rate', 'carat_value')
+    @api.depends('per_ct_discounted_rate', 'carat_value',
+                 'order_id.currency_id', 'order_id.bank_rate')
     def _compute_expected_net(self):
+        """Expected Net = Per ct. Discounted Rate × Carat, in INR.
+        When the PO Currency is USD and a Bank Rate is entered, the per-carat
+        figures are in USD, so multiply by the Bank Rate to land in INR:
+        Expected Net = Per ct. Discounted Rate × Carat × Bank Rate. The Bank
+        Rate is applied HERE only — never to the Procurement Price/carat."""
         for line in self:
-            line.expected_net = line.per_ct_discounted_rate * (line.carat_value or 0.0)
+            order = line.order_id
+            net = line.per_ct_discounted_rate * (line.carat_value or 0.0)
+            is_usd = bool(order.currency_id and order.currency_id.name == 'USD')
+            if is_usd and order.bank_rate:
+                net *= order.bank_rate
+            line.expected_net = net
 
     def _get_vendor_terms(self, partner):
         """Look up (discount %, payment days) on the vendor master for this
@@ -217,9 +245,8 @@ class PurchaseOrderLine(models.Model):
     # Price / monetary columns whose manual edits are logged on the PO chatter.
     _TRACKED_MONETARY_FIELDS = {
         'price_unit': 'Unit Price',
-        'rate_usd': 'Per ct. Rate',
+        'rate_usd': 'Procurement Price/carat',
         'rupees_rate': 'Rupees Rate',
-        'bank_rate': 'Bank Rate',
         'weight': 'Weight',
         'product_qty': 'Quantity',
         'custom_discount': 'Discount',
@@ -264,6 +291,13 @@ class PurchaseOrderLine(models.Model):
 class PurchaseOrder(models.Model):
     _inherit = 'purchase.order'
 
+    # Header-level Bank Rate — shown under Currency, only when the PO Currency
+    # is USD. It feeds the Expected Net conversion (per-carat USD × Bank Rate →
+    # INR) and NOTHING else; it never rewrites the Procurement Price/carat.
+    # currency_name drives the USD-only visibility.
+    currency_name = fields.Char(related='currency_id.name')
+    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2))
+
     # Header mirror of the line-level flag. The Products grid (order_line) stays
     # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /
     # LGD SuperAdmin), regardless of PO state; everyone else sees it view-only.
@@ -289,18 +323,31 @@ class PurchaseOrder(models.Model):
     amount_tax = fields.Monetary(tracking=True)
     amount_total = fields.Monetary(tracking=True)
 
+    # Fixed INR currency so the footer totals below always show ₹, regardless of
+    # the currency the per-carat rate is displayed in.
+    inr_currency_id = fields.Many2one(
+        'res.currency', string='INR Currency',
+        compute='_compute_inr_currency_id')
+
+    def _compute_inr_currency_id(self):
+        inr = self.env.ref('base.INR', raise_if_not_found=False) \
+            or self.env['res.currency'].search([('name', '=', 'INR')], limit=1)
+        for order in self:
+            order.inr_currency_id = inr
+
     # PO totals shown to Procurement: "Expected Net" (sum of each line's
     # net-of-vendor-discount cost) = untaxed, a flat 1.5% GST, and the Total.
-    # These replace the standard tax_totals widget in the form footer.
+    # These replace the standard tax_totals widget in the form footer, and are
+    # mandatorily in INR (inr_currency_id) irrespective of the rate's currency.
     expected_net_total = fields.Monetary(
         string="Expected Net", compute='_compute_expected_net_totals',
-        currency_field='currency_id')
+        currency_field='inr_currency_id')
     gst_amount = fields.Monetary(
         string="GST +1.5%", compute='_compute_expected_net_totals',
-        currency_field='currency_id')
+        currency_field='inr_currency_id')
     grand_total = fields.Monetary(
         string="Total", compute='_compute_expected_net_totals',
-        currency_field='currency_id')
+        currency_field='inr_currency_id')
 
     @api.depends('order_line.expected_net')
     def _compute_expected_net_totals(self):

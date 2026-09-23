@@ -229,14 +229,21 @@
                 
                 <field name="shipping_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
                 <field name="billing_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
-                <field name="shipping_charges" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <!-- Shipping Charges hidden for everyone (not required for now). -->
+                <field name="shipping_charges" invisible="1" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="default_qc_requirements" invisible ="1"/>
                 <field name="item_notes" invisible ="1"/>
             </xpath>
             
             <xpath expr="//field[@name='tax_totals']" position="before">
-                <field name="shipping_charges" string="Shipping" widget="monetary" options="{'currency_field': 'currency_id'}" invisible="shipping_charges == 0.0" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="shipping_charges" string="Shipping" widget="monetary" options="{'currency_field': 'currency_id'}" invisible="1" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
+            </xpath>
+
+            <!-- Pricelist hidden for everyone (not required for now). Kept in the
+                 form (not removed) so it still carries the order currency. -->
+            <xpath expr="//field[@name='pricelist_id']" position="attributes">
+                <attribute name="invisible">1</attribute>
             </xpath>
 
             <!-- Hide the Untaxed Amount / Total summary block for everyone —
@@ -335,10 +342,12 @@
                         <field name="line_type" column_invisible="True"/>
                         <field name="is_melee_parent" column_invisible="True"/>
                         <field name="is_replaced" column_invisible="True"/>
-                        <!-- Single editable Availability column. 'replaced' is a
-                             real status shown as "Replaced"; the replaced row is
-                             read-only, every other row stays editable. -->
-                        <field name="availability_status" string="Availability" readonly="is_replaced"/>
+                        <!-- Availability: full dropdown, editable only for
+                             Admin / SuperAdmin / Procurement / Procurement
+                             Manager; others read-only. Replaced rows locked. -->
+                        <field name="can_edit_availability" column_invisible="True"/>
+                        <field name="availability_status" string="Availability"
+                               readonly="is_replaced or not can_edit_availability"/>
                         <field name="order_number" readonly="1"/>
                         <field name="product_template_id" readonly="1"/>
                         <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
@@ -349,7 +358,11 @@
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
                         <field name="can_edit_vendor" column_invisible="True"/>
-                        <field name="vendor_id" readonly="not can_edit_vendor"/>
+                        <!-- One "Vendor Company" column: editable vendor picker on
+                             active lines, read-only "N/A" on Cancelled / Not
+                             available (handled by the vendor_company widget). -->
+                        <field name="vendor_id" widget="vendor_company"
+                               readonly="not can_edit_vendor"/>
                         <field name="stock_number" readonly="1" string="Vendor SKU"/>
                         <field name="vendor_city" readonly="1" optional="show"/>
                         <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
@@ -372,11 +385,13 @@
                      (is_replaced), every other row stays editable per the
                      group-specific readonly rules. -->
                 <field name="is_replaced" column_invisible="True"/>
+                <!-- Availability: full dropdown (all statuses). Editable only for
+                     Admin / SuperAdmin / Procurement / Procurement Manager
+                     (can_edit_availability); the Sales family and every other
+                     group see it read-only. Replaced rows stay locked. -->
+                <field name="can_edit_availability" column_invisible="True"/>
                 <field name="availability_status" string="Availability"
-                       groups="contact_stage_bar.group_lgd_sales"
-                       readonly="is_replaced or (availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled']) or parent.state in ('sale', 'cancel')"/>
-                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_procurement" readonly="is_replaced"/>
-                <field name="availability_status" string="Availability" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement" readonly="is_replaced or (availability_status and availability_status not in ['diamond_booked', 'not_available', 'confirmed', 'cancelled']) or parent.state in ('sale', 'cancel')"/>
+                       readonly="is_replaced or not can_edit_availability"/>
                 <field name="order_number" readonly="1"/>
             </xpath>
 
@@ -400,7 +415,12 @@
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
                 <field name="can_edit_vendor" column_invisible="True"/>
-                <field name="vendor_id" groups="!contact_stage_bar.group_lgd_sales" readonly="not can_edit_vendor"/>
+                <!-- One "Vendor Company" column: editable vendor picker on active
+                     lines, read-only "N/A" on Cancelled / Not available (handled
+                     by the vendor_company widget). -->
+                <field name="vendor_id" widget="vendor_company"
+                       groups="!contact_stage_bar.group_lgd_sales"
+                       readonly="not can_edit_vendor"/>
                 <field name="stock_number" readonly="1" string="Vendor SKU"
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
@@ -551,7 +571,7 @@
                 <attribute name="column_invisible">True</attribute>
             </xpath>
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
-                <field name="final_price_margin" string="Final Price" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement"/>
+                <field name="final_price_margin" string="Final Price" column_invisible="parent.order_source == 'offline'" groups="!contact_stage_bar.group_lgd_sales,!contact_stage_bar.group_lgd_procurement"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='tax_id']" position="replace">
@@ -560,13 +580,17 @@
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_subtotal']" position="attributes">
                 <attribute name="groups">!contact_stage_bar.group_lgd_procurement</attribute>
+                <!-- Amount hidden for everyone on offline orders. -->
+                <attribute name="column_invisible">parent.order_source == 'offline'</attribute>
             </xpath>
 
             <!-- {Confirm} calls action_confirm_wrapper.
                  {Save}    calls action_save_statuses. -->
             <xpath expr="//button[@name='action_confirm']" position="replace">
-                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" />
-                <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" />
+                <!-- Confirm & Save hidden for the sales family (LGD Sales, Sales
+                     Manager, Regional Sales Head — all members of group_lgd_sales). -->
+                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_sales" />
+                <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" groups="!contact_stage_bar.group_lgd_sales" />
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this

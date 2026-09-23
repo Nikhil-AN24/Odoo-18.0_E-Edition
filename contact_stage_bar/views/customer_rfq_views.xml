@@ -167,11 +167,14 @@
                                    readonly="is_price_readonly or different_prices"
                                    groups="!contact_stage_bar.group_lgd_sales"/>
            
-                            <!-- Different prices hidden for Lab grown + Certified —
-                                 that path has no per-stone sizes to price individually. -->
+                            <!-- Different prices is only meaningful for the
+                                 Lab grown + Non-Certified path (the one with a
+                                 per-stone size table to price individually), so
+                                 show it only there — matching the "Quantity &
+                                 size" group's own visibility rule below. -->
                             <field name="different_prices"
                                    readonly="is_price_readonly"
-                                   invisible="stone_type == 'lab_grown' and stone_certification_type == 'certified'"
+                                   invisible="stone_type != 'lab_grown' or stone_certification_type != 'non_certified'"
                                    groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                             <!-- Sales Price/carat is hidden once the RFQ is
                                  sent back to Sales for Non-Certified + Different

@@ -423,6 +423,10 @@ class CustomSaleOrder(models.Model):
             'sdk_augmont_number': self.name,
             'order_source': 'offline',
             'custom_sale_order_id': self.id,
+            # Auto-fetch KYC from the Account (create() does not fire the
+            # partner onchange). GST Number = res.partner.vat (GSTIN).
+            'vat': self.partner_id.vat or False,
+            'ein_number': self.partner_id.ein_number or False,
         }
 
         sale_order = self.env['sale.order'].create(sale_order_vals)
@@ -580,6 +584,25 @@ class CustomSaleOrderLine(models.Model):
         ('order_completed', 'Order Completed'),
     ], string='Availability', copy=False, required=True, default='diamond_booked', tracking=True)
 
+    # Who may change the Availability selection: Procurement / Procurement
+    # Manager / Admin / SuperAdmin only. The Sales groups (LGD Sales, Sales
+    # Manager, Regional Sales Head) see it read-only. Allow-list, so anyone
+    # outside the four privileged groups gets a read-only column.
+    can_edit_availability = fields.Boolean(
+        compute='_compute_can_edit_availability')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_availability(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        for line in self:
+            line.can_edit_availability = allowed
+
     product_uom_qty = fields.Float(string='Quantity', digits='Product Unit of Measure', required=True, default=1.0)
     product_uom = fields.Many2one('uom.uom', string='Unit of Measure',
                                   domain="[('category_id', '=', product_uom_category_id)]")
@@ -656,6 +679,8 @@ class CustomSaleOrderLine(models.Model):
             'type': 'ir.actions.act_window',
             'res_model': 'product.template',
             'view_mode': 'form',
+            'views': [(self.env.ref(
+                'contact_stage_bar.view_product_popup_general_info').id, 'form')],
             'res_id': self.product_template_id.id,
             'target': 'new',  # popup instead of new page
         }
