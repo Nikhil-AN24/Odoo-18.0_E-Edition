@@ -153,15 +153,19 @@
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="before">
                 <field name="can_edit_po_pricing" column_invisible="1"/>
                 <field name="can_edit_rate" column_invisible="1"/>
+                <!-- Currency helpers: source (SO/RFQ) currency for the per-carat
+                     rate columns; INR for the Expected Net column. -->
+                <field name="source_currency_id" column_invisible="1"/>
+                <field name="inr_currency_id" column_invisible="1"/>
                 <field name="custom_discount" string="Discount" column_invisible="1" readonly="not can_edit_po_pricing"/>
-                <field name="rate_usd" string="Per ct. Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="not can_edit_rate"/>
+                <field name="rate_usd" string="Procurement Price/carat" widget="monetary" options="{'currency_field': 'source_currency_id'}" optional="show" readonly="not can_edit_rate"/>
                 <field name="discount_percent" string="Vendor Discount %" optional="show" readonly="not can_edit_po_pricing"/>
                 <field name="payment_days" string="Payment Terms (Days)" optional="show" readonly="not can_edit_po_pricing"/>
-                <field name="per_ct_discounted_rate" string="Per ct. Discounted Rate" widget="monetary" options="{'currency_field': 'currency_id'}" optional="show" readonly="1"/>
+                <field name="per_ct_discounted_rate" string="Per ct. Discounted Rate" widget="monetary" options="{'currency_field': 'source_currency_id'}" optional="show" readonly="1"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
-                <field name="expected_net" string="Expected Net" widget="monetary" optional="show" readonly="1"/>
+                <field name="expected_net" string="Expected Net" widget="monetary" options="{'currency_field': 'inr_currency_id'}" optional="show" readonly="1"/>
             </xpath>
 
             <xpath expr="//page[@name='purchase_delivery_invoice']" position="attributes">
@@ -191,9 +195,11 @@
                 <attribute name="invisible">1</attribute>
             </xpath>
             <xpath expr="//field[@name='tax_totals']" position="after">
-                <field name="expected_net_total" widget="monetary"/>
-                <field name="gst_amount" widget="monetary"/>
-                <field name="grand_total" widget="monetary" class="oe_subtotal_footer_separator"/>
+                <!-- Mandatorily in INR, whatever currency the rate columns use. -->
+                <field name="inr_currency_id" invisible="1"/>
+                <field name="expected_net_total" widget="monetary" options="{'currency_field': 'inr_currency_id'}"/>
+                <field name="gst_amount" widget="monetary" options="{'currency_field': 'inr_currency_id'}"/>
+                <field name="grand_total" widget="monetary" options="{'currency_field': 'inr_currency_id'}" class="oe_subtotal_footer_separator"/>
             </xpath>
 
             <!-- Draft-state RFQ mail button keeps its native label ("Send by Email"). -->
@@ -220,11 +226,6 @@
                         </page>
                         <page string="Purchase Information">
                             <group>
-                                <field name="currency_name" invisible="1"/>
-                                <!-- Bank Rate only matters for foreign (USD) buys;
-                                     hidden when the PO currency is INR. -->
-                                <field name="bank_rate" string="Bank Rate" readonly="1"
-                                       invisible="currency_name == 'INR'"/>
                                 <field name="stone_type" string="Stone Type" readonly="1"/>
                                 <field name="stone_certification_type" string="Certification" readonly="1"/>
                                 <field name="price_unit" string="Unit Price" readonly="1"/>
@@ -284,8 +285,4 @@
             </xpath>
         </field>
     </record>
-
-    <!-- Seed rate_usd_base from existing rate_usd so the USD/INR toggle has a
-         base to revert to (idempotent). -->
-    <function model="purchase.order" name="_backfill_rate_usd_base"/>
 </odoo>

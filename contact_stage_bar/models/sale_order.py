@@ -962,7 +962,11 @@ class SaleOrder(models.Model):
                     'origin': self.name,
                     'location': self.location,
                     'order_number': self.sdk_augmont_number,
-                    'currency_id': self._lgd_inr_currency_id(),
+                    # Raise the PO in the Sale Order's own currency (the RFQ
+                    # currency for offline orders — USD or INR), so a USD-priced
+                    # order shows Currency = USD and reveals the Bank Rate. Falls
+                    # back to INR if the SO has no currency.
+                    'currency_id': self.currency_id.id or self._lgd_inr_currency_id(),
                 })
                 po_by_vendor[vendor.id] = po
             cost = (line.product_id.standard_price
@@ -983,7 +987,6 @@ class SaleOrder(models.Model):
             ppc = getattr(line, 'procurement_price_per_carat', 0.0)
             if ppc:
                 po_vals['rate_usd'] = ppc
-                po_vals['rate_usd_base'] = ppc
             if has_sale_link:
                 po_vals['sale_line_id'] = line.id
             po_line = POL.create(po_vals)
@@ -2868,7 +2871,9 @@ class SaleOrderLine(models.Model):
             'origin': order.name,
             'location': order.location,
             'order_number': order.sdk_augmont_number,
-            'currency_id': order._lgd_inr_currency_id(),
+            # Match the Sale Order's currency (USD/INR) so the Bank Rate shows
+            # for USD orders; fall back to INR when the SO has no currency.
+            'currency_id': order.currency_id.id or order._lgd_inr_currency_id(),
         })
         po_line = self.env['purchase.order.line'].create({
             'order_id': po.id,
