@@ -8,7 +8,7 @@
     "author": "Anirath",
     "website": "https://www.augmont.com/",
     "depends": [
-        "base", "contacts", "crm", "sale", "product", "stock", "web", "purchase",
+        "base", "contacts", "crm", "sale", "product", "stock", "web", "purchase", "sale_purchase",
         "account", "mass_mailing", "hr", "hr_attendance", "hr_holidays", "l10n_in","spreadsheet_sale_management",
     ],
     "data": [
