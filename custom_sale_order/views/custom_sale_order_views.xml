@@ -161,7 +161,13 @@
 <!--                                    <field name="vendor_sku"/>-->
                                     <field name="lgd_stock_number" column_invisible="parent.state == 'draft'"/>
                                     <field name="treatments" column_invisible="parent.state == 'draft'"/>
-                                    <field name="availability_status" string="Availability" column_invisible="parent.state == 'draft'"/>
+                                    <!-- Availability: standard selection dropdown.
+                                         Editable only for Procurement / Manager / Admin /
+                                         SuperAdmin; the Sales groups see it read-only. -->
+                                    <field name="can_edit_availability" column_invisible="1"/>
+                                    <field name="availability_status" string="Availability"
+                                           readonly="not can_edit_availability"
+                                           column_invisible="parent.state == 'draft'"/>
 
                                     <!-- Quantity: visible always so the user can see the
                                          per-stone breakdown (each expanded row is qty=1). -->

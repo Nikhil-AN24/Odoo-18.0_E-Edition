@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.17",
+    "version": "18.0.1.7.16",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -51,7 +51,9 @@
     ],
     'assets': {
         'web.assets_backend': [
-            'contact_stage_bar/static/src/js/restrict_availability_dropdown.js',
+            'contact_stage_bar/static/src/js/limit_availability_dropdown.js',
+            'contact_stage_bar/static/src/js/vendor_company_field.js',
+            'contact_stage_bar/static/src/xml/vendor_company_field.xml',
             'contact_stage_bar/static/src/js/rename_new_button.js',
             'contact_stage_bar/static/src/js/hide_cog_menu.js',
             'contact_stage_bar/static/src/js/hide_replenish.js',

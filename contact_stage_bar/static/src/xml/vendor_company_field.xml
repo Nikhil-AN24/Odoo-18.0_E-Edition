@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="contact_stage_bar.VendorCompanyField">
+        <span t-if="isNA" class="text-muted">N/A</span>
+        <Many2OneField t-else="" t-props="props"/>
+    </t>
+
+</templates>

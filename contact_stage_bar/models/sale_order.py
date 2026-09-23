@@ -3070,6 +3070,25 @@ class SaleOrderLine(models.Model):
         )
         for line in self:
             line.can_edit_vendor = allowed
+
+    # Who may change the Availability selection on the Sale Order: Admin /
+    # LGD SuperAdmin / LGD Procurement / LGD Procurement Manager (the last two
+    # via the group_lgd_procurement membership). Everyone else — the Sales
+    # family and any other internal group — sees it read-only.
+    can_edit_availability = fields.Boolean(compute='_compute_can_edit_availability')
+
+    @api.depends_context('uid')
+    def _compute_can_edit_availability(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        for line in self:
+            line.can_edit_availability = allowed
+
     vendor_city = fields.Char(string="Vendor City",related='vendor_id.city')
     is_block = fields.Boolean(string="Block", default=False,readonly=True)
     is_available = fields.Boolean(string="Pass Check",default=False,copy=False)
@@ -3291,128 +3310,15 @@ class SaleOrderLine(models.Model):
             super(SaleOrderLine, active_lines)._compute_amount()
 
 
-    # Dependent dropdown — allowed transitions per UI status ─────
-    # Defines which values a user is ALLOWED to pick from the Availability
-    # dropdown based on the line's CURRENT (before-change) status.
-    _AVAILABILITY_TRANSITIONS = {
-        'diamond_booked': {'confirmed', 'not_available'},
-        'confirmed':      {'confirmed', 'cancelled', 'in_qc_process'},
-        'not_available':  {'cancelled'},
-    }
-
     @api.onchange('availability_status')
     def _onchange_availability_status(self):
-        """
-        Two responsibilities:
-        1. qty sync  — sets product_uom_qty to 0 or 1 based on new status
-                       (existing behaviour, preserved unchanged)
-        2. transition guard — resets invalid dropdown picks immediately and
-                              shows a clear warning before the user can save
-        """
-        # ── qty sync (existing behaviour, unchanged) ──────────────────────
+        """qty sync — sets product_uom_qty to 0 or 1 based on the new status.
+        (The status-transition guard was removed: Procurement / Admin may move
+        Availability to any status freely, so no reset/warning here anymore.)"""
         if self.availability_status in ['not_available', 'cancelled', 'replaced']:
             self.product_uom_qty = 0
         elif self.availability_status in ['diamond_booked', 'confirmed']:
             self.product_uom_qty = 1
-
-        # transition guard ────────────────────────────────────
-        # self._origin holds the record values BEFORE this onchange fired,
-        # so _origin.availability_status is the OLD (current DB) value.
-        old_status = self._origin.availability_status
-        new_status = self.availability_status
-
-        # Only validate transitions that are in our UI-editable map.
-        # In-flight statuses (QC, payment, dispatch) are set by the workflow and bypass this guard entirely.
-        if old_status in self._AVAILABILITY_TRANSITIONS:
-            allowed = self._AVAILABILITY_TRANSITIONS[old_status]
-            if new_status not in allowed:
-                # Reset to old value so the user sees no change in the cell.
-                self.availability_status = old_status
-                # Restore qty to match the reset status.
-                if old_status in ['not_available', 'cancelled']:
-                    self.product_uom_qty = 0
-                elif old_status in ['diamond_booked', 'confirmed']:
-                    self.product_uom_qty = 1
-
-                labels = {
-                    'diamond_booked': 'Diamond Booked',
-                    'confirmed':      'Confirmed',
-                    'not_available':  'Not available',
-                    'cancelled':      'Cancelled',
-                }
-                allowed_labels = ' / '.join(
-                    f'[{labels.get(a, a)}]' for a in sorted(allowed)
-                )
-                return {
-                    'warning': {
-                        'title': 'Invalid Status Transition',
-                        'message': (
-                            f"Cannot change Availability from "
-                            f"[{labels.get(old_status, old_status)}] "
-                            f"to [{labels.get(new_status, new_status)}].\n\n"
-                            f"Allowed option(s) from "
-                            f"[{labels.get(old_status, old_status)}]: "
-                            f"{allowed_labels}"
-                        ),
-                    }
-                }
-
-    @api.constrains('availability_status')
-    def _constrains_availability_status_transition(self):
-        # Contexts that are allowed to make any transition freely.
-        bypass_contexts = (
-            'from_quality_module',
-            'from_pack_wizard',
-            'from_website_api',
-            'dispatch_validation',
-            'skip_availability_check',
-            'from_replacement_engine',
-        )
-        if any(self.env.context.get(c) for c in bypass_contexts):
-            return
-
-        labels = {
-            'diamond_booked': 'Diamond Booked',
-            'confirmed':      'Confirmed',
-            'not_available':  'Not available',
-            'cancelled':      'Cancelled',
-        }
-
-        for line in self:
-            new_status = line.availability_status
-
-            # Read the previous value directly from the DB (pre-write).
-            self.env.cr.execute(
-                "SELECT availability_status FROM sale_order_line WHERE id = %s",
-                (line.id,)
-            )
-            row = self.env.cr.fetchone()
-            if not row:
-                continue  # new record — no transition to validate
-            old_status = row[0]
-
-            if old_status == new_status:
-                continue
-
-            # Only validate transitions that start from a UI-editable status.
-            if old_status not in self._AVAILABILITY_TRANSITIONS:
-                continue
-
-            allowed = self._AVAILABILITY_TRANSITIONS[old_status]
-            if new_status not in allowed:
-                allowed_labels = ', '.join(
-                    f"[{labels.get(a, a)}]" for a in sorted(allowed)
-                )
-                raise ValidationError(
-                    f"Order {line.order_id.name} — "
-                    f"line {line.order_number or ''}:\n"
-                    f"Cannot change Availability from "
-                    f"[{labels.get(old_status, old_status)}] "
-                    f"to [{labels.get(new_status, new_status)}].\n\n"
-                    f"Allowed from "
-                    f"[{labels.get(old_status, old_status)}]: "
-                    f"{allowed_labels}"
-                )
 
     # ── Server-side guard: only 3 values allowed from the UI ─────────────────
     @api.model_create_multi
