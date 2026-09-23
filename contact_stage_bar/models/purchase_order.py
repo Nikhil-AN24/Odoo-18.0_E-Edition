@@ -92,9 +92,21 @@ class PurchaseOrderLine(models.Model):
             line.can_edit_rate = can_rate
 
     def action_open_line_info(self):
-        """Open this line's Additional / Purchase Information tabs in a dialog
-        (the (i) button on the Products list)."""
+        """(i) button on the PO Products list. Show the SAME General Information
+        / Purchase details Procurement sees on the Sale Order"""
         self.ensure_one()
+        popup = self.env.ref(
+            'custom_sale_order.view_po_line_info_popup', raise_if_not_found=False)
+        if self.sale_line_id and popup:
+            return {
+                'type': 'ir.actions.act_window',
+                'name': _('Product'),
+                'res_model': 'sale.order.line',
+                'res_id': self.sale_line_id.id,
+                'view_mode': 'form',
+                'views': [(popup.id, 'form')],
+                'target': 'new',
+            }
         return {
             'type': 'ir.actions.act_window',
             'name': _('Line Information'),

@@ -408,6 +408,73 @@
         </field>
     </record>
 
+    <!-- Frozen, view-only twin of the SO line (i) popup, opened from the PO's
+         (i) button so Procurement sees the SAME General Information / Purchase
+         details as on the Sale Order. -->
+    <record id="view_po_line_info_popup" model="ir.ui.view">
+        <field name="name">po.line.info.popup.readonly</field>
+        <field name="model">sale.order.line</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <form string="Product" edit="0" create="0">
+                <sheet>
+                    <field name="rfq_currency_id" invisible="1"/>
+                    <notebook>
+                        <page string="General Information" name="general_information">
+                            <group>
+                                <group>
+                                    <field name="labs"/>
+                                    <field name="lgd_stock_number"/>
+                                    <field name="shapes"/>
+                                    <field name="carat_weight" string="Carat"/>
+                                    <field name="clarity"/>
+                                    <field name="color"/>
+                                    <field name="luster"/>
+                                    <field name="shade"/>
+                                    <field name="fluorescence_color"/>
+                                    <field name="fluorescence_intensity"/>
+                                    <field name="certificate"/>
+                                    <field name="measurements"/>
+                                </group>
+                                <group>
+                                    <field name="length"/>
+                                    <field name="width"/>
+                                    <field name="depth"/>
+                                    <field name="eye_clean"/>
+                                    <field name="cut"/>
+                                    <field name="polish"/>
+                                    <field name="symmetry"/>
+                                    <field name="treatments"/>
+                                    <field name="order_specific"/>
+                                    <field name="popup_item_notes"/>
+                                    <field name="customer_reference_note"/>
+                                    <field name="popup_default_qc_requirements"/>
+                                </group>
+                            </group>
+                        </page>
+                        <!-- Sales figures — hidden from Procurement. -->
+                        <page string="Sales" name="sales"
+                              groups="!contact_stage_bar.group_lgd_procurement">
+                            <group>
+                                <field name="sales_price_per_carat"/>
+                                <field name="sales_price_per_stone"/>
+                            </group>
+                        </page>
+                        <!-- Procurement figures — hidden from Sales. -->
+                        <page string="Purchase" name="purchase"
+                              groups="!contact_stage_bar.group_lgd_sales">
+                            <group>
+                                <field name="vendor_id"/>
+                                <field name="procurement_price_per_carat"/>
+                                <field name="vendor_total_price"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
     <!-- Align existing offline orders' currency to their RFQ (idempotent). -->
     <function model="sale.order" name="_backfill_offline_order_currency"/>
 
