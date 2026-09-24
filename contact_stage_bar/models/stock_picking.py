@@ -37,6 +37,23 @@ class StockMove(models.Model):
 
     failure_reason = fields.Char(string="Failure Reason", copy=False)
 
+    def action_open_product_info(self):
+        """(i) button on the Operations list in the logistics."""
+        self.ensure_one()
+        tmpl = self.product_id.product_tmpl_id
+        if not tmpl:
+            raise UserError(_("There is no product on this line to show information for."))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('General Information'),
+            'res_model': 'product.template',
+            'res_id': tmpl.id,
+            'view_mode': 'form',
+            'views': [(self.env.ref(
+                'contact_stage_bar.view_product_popup_info_only').id, 'form')],
+            'target': 'new',
+        }
+
     # ---------------------------------------------------------
     # HARD CONSTRAINT: cannot be pass + fail
     # ---------------------------------------------------------

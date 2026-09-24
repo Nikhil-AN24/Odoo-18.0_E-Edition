@@ -441,5 +441,56 @@
             </field>
         </record>
 
+        <!-- Popup behind the (i) button on the Logistics / QC Operations list
+             (stock.move.action_open_product_info).Field set mirrors the General Information
+             page of view_product_popup_general_info above. -->
+        <record id="view_product_popup_info_only" model="ir.ui.view">
+            <field name="name">product.template.popup.info.only</field>
+            <field name="model">product.template</field>
+            <field name="priority">99</field>
+            <field name="arch" type="xml">
+                <form string="General Information" create="0" edit="0">
+                    <sheet>
+                        <div class="oe_title">
+                            <h1><field name="name"/></h1>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="labs"/>
+                                <field name="lgd_stock_number"/>
+                                <field name="shapes"/>
+                                <field name="weight_carat"/>
+                                <field name="clarity"/>
+                                <field name="color"/>
+                                <field name="luster"/>
+                                <field name="shade"/>
+                                <field name="fluorescence_color"/>
+                                <field name="fluorescence_intensity"/>
+                                <field name="certificate"/>
+                                <field name="measurements"/>
+                            </group>
+                            <group>
+                                <field name="length"/>
+                                <field name="width"/>
+                                <field name="depth"/>
+                                <field name="eye_clean"/>
+                                <field name="cut"/>
+                                <field name="polish"/>
+                                <field name="symmetry"/>
+                                <field name="treatments"/>
+                                <field name="order_specific"/>
+                                <field name="item_notes"/>
+                                <field name="customer_reference_note"/>
+                                <field name="default_qc_requirements"/>
+                            </group>
+                        </group>
+                    </sheet>
+                    <footer>
+                        <button string="Close" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
     </data>
 </odoo>
