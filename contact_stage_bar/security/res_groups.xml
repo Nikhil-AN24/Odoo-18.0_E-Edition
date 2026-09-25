@@ -37,13 +37,6 @@
             <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
         </record>
 
-        <!-- LGD Accounting has FULL access to the Accounting module (built on
-             Odoo's Invoicing group) but only VIEW access to Sales and
-             Procurement. The Invoicing group grants edit rights on Sale and
-             Purchase Orders by core Odoo design; those specific grants are
-             lowered to read-only in security/lgd_accounting_access.xml so this
-             role can view every SO/PO but not modify them, while keeping full
-             invoice/bill editing. -->
         <record id="group_lgd_accounting" model="res.groups">
             <field name="name">LGD Accounting</field>
             <field name="category_id" ref="module_category_lgd"/>
@@ -77,6 +70,12 @@
             <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
         </record>
 
+        <record id="group_lgd_inventory" model="res.groups">
+            <field name="name">LGD Inventory</field>
+            <field name="category_id" ref="module_category_lgd"/>
+            <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
+        </record>
+
         <record id="group_lgd_procurement_manager" model="res.groups">
             <field name="name">LGD Procurement Manager</field>
             <field name="category_id" ref="module_category_lgd"/>
@@ -84,8 +83,7 @@
         </record>
 
         <!-- Orders stone lists an LGD Procurement. Hidden category, so they don't show among the
-             LGD User Roles checkboxes: they're ticked from the "LGD
-             Procurement — Stone Access" section of the user form instead. -->
+             LGD User Roles checkboxes: they're ticked from the "LGD Procurement — Stone Access" section of the user form instead. -->
         <record id="group_lgd_procurement_all_orders" model="res.groups">
             <field name="name">LGD Procurement: All Orders</field>
             <field name="category_id" ref="base.module_category_hidden"/>
@@ -192,8 +190,7 @@
         <record id="lgd_sales_manager_partner_read_rule" model="ir.rule">
             <field name="name">LGD Sales Manager Partner Read Bypass (Restricted)</field>
             <field name="model_id" ref="base.model_res_partner"/>
-            <!-- Same customer-side test as the rep rule above, for the same
-                 reason: 'tagged buyer' hid nearly every contact. -->
+            <!-- Same customer-side test as the rep rule above, for the same reason: 'tagged buyer' hid nearly every contact. -->
             <field name="domain_force">['|', '|', '|',
                                         ('id', '=', user.partner_id.id),
                                         ('id', '=', user.company_id.partner_id.id),
@@ -230,8 +227,7 @@
         <!-- Carry any lab picked in the removed "Lab" selection (lab_id) over to LAB (labs). Only fills products with no LAB. -->
         <function model="product.template" name="_lgd_backfill_labs_from_lab_id"/>
 
-        <!-- Older replaced lines were stored as 'cancelled'; move them to the
-             dedicated 'replaced' status so they read "Replaced". -->
+        <!-- Older replaced lines were stored as 'cancelled'; move them to the dedicated 'replaced' status so they read "Replaced". -->
         <function model="sale.order.line" name="_lgd_backfill_replaced_status"/>
 
         <function name="write" model="ir.model.data">

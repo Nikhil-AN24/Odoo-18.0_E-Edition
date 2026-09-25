@@ -1,4 +1,5 @@
 from odoo import models, _,api ,fields
+from odoo.exceptions import UserError
 from markupsafe import Markup, escape
 from datetime import datetime, timedelta
 import datetime
@@ -85,6 +86,7 @@ class PurchaseOrderLine(models.Model):
             user.has_group('base.group_system')
             or user.has_group('contact_stage_bar.group_lgd_superadmin')
             or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+            or user.has_group('contact_stage_bar.group_lgd_accounting')
         )
         can_rate = priv or user.has_group('contact_stage_bar.group_lgd_procurement')
         for line in self:
@@ -282,8 +284,12 @@ class PurchaseOrderLine(models.Model):
                             lbl, self._fmt_tracked_value(b), self._fmt_tracked_value(a))
                         for lbl, b, a in rows
                     )
-                    line.order_id.message_post(
-                        body=Markup('<p><b>%s</b> — price/amount changed:</p><ul>%s</ul>')
+                    # _lgd_log, not message_post: an unconfigured mail
+                    # sender would otherwise raise here and roll back the very
+                    # edit we are trying to record, making the pricing columns
+                    # look permanently read-only.
+                    line.order_id._lgd_log(
+                        Markup('<p><b>%s</b> — price/amount changed:</p><ul>%s</ul>')
                         % (product, items))
         return res
 
@@ -296,7 +302,7 @@ class PurchaseOrder(models.Model):
     # INR) and NOTHING else; it never rewrites the Procurement Price/carat.
     # currency_name drives the USD-only visibility.
     currency_name = fields.Char(related='currency_id.name')
-    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2))
+    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2), tracking=True)
 
     # Header mirror of the line-level flag. The Products grid (order_line) stays
     # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /
@@ -311,6 +317,7 @@ class PurchaseOrder(models.Model):
             user.has_group('base.group_system')
             or user.has_group('contact_stage_bar.group_lgd_superadmin')
             or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+            or user.has_group('contact_stage_bar.group_lgd_accounting')
         )
         can_rate = priv or user.has_group('contact_stage_bar.group_lgd_procurement')
         for order in self:
@@ -468,6 +475,13 @@ class PurchaseOrder(models.Model):
     
     
     def button_confirm(self):
+        missing_rate = self.filtered(
+            lambda o: o.currency_id.name == 'USD' and not o.bank_rate)
+        if missing_rate:
+            raise UserError(_(
+                "Enter the Bank Rate before confirming a USD purchase order:\n%s"
+            ) % "\n".join("- %s" % o.name for o in missing_rate))
+
         import datetime as _dt
         import logging as _log
         _po_logger = _log.getLogger(__name__)
@@ -500,10 +514,8 @@ class PurchaseOrder(models.Model):
 
             email_from = self.env.user.partner_id.email
 
-
             # Get Logistics group
             group = self.env.ref("__export__.res_groups_83_454cce4b", raise_if_not_found=False)
-
 
             recipients = []
             partners = []
@@ -511,7 +523,6 @@ class PurchaseOrder(models.Model):
                 recipients = group.users.mapped("partner_id.email")
                 recipients = [email for email in recipients if email]
                 partners = group.users.mapped("partner_id")
-
 
             # Create email
             if recipients:
@@ -545,5 +556,4 @@ class PurchaseOrder(models.Model):
                         'user_id': partner.user_ids[:1].id if partner.user_ids else False,
                         'date_deadline': fields.Date.today(),
                     })
-
         return res

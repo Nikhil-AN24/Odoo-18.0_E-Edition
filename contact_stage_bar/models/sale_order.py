@@ -12,6 +12,7 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
+LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Diamond Booked": ["Confirmed", "Not available"],
@@ -43,7 +44,7 @@ class SaleOrder(models.Model):
         for order in self:
             order.replacement_alert_count = len(order.order_line.filtered(
                 lambda l: l.line_type == 'lgd'
-                and l.availability_status == 'not_available'))
+                and l.availability_status in LGD_REPLACEABLE_STATUSES))
 
     # True when any line has been replaced used to show the "Replaced"
     # Availability column only on orders that actually have a replacement.
@@ -2646,6 +2647,9 @@ class SaleOrderLine(models.Model):
     # On the NEW (replacement) line, pointing back at the stone it replaces.
     replaces_line_id = fields.Many2one(
         'sale.order.line', string="Replaces", copy=False, index=True)
+    lgd_pre_replacement_status = fields.Char(
+        string="Status Before Replacement", copy=False)
+
     # True on the original once replaced — drives the "Replaced" badge.
     is_replaced = fields.Boolean(
         string="Is Replaced", compute='_compute_is_replaced', store=True)
@@ -2922,16 +2926,18 @@ class SaleOrderLine(models.Model):
 
     def _replacement_complete(self, new_line):
         """Link the pair and close the original: the old line goes
-        not_available -> replaced (a dedicated status shown as "Replaced" and
-        treated as cancelled by the status/API logic); the new line stays
-        diamond_booked."""
+        not_available or qc_fail -> replaced (a dedicated status shown as
+        "Replaced" and treated as cancelled by the status/API logic); the new
+        line stays diamond_booked. The status it came from is kept in
+        lgd_pre_replacement_status so a rejection can put it back."""
         self.ensure_one()
         self.replaced_by_line_id = new_line.id
         if new_line.replaces_line_id.id != self.id:
             new_line.replaces_line_id = self.id
-        self.with_context(from_replacement_engine=True).write(
-            {'availability_status': 'replaced'})
-        # Figure-free, vendor-free, user-free chatter (REQ-5.2.23).
+        self.with_context(from_replacement_engine=True).write({
+            'lgd_pre_replacement_status': self.availability_status,
+            'availability_status': 'replaced',
+        })
         self.order_id.message_post(body=_(
             "Stone replaced: %(old)s -> %(new)s.",
             old=self.product_template_id.display_name or self.id,
@@ -3000,10 +3006,11 @@ class SaleOrderLine(models.Model):
         Operations roles only — enforced by the
         wizard's ACL and by the button's group on the view."""
         self.ensure_one()
-        if self.line_type != 'lgd' or self.availability_status != 'not_available':
+        if (self.line_type != 'lgd'
+                or self.availability_status not in LGD_REPLACEABLE_STATUSES):
             raise UserError(_(
                 "Replace Stone applies only to a certified (LGD) line whose "
-                "availability is Not available."))
+                "availability is Not available or QC Fail."))
         return {
             'type': 'ir.actions.act_window',
             'name': _("Replace Stone"),
@@ -3028,13 +3035,15 @@ class SaleOrderLine(models.Model):
         if original:
             original.with_context(from_replacement_engine=True).write({
                 'replaced_by_line_id': False,
-                'availability_status': 'not_available',
+                'availability_status': (
+                    original.lgd_pre_replacement_status or 'not_available'),
+                'lgd_pre_replacement_status': False,
             })
         self._replacement_close_activity(feedback=reason)
         if original:
             original.order_id.message_post(body=_(
                 "Replacement for %(stone)s was rejected by Sales; the stone "
-                "stays not available. Reason: %(reason)s",
+                "is back on the replacement list. Reason: %(reason)s",
                 stone=original.product_template_id.display_name or original.id,
                 reason=reason or _("(none given)")))
     # Editable so the (i) popup can enter a Certificate Number and Fetch from

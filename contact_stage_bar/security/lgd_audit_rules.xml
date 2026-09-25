@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <record id="lgd_mail_message_price_audit_rule" model="ir.rule">
+            <field name="name">LGD: hide price audit entries from Sales</field>
+            <field name="model_id" ref="mail.model_mail_message"/>
+            <field name="groups" eval="[(5, 0, 0)]"/>
+            <field name="domain_force">[('lgd_is_price_audit', '=', False)] if user.lgd_hide_price_audit else [(1, '=', 1)]</field>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <!-- Cover history as well as new changes: without this the rule
+             would only hide entries written from now on, leaving every past
+             price change readable to Sales. Safe to re-run. -->
+        <function model="mail.message" name="_lgd_backfill_price_audit_flags"/>
+
+    </data>
+</odoo>

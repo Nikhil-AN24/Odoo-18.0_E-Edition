@@ -354,7 +354,7 @@
                         <!-- Replace Stone: certified line that is Not available. -->
                         <button name="action_open_replace_stone" type="object"
                                 icon="fa-exchange" title="Replace Stone"
-                                invisible="line_type != 'lgd' or availability_status != 'not_available'"
+                                invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
                         <field name="can_edit_vendor" column_invisible="True"/>
@@ -401,7 +401,7 @@
                      line that is Not available. -->
                 <button name="action_open_replace_stone" type="object"
                         icon="fa-exchange" title="Replace Stone"
-                        invisible="line_type != 'lgd' or availability_status != 'not_available'"
+                        invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                         groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                 <!-- Sales confirm / reject a pending replacement. -->
                 <field name="replacement_pending_sales" column_invisible="True"/>

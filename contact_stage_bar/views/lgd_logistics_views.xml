@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+              LOGISTICS -> EXPECTED STONES
+             Logistics works by vendor. Every list here is on
+             purchase.order.line with create="0" delete="0", and carries no
+             price, subtotal, tax or customer column
+             ═══════════════════════════════════════════════════════════════ -->
+        <record id="view_lgd_expected_stones_list" model="ir.ui.view">
+            <field name="name">lgd.expected.stones.list</field>
+            <field name="model">purchase.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Expected Stones" create="0" delete="0"
+                      editable="bottom" multi_edit="1"
+                      decoration-danger="lgd_is_overdue"
+                      decoration-warning="not sale_line_id">
+                    <header>
+                        <button name="action_lgd_receive" type="object"
+                                string="Receive selected" class="btn-success"/>
+                        <button name="action_lgd_open_reject_wizard" type="object"
+                                string="Reject selected" class="btn-danger"/>
+                    </header>
+                    <!-- Needed by decoration-warning only; never displayed,
+                         so the list still shows no order link (§10.6). -->
+                    <field name="sale_line_id" column_invisible="1"/>
+                    <field name="lgd_is_overdue" column_invisible="1"/>
+                    <field name="lgd_is_certified" column_invisible="1"/>
+
+                    <field name="lgd_invoice_number" readonly="1"/>
+                    <field name="lgd_certificate" readonly="1"/>
+                    <field name="lgd_shape" readonly="1"/>
+                    <field name="lgd_carat" readonly="1"/>
+                    <field name="lgd_colour" readonly="1"/>
+                    <field name="lgd_clarity" readonly="1"/>
+                    <field name="lgd_cert_type" readonly="1" optional="hide"/>
+                    <field name="lgd_melee_qty" readonly="1"
+                           invisible="lgd_is_certified" optional="show"/>
+                    <field name="lgd_melee_unit" readonly="1"
+                           invisible="lgd_is_certified" optional="show"/>
+                    <field name="lgd_commit_deadline" readonly="1"/>
+
+                    <!-- Set collection: inline editing, no button. -->
+                    <field name="lgd_collection_method"/>
+                    <field name="lgd_collector_id"/>
+
+                    <!-- Both buttons stay hidden until the row records how the
+                         stone arrived and who took it in. A list button has no
+                         disabled state in Odoo, so invisible= is the mechanism;
+                         the same rule is enforced server-side in
+                         _lgd_collection_problems, which also covers the header
+                         buttons and RPC. -->
+                    <button name="action_lgd_receive" type="object"
+                            string="Receive" class="btn-success"
+                            invisible="not lgd_collection_method or not lgd_collector_id"/>
+                    <button name="action_lgd_open_reject_wizard" type="object"
+                            string="Reject" class="btn-danger"
+                            invisible="not lgd_collection_method or not lgd_collector_id"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="view_lgd_ops_line_search" model="ir.ui.view">
+            <field name="name">lgd.ops.line.search</field>
+            <field name="model">purchase.order.line</field>
+            <field name="arch" type="xml">
+                <search string="Stones">
+                    <field name="lgd_certificate" string="Certificate"/>
+                    <field name="lgd_invoice_number" string="Invoice No."/>
+                    <field name="partner_id" string="Vendor"/>
+                    <filter name="lgd_unlinked" string="Not linked to order"
+                            domain="[('sale_line_id', '=', False)]"/>
+                    <filter name="lgd_overdue" string="Past commit deadline"
+                            domain="[('lgd_commit_deadline', '&lt;', context_today().strftime('%Y-%m-%d'))]"/>
+                    <group expand="0" string="Group By">
+                        <filter name="lgd_group_vendor" string="Vendor"
+                                context="{'group_by': 'partner_id'}"/>
+                        <filter name="lgd_group_invoice" string="Invoice No."
+                                context="{'group_by': 'lgd_invoice_number'}"/>
+                        <filter name="lgd_group_stage" string="Stage"
+                                context="{'group_by': 'lgd_stage'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <record id="action_lgd_expected_stones" model="ir.actions.act_window">
+            <field name="name">Expected Stones</field>
+            <field name="res_model">purchase.order.line</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_expected_stones_list"/>
+            <field name="search_view_id" ref="view_lgd_ops_line_search"/>
+            <field name="domain">[('lgd_stage', 'in', (False, 'expected')), ('product_qty', '&gt;', 0), ('order_id.state', 'in', ('draft', 'sent', 'purchase'))]</field>
+            <field name="context">{'group_by': 'partner_id'}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">No stones are expected right now.</p>
+                <p>Stones appear here as soon as Procurement raises an RFQ for them.</p>
+            </field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             LOGISTICS -> HAND OVER TO QC
+             ═══════════════════════════════════════════════════════════════ -->
+        <record id="view_lgd_handover_qc_list" model="ir.ui.view">
+            <field name="name">lgd.handover.qc.list</field>
+            <field name="model">purchase.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Hand over to QC" create="0" delete="0">
+                    <header>
+                        <button name="action_lgd_handover_qc" type="object"
+                                string="Hand over to QC" class="btn-primary"/>
+                    </header>
+                    <field name="lgd_invoice_number"/>
+                    <field name="lgd_certificate"/>
+                    <field name="lgd_shape"/>
+                    <field name="lgd_carat"/>
+                    <field name="lgd_colour"/>
+                    <field name="lgd_clarity"/>
+                    <field name="lgd_received_by"/>
+                    <field name="lgd_received_at"/>
+                    <button name="action_lgd_handover_qc" type="object"
+                            string="Hand over to QC" class="btn-primary"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_handover_qc" model="ir.actions.act_window">
+            <field name="name">Hand over to QC</field>
+            <field name="res_model">purchase.order.line</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_handover_qc_list"/>
+            <field name="search_view_id" ref="view_lgd_ops_line_search"/>
+            <field name="domain">[('lgd_stage', '=', 'received')]</field>
+            <field name="context">{'group_by': 'partner_id'}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">Nothing waiting to go to QC.</p>
+                <p>Stones you have received appear here until you hand them over.</p>
+            </field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             LOGISTICS -> RETURNS TO VENDOR
+             A failed stone lands here at once; QC never hands it back by hand.
+             ═══════════════════════════════════════════════════════════════ -->
+        <record id="view_lgd_returns_vendor_list" model="ir.ui.view">
+            <field name="name">lgd.returns.vendor.list</field>
+            <field name="model">purchase.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Returns to Vendor" create="0" delete="0">
+                    <header>
+                        <button name="action_lgd_open_return_wizard" type="object"
+                                string="Mark returned" class="btn-primary"/>
+                    </header>
+                    <field name="lgd_invoice_number"/>
+                    <field name="lgd_certificate"/>
+                    <field name="lgd_shape"/>
+                    <field name="lgd_carat"/>
+                    <field name="lgd_stage" string="Stage"/>
+                    <field name="lgd_reject_reason_id"
+                           invisible="lgd_stage != 'rejected'"/>
+                    <field name="lgd_rejected_at" string="Decided On"
+                           invisible="lgd_stage != 'rejected'"/>
+                    <field name="lgd_fail_reason_id"
+                           invisible="lgd_stage != 'failed'"/>
+                    <field name="lgd_qc_decided_at" string="Decided On"
+                           invisible="lgd_stage != 'failed'"/>
+                    <button name="action_lgd_open_return_wizard" type="object"
+                            string="Mark returned" class="btn-primary"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_returns_vendor" model="ir.actions.act_window">
+            <field name="name">Returns to Vendor</field>
+            <field name="res_model">purchase.order.line</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_returns_vendor_list"/>
+            <field name="search_view_id" ref="view_lgd_ops_line_search"/>
+            <field name="domain">[('lgd_stage', 'in', ('rejected', 'failed'))]</field>
+            <field name="context">{'group_by': 'partner_id'}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">Nothing to return.</p>
+                <p>Stones rejected at inward or failed by QC appear here.</p>
+            </field>
+        </record>
+
+        <!-- Reason list, Configuration only. -->
+        <record id="view_lgd_inward_reject_reason_list" model="ir.ui.view">
+            <field name="name">lgd.inward.reject.reason.list</field>
+            <field name="model">lgd.inward.reject.reason</field>
+            <field name="arch" type="xml">
+                <list string="Inward Reject Reasons" editable="bottom">
+                    <field name="sequence" widget="handle"/>
+                    <field name="name"/>
+                    <field name="active" widget="boolean_toggle"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_inward_reject_reason" model="ir.actions.act_window">
+            <field name="name">Inward Reject Reasons</field>
+            <field name="res_model">lgd.inward.reject.reason</field>
+            <field name="view_mode">list</field>
+        </record>
+
+    </data>
+</odoo>

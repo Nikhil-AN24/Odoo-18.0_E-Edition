@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- ── Inward reject reasons (Logistics) ── -->
+        <record id="lgd_reject_reason_certificate" model="lgd.inward.reject.reason">
+            <field name="name">Wrong certificate / inscription mismatch</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="lgd_reject_reason_carat" model="lgd.inward.reject.reason">
+            <field name="name">Carat weight mismatch</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="lgd_reject_reason_shape" model="lgd.inward.reject.reason">
+            <field name="name">Shape mismatch</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="lgd_reject_reason_colour_clarity" model="lgd.inward.reject.reason">
+            <field name="name">Colour or clarity on certificate differs from order</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="lgd_reject_reason_quantity" model="lgd.inward.reject.reason">
+            <field name="name">Wrong quantity (melee)</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="lgd_reject_reason_damaged" model="lgd.inward.reject.reason">
+            <field name="name">Damaged</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="lgd_reject_reason_other" model="lgd.inward.reject.reason">
+            <field name="name">Other</field>
+            <field name="sequence">99</field>
+        </record>
+
+        <!-- ── QC fail reasons ── -->
+        <record id="lgd_fail_reason_inscription" model="lgd.qc.fail.reason">
+            <field name="name">Certificate or inscription mismatch</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="lgd_fail_reason_weight" model="lgd.qc.fail.reason">
+            <field name="name">Weight out of tolerance</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="lgd_fail_reason_damage" model="lgd.qc.fail.reason">
+            <field name="name">Damage (chip, crack)</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="lgd_fail_reason_colour_clarity" model="lgd.qc.fail.reason">
+            <field name="name">Colour or clarity below certificate</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="lgd_fail_reason_screening" model="lgd.qc.fail.reason">
+            <field name="name">Failed lab-grown screening</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="lgd_fail_reason_order_requirement" model="lgd.qc.fail.reason">
+            <field name="name">Order requirement not met</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="lgd_fail_reason_other" model="lgd.qc.fail.reason">
+            <field name="name">Other</field>
+            <field name="sequence">99</field>
+        </record>
+
+    </data>
+</odoo>
