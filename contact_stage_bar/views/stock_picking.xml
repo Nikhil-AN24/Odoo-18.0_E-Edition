@@ -28,9 +28,17 @@
 
             <xpath expr="//field[@name='move_ids_without_package']/list" position="attributes">
                    <attribute name="delete">0</attribute>
+                   <!-- Hide "Add a line" for everyone. Lines come from the purchase order; nobody adds a stone on the receipt. -->
+                   <attribute name="create">0</attribute>
             </xpath>
             
             <xpath expr="//field[@name='move_ids_without_package']/list/field[@name='product_id']" position="after">
+                <!-- (i) — read-only General Information for the product. -->
+                <button name="action_open_product_info"
+                        type="object"
+                        icon="fa-info-circle"
+                        title="General Information"
+                        invisible="not product_id"/>
                 <field name="weight_carat"/>
                 <field name="is_weight_carat" column_invisible="parent.location_dest_id != 10" class="black-box"/>
                 <field name="lgd_stock_number"/>
@@ -164,9 +172,12 @@
                 <attribute name="invisible">True</attribute>
             </xpath>
 
-            <!-- ── Cancelled Stone tab — inserted after the Operations page ───── -->
+            <!-- ── Cancelled Stone tab — inserted after the Operations page ─────
+                 Hidden for everyone (invisible="1"). The page and its fields are
+                 kept so no data is lost and it can be switched back on by
+                 removing the attribute. -->
             <xpath expr="//page[@name='operations']" position="after">
-                <page name="cancelled_stone" string="Cancelled Stone">
+                <page name="cancelled_stone" string="Cancelled Stone" invisible="1">
                     <group>
                         <group string="Contact Details">
                             <field name="cancelled_stone_person_name" placeholder="Full name of the person."/>

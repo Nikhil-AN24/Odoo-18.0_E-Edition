@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             RECEIVE FROM LOGISTICS
+             QC works by invoice number, Logistics by vendor.
+             ═══════════════════════════════════════════════════════════════ -->
+        <record id="view_lgd_qc_receive_list" model="ir.ui.view">
+            <field name="name">lgd.qc.receive.list</field>
+            <field name="model">purchase.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Receive from Logistics" create="0" delete="0">
+                    <header>
+                        <button name="action_lgd_qc_receive" type="object"
+                                string="Received" class="btn-primary"/>
+                    </header>
+                    <field name="lgd_invoice_number"/>
+                    <field name="lgd_certificate"/>
+                    <field name="lgd_shape"/>
+                    <field name="lgd_carat"/>
+                    <field name="lgd_colour"/>
+                    <field name="lgd_clarity"/>
+                    <field name="lgd_handed_to_qc_by"/>
+                    <field name="lgd_handed_to_qc_at"/>
+                    <button name="action_lgd_qc_receive" type="object"
+                            string="Received" class="btn-primary"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_qc_receive" model="ir.actions.act_window">
+            <field name="name">Receive from Logistics</field>
+            <field name="res_model">purchase.order.line</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_qc_receive_list"/>
+            <field name="search_view_id" ref="contact_stage_bar.view_lgd_ops_line_search"/>
+            <field name="domain">[('lgd_stage', '=', 'with_qc')]</field>
+            <field name="context">{'group_by': 'lgd_invoice_number'}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">Nothing handed over yet.</p>
+                <p>Stones appear here when Logistics hands them to QC.</p>
+            </field>
+        </record>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+              QC -> TO INSPECT — one row per invoice, not per stone.
+             QC works an invoice at a time: open it, tick the stones that
+             share a decision, and Pass or Fail them together.
+             ═══════════════════════════════════════════════════════════════ -->
+        <record id="view_lgd_qc_to_inspect_list" model="ir.ui.view">
+            <field name="name">lgd.qc.to.inspect.list</field>
+            <field name="model">purchase.order</field>
+            <field name="arch" type="xml">
+                <list string="To Inspect" create="0" delete="0">
+                    <field name="order_number" string="Invoice Number"/>
+                    <field name="origin" string="Sales Order Number"/>
+                    <field name="name" string="Purchase Order Number"/>
+                    <field name="partner_id" string="Vendor"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Deliberately a standalone form, not an inherit of the Purchase
+             form: it can only ever render what is listed here, so no vendor
+             cost, customer or price column can reach a QC user -->
+        <record id="view_lgd_qc_inspection_form" model="ir.ui.view">
+            <field name="name">lgd.qc.inspection.form</field>
+            <field name="model">purchase.order</field>
+            <field name="priority">99</field>
+            <field name="arch" type="xml">
+                <form string="Inspect Invoice" create="0" delete="0">
+                    <header>
+                        <button name="action_lgd_qc_pass_selected" type="object"
+                                string="Pass selected" class="btn-success"
+                                groups="contact_stage_bar.group_lgd_quality,base.group_system"/>
+                        <button name="action_lgd_qc_fail_selected" type="object"
+                                string="Fail selected" class="btn-danger"
+                                groups="contact_stage_bar.group_lgd_quality,base.group_system"/>
+                    </header>
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="order_number" string="Invoice Number" readonly="1"/>
+                                <field name="origin" string="Sales Order Number" readonly="1"/>
+                                <field name="name" string="Purchase Order Number" readonly="1"/>
+                            </group>
+                            <group>
+                                <field name="partner_id" string="Vendor" readonly="1"
+                                       options="{'no_open': True}"/>
+                                <field name="l10n_in_gst_treatment" string="GST Treatment" readonly="1"/>
+                                <field name="phone_number" readonly="1"/>
+                                <field name="email" readonly="1"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Products" name="products">
+                                <field name="order_line" nolabel="1">
+                                    <list create="0" delete="0" editable="bottom">
+                                        <!-- An embedded list has no selection
+                                             checkboxes, so this tick column is
+                                             a real field. Only stones actually
+                                             with QC can be ticked. -->
+                                        <field name="lgd_qc_selected" string="Select"
+                                               widget="boolean_toggle"
+                                               readonly="lgd_stage != 'in_qc'"/>
+                                        <field name="product_id" string="Product" readonly="1"
+                                               options="{'no_open': True}"/>
+                                        <button name="action_lgd_open_product_info"
+                                                type="object" icon="fa-info-circle"
+                                                title="General Information"
+                                                invisible="not product_id"/>
+                                        <field name="lgd_note_order_specific"
+                                               string="Order Specific Notes" readonly="1"/>
+                                        <field name="lgd_note_order_item"
+                                               string="General Order Notes" readonly="1"/>
+                                        <field name="lgd_note_qc_requirements"
+                                               string="Default QC Requirements" readonly="1"/>
+                                        <field name="lgd_stage" string="Stage" readonly="1"/>
+                                    </list>
+                                </field>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_lgd_qc_order_search" model="ir.ui.view">
+            <field name="name">lgd.qc.order.search</field>
+            <field name="model">purchase.order</field>
+            <field name="arch" type="xml">
+                <search string="Invoices to Inspect">
+                    <field name="order_number" string="Invoice Number"/>
+                    <field name="origin" string="Sales Order Number"/>
+                    <field name="name" string="Purchase Order Number"/>
+                    <field name="partner_id" string="Vendor"/>
+                    <group expand="0" string="Group By">
+                        <filter name="lgd_group_vendor" string="Vendor"
+                                context="{'group_by': 'partner_id'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <record id="action_lgd_qc_to_inspect" model="ir.actions.act_window">
+            <field name="name">To Inspect</field>
+            <field name="res_model">purchase.order</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[('order_line.lgd_stage', '=', 'in_qc')]</field>
+            <!-- Set, never omitted: this action used to live on
+                 purchase.order.line, and an ir.actions.act_window update keeps
+                 whatever the XML leaves out. Omitting these two left a
+                 purchase.order.line search view and a group_by on
+                 lgd_invoice_number bound to a purchase.order action, which is
+                 what raised "Unknown field lgd_certificate". -->
+            <field name="search_view_id" ref="view_lgd_qc_order_search"/>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">Nothing to inspect.</p>
+                <p>Confirm receipt of a stone and its invoice appears here.</p>
+            </field>
+        </record>
+
+        <record id="action_lgd_qc_to_inspect_list_view" model="ir.actions.act_window.view">
+            <field name="sequence">1</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_qc_to_inspect_list"/>
+            <field name="act_window_id" ref="action_lgd_qc_to_inspect"/>
+        </record>
+
+        <record id="action_lgd_qc_to_inspect_form_view" model="ir.actions.act_window.view">
+            <field name="sequence">2</field>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="view_lgd_qc_inspection_form"/>
+            <field name="act_window_id" ref="action_lgd_qc_to_inspect"/>
+        </record>
+
+        <!-- Reason list, Configuration only. -->
+        <record id="view_lgd_qc_fail_reason_list" model="ir.ui.view">
+            <field name="name">lgd.qc.fail.reason.list</field>
+            <field name="model">lgd.qc.fail.reason</field>
+            <field name="arch" type="xml">
+                <list string="QC Fail Reasons" editable="bottom">
+                    <field name="sequence" widget="handle"/>
+                    <field name="name"/>
+                    <field name="active" widget="boolean_toggle"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_qc_fail_reason" model="ir.actions.act_window">
+            <field name="name">QC Fail Reasons</field>
+            <field name="res_model">lgd.qc.fail.reason</field>
+            <field name="view_mode">list</field>
+        </record>
+
+    </data>
+</odoo>

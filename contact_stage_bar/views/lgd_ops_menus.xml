@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Three app roots, each visible only to its own team plus
+             Administration. These replace the old UI-created "Logistics" and
+             "Quality" menus, which have no XML ID and are deleted at go-live -->
+
+        <!-- ─────────────── Logistics ─────────────── -->
+        <record id="menu_lgd_logistics_root" model="ir.ui.menu">
+            <field name="name">Logistics</field>
+            <field name="parent_id" eval="False"/>
+            <field name="sequence">6</field>
+            <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
+            <field name="groups_id" eval="[(6, 0, [
+                ref('contact_stage_bar.group_lgd_logistics'),
+                ref('base.group_system')])]"/>
+        </record>
+
+        <menuitem id="menu_lgd_expected_stones"
+                  name="Expected Stones"
+                  parent="menu_lgd_logistics_root"
+                  action="action_lgd_expected_stones"
+                  sequence="1"/>
+
+        <menuitem id="menu_lgd_handover_qc"
+                  name="Hand over to QC"
+                  parent="menu_lgd_logistics_root"
+                  action="action_lgd_handover_qc"
+                  sequence="2"/>
+
+        <menuitem id="menu_lgd_returns_vendor"
+                  name="Returns to Vendor"
+                  parent="menu_lgd_logistics_root"
+                  action="action_lgd_returns_vendor"
+                  sequence="3"/>
+
+        <menuitem id="menu_lgd_logistics_config"
+                  name="Configuration"
+                  parent="menu_lgd_logistics_root"
+                  sequence="90"
+                  groups="base.group_system"/>
+
+        <menuitem id="menu_lgd_inward_reject_reason"
+                  name="Inward Reject Reasons"
+                  parent="menu_lgd_logistics_config"
+                  action="action_lgd_inward_reject_reason"
+                  sequence="1"
+                  groups="base.group_system"/>
+
+        <!-- ─────────────── Quality Control ─────────────── -->
+        <record id="menu_lgd_qc_root" model="ir.ui.menu">
+            <field name="name">Quality Control</field>
+            <field name="parent_id" eval="False"/>
+            <field name="sequence">7</field>
+            <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
+            <field name="groups_id" eval="[(6, 0, [
+                ref('contact_stage_bar.group_lgd_quality'),
+                ref('base.group_system')])]"/>
+        </record>
+
+        <menuitem id="menu_lgd_qc_receive"
+                  name="Receive from Logistics"
+                  parent="menu_lgd_qc_root"
+                  action="action_lgd_qc_receive"
+                  sequence="1"/>
+
+        <menuitem id="menu_lgd_qc_to_inspect"
+                  name="To Inspect"
+                  parent="menu_lgd_qc_root"
+                  action="action_lgd_qc_to_inspect"
+                  sequence="2"/>
+
+        <menuitem id="menu_lgd_qc_config"
+                  name="Configuration"
+                  parent="menu_lgd_qc_root"
+                  sequence="90"
+                  groups="base.group_system"/>
+
+        <menuitem id="menu_lgd_qc_fail_reason"
+                  name="QC Fail Reasons"
+                  parent="menu_lgd_qc_config"
+                  action="action_lgd_qc_fail_reason"
+                  sequence="1"
+                  groups="base.group_system"/>
+
+        <!-- ─────────────── Inventory Acceptance ─────────────── -->
+        <record id="menu_lgd_inventory_root" model="ir.ui.menu">
+            <field name="name">Inventory Acceptance</field>
+            <field name="parent_id" eval="False"/>
+            <field name="sequence">8</field>
+            <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
+            <field name="groups_id" eval="[(6, 0, [
+                ref('contact_stage_bar.group_lgd_inventory'),
+                ref('base.group_system')])]"/>
+        </record>
+
+        <menuitem id="menu_lgd_awaiting_acceptance"
+                  name="Awaiting Acceptance"
+                  parent="menu_lgd_inventory_root"
+                  action="action_lgd_awaiting_acceptance"
+                  sequence="1"/>
+
+        <!-- ─────────────── Ready to Commit ───────────────
+             Procurement keeps working in the Purchase app, so this one hangs
+             off the existing Purchase menu rather than a root of its own. -->
+        <menuitem id="menu_lgd_ready_to_commit"
+                  name="Ready to Commit"
+                  parent="purchase.menu_procurement_management"
+                  action="action_lgd_ready_to_commit"
+                  sequence="15"
+                  groups="contact_stage_bar.group_lgd_procurement,base.group_system"/>
+
+    </data>
+</odoo>

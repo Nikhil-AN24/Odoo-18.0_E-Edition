@@ -17,3 +17,7 @@ from . import ir_http
 from . import customer_rfq
 # from . import customer_onboarding
 from . import lgd_margin
+from . import lgd_ops_reasons
+from . import lgd_ops_purchase_line
+from . import lgd_ops_purchase_order
+from . import lgd_ops_audit
