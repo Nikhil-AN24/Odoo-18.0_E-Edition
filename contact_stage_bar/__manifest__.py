@@ -67,7 +67,6 @@
             'contact_stage_bar/static/src/js/hide_cog_menu.js',
             'contact_stage_bar/static/src/js/hide_replenish.js',
             'contact_stage_bar/static/src/css/rfq_form.css',
-            'contact_stage_bar/static/src/js/lgd_collector_autofill.js',
         ],
     },
     "installable": True,

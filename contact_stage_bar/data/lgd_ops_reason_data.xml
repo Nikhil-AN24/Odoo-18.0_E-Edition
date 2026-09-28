@@ -62,5 +62,8 @@
             <field name="sequence">99</field>
         </record>
 
+        <function model="purchase.order.line"
+                  name="_lgd_migrate_collector_column"/>
+
     </data>
 </odoo>

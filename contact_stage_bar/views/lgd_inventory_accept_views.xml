@@ -22,8 +22,10 @@
                     <field name="lgd_carat"/>
                     <field name="lgd_colour"/>
                     <field name="lgd_clarity"/>
+                    <field name="inr_currency_id" column_invisible="1"/>
+                    <field name="lgd_po_total" widget="monetary"
+                           options="{'currency_field': 'inr_currency_id'}"/>
                     <field name="lgd_set_label"/>
-                    <field name="lgd_set_incomplete" widget="boolean_toggle"/>
                     <field name="lgd_qc_decided_at"/>
                     <button name="action_lgd_accept" type="object"
                             string="Accept" class="btn-primary"/>

@@ -77,8 +77,44 @@ class PurchaseOrderLine(models.Model):
         ('vendor_delivers', 'Vendor delivers'),
         ('we_collect', 'We collect'),
     ], string='Collection', copy=False)
+
+    lgd_collector_set_id = fields.Many2one(
+        'res.users', string='Collected By (recorded)', copy=False)
     lgd_collector_id = fields.Many2one(
-        'res.users', string='Collected By', copy=False)
+        'res.users', string='Collected By', copy=False,
+        compute='_compute_lgd_collector_id',
+        inverse='_inverse_lgd_collector_id',
+        readonly=False, store=False)
+
+    @api.depends('lgd_collector_set_id')
+    @api.depends_context('uid')
+    def _compute_lgd_collector_id(self):
+        for line in self:
+            line.lgd_collector_id = line.lgd_collector_set_id or self.env.user
+
+    def _inverse_lgd_collector_id(self):
+        for line in self:
+            line.lgd_collector_set_id = line.lgd_collector_id
+
+    @api.model
+    def _lgd_migrate_collector_column(self):
+
+        self.env.cr.execute("""
+            SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'purchase_order_line'
+               AND column_name = 'lgd_collector_id'
+        """)
+        if not self.env.cr.fetchone():
+            return
+        self.env.cr.execute("""
+            UPDATE purchase_order_line
+               SET lgd_collector_set_id = lgd_collector_id
+             WHERE lgd_collector_id IS NOT NULL
+               AND lgd_collector_set_id IS NULL
+        """)
+        if self.env.cr.rowcount:
+            _logger.info("Moved %s recorded collector(s) to "
+                         "lgd_collector_set_id.", self.env.cr.rowcount)
 
     lgd_chk_certificate = fields.Boolean(string='Certificate no.', copy=False)
     lgd_chk_shape = fields.Boolean(string='Shape', copy=False)
@@ -141,6 +177,10 @@ class PurchaseOrderLine(models.Model):
 
     lgd_set_label = fields.Char(string='Set Label', copy=False)
     lgd_set_incomplete = fields.Boolean(string='Set Incomplete', copy=False)
+
+    lgd_po_total = fields.Monetary(
+        string='Pricing', related='order_id.grand_total',
+        currency_field='inr_currency_id', readonly=True)
     lgd_qc_result = fields.Selection(
         [('pass', 'Pass'), ('fail', 'Fail')], string='QC Result', copy=False)
     lgd_qc_decided_by = fields.Many2one(
@@ -204,15 +244,6 @@ class PurchaseOrderLine(models.Model):
             _logger.warning(
                 "lgd.commit_window_days is not a number (%r); using 7.", param)
             return 7
-
-    @api.onchange('lgd_collection_method')
-    def _onchange_lgd_collection_method(self):
-        """Stamp whoever is working the row as the collector, the moment they
-        touch it. Only fills a blank — an existing name is never overwritten,
-        so handing a stone to a colleague is just picking them in the cell."""
-        for line in self:
-            if line.lgd_collection_method and not line.lgd_collector_id:
-                line.lgd_collector_id = self.env.user
 
     # ── Responsible user helper ────────────────────────────────────────
     @api.model
@@ -388,8 +419,11 @@ class PurchaseOrderLine(models.Model):
             'lgd_received_by': self.env.uid,
             'lgd_received_at': now,
         })
-        self.filtered(lambda l: not l.lgd_collector_id).write(
-            {'lgd_collector_id': self.env.uid})
+        # Freeze the displayed collector into the stored field, so the row
+        # keeps showing who actually took the stone in rather than falling
+        # back to whoever opens the list next.
+        for line in self.filtered(lambda l: not l.lgd_collector_set_id):
+            line.lgd_collector_set_id = line.lgd_collector_id or self.env.user
         for line in self:
             line.order_id._lgd_log(
                 _("Stone received at inward: %s.") % line._lgd_stone_description())
