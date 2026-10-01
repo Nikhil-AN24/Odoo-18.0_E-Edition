@@ -1,12 +1,4 @@
 # -*- coding: utf-8 -*-
-"""Inventory custody of a stone, on the customer side (§4.1, §5.1–§5.3).
-
-Everything from Accept onwards is tracked on the sale order line: that is the
-record Dispatch works on, and the one the customer's invoice is built from.
-The vault is a tick and a timestamp, not a stock location (§2.2) — the stone
-is already in stock the moment Inventory accepts it.
-"""
-
 import logging
 
 from odoo import _, api, fields, models
@@ -25,7 +17,7 @@ LGD_DEAD_STATUSES = ('cancelled', 'replaced', 'not_available', 'qc_fail')
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
 
-    # ── Custody (§4.1) ──────────────────────────────────────────────────
+    # ── Custody ──────────────────────────────────────────────────
     lgd_accepted_at = fields.Datetime(
         string="Accepted into stock", copy=False, index=True)
     lgd_in_vault = fields.Boolean(string="In vault", copy=False)
@@ -35,6 +27,13 @@ class SaleOrderLine(models.Model):
     lgd_to_dispatch = fields.Boolean(string="With dispatch", copy=False)
     lgd_to_dispatch_by = fields.Many2one('res.users', copy=False)
     lgd_to_dispatch_at = fields.Datetime(copy=False)
+
+    lgd_vendor_memo = fields.Boolean(
+        string="On vendor memo", copy=False, index=True,
+        help="The stone is in our custody but still belongs to the vendor: "
+             "its purchase order is an open RFQ, so nothing is in stock and "
+             "nothing is payable. Confirming the PO buys it in and clears "
+             "this flag.")
 
     lgd_invoice_number = fields.Char(
         related='order_id.sdk_augmont_number', store=True, index=True,
@@ -69,7 +68,7 @@ class SaleOrderLine(models.Model):
             line.lgd_po_line_id = po_line
             line.lgd_set_incomplete = bool(po_line and po_line.lgd_set_incomplete)
 
-    # ── Shared operations helpers (§3.8) ────────────────────────────────
+    # ── Shared operations helpers ────────────────────────────────
     # Two-line delegates onto models/lgd_ops_mixin.py. The logic itself lives
     # in one place so the de-duplication cannot drift between models.
     @api.model
@@ -104,7 +103,7 @@ class SaleOrderLine(models.Model):
         if found:
             raise UserError("\n".join(found))
 
-    # ── §5.2 Placed in vault ────────────────────────────────────────────
+    # ── Placed in vault ────────────────────────────────────────────
     def action_lgd_place_in_vault(self):
         self._lgd_check_group(GROUP_INVENTORY)
         return self._lgd_action_place_in_vault()
@@ -127,7 +126,7 @@ class SaleOrderLine(models.Model):
             'lgd_vault_at': now,
         })
 
-        # Alert Dispatch once per order, not once per stone (§5.2 step 2).
+        # Alert Dispatch once per order, not once per stone.
         responsible = self._lgd_responsible_user(
             'lgd.dispatch_responsible_login', GROUP_SHIPMENT)
         for order in self.mapped('order_id'):
@@ -142,11 +141,11 @@ class SaleOrderLine(models.Model):
                 },
                 responsible)
 
-        # §5.2 step 3 (order._lgd_try_create_invoice) belongs to §6 and is not
+        # (order._lgd_try_create_invoice) belongs to and is not
         # wired yet — see the build note. Nothing here touches accounting.
         return True
 
-    # ── §5.3 Handed to Dispatch ─────────────────────────────────────────
+    # ── Handed to Dispatch ─────────────────────────────────────────
     def action_lgd_hand_to_dispatch(self):
         self._lgd_check_group(GROUP_INVENTORY)
         return self._lgd_action_hand_to_dispatch()

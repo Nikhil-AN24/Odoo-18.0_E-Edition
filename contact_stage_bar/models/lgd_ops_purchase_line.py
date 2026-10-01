@@ -13,8 +13,6 @@ GROUP_INVENTORY = 'contact_stage_bar.group_lgd_inventory'
 GROUP_PROCUREMENT = 'contact_stage_bar.group_lgd_procurement'
 GROUP_SYSTEM = 'base.group_system'
 
-# Stage -> (who did it, when), used to name the other user in the "already
-# processed" error (§8 preamble).
 _LGD_STAGE_ACTOR = {
     'received': ('lgd_received_by', 'lgd_received_at'),
     'rejected': ('lgd_rejected_by', 'lgd_rejected_at'),
@@ -26,11 +24,10 @@ _LGD_STAGE_ACTOR = {
     'returned': ('lgd_returned_by', 'lgd_returned_at'),
 }
 
-
 class PurchaseOrderLine(models.Model):
     _inherit = 'purchase.order.line'
 
-    # ── §7.1 Link and display (all read-only, from the core sale_line_id) ────
+    # ── Link and display (all read-only, from the core sale_line_id) ────
     lgd_invoice_number = fields.Char(
         related='sale_line_id.order_id.sdk_augmont_number',
         store=True, index=True, string='Invoice No.')
@@ -57,6 +54,7 @@ class PurchaseOrderLine(models.Model):
         ('with_qc', 'Handed to QC'),
         ('in_qc', 'With QC'),
         ('qc_passed', 'Passed QC'),
+        ('on_memo', 'Held on vendor memo'),
         ('in_inventory', 'In Inventory'),
         ('rejected', 'Rejected at inward'),
         ('failed', 'Failed QC'),
@@ -66,6 +64,12 @@ class PurchaseOrderLine(models.Model):
     ], string='Stage', index=True, copy=False,
         help="Empty means Expected. Written only by the Logistics/QC buttons "
              "and the go-live action.")
+    #: The RFQ/PO state, surfaced on the Inventory lists so a user can see at
+    #: a glance whether a stone can be accepted into stock or only held on
+    #: memo. Stored so the Awaiting Acceptance list can group and filter on it.
+    lgd_po_state = fields.Selection(
+        related='order_id.state', string='PO State', store=True, index=True)
+
     lgd_commit_deadline = fields.Date(
         compute='_compute_lgd_commit_deadline', store=True,
         string='Commit By')
@@ -99,7 +103,7 @@ class PurchaseOrderLine(models.Model):
 
     @api.model
     def _lgd_backfill_sale_line_links(self):
-        """Link historical PO lines to their order lines (§10.3).
+        """Link historical PO lines to their order lines.
 
         Everything downstream of inward reads sale_line_id, so a PO line
         without it is invisible to Logistics. Lines raised before the wizard
@@ -113,7 +117,7 @@ class PurchaseOrderLine(models.Model):
         Procurement to link by hand. Safe to re-run: already-linked lines are
         skipped, and a line is never relinked.
         """
-        # §10.3 scopes this to purchase/done orders. Draft and sent are
+        # Scopes this to purchase/done orders. Draft and sent are
         # included as well, deliberately: Expected Stones lists lines on
         # draft/sent/purchase orders, so a draft RFQ line with no link is
         # precisely the one that blocks Logistics at inward. The evidence
@@ -234,7 +238,7 @@ class PurchaseOrderLine(models.Model):
     lgd_set_incomplete = fields.Boolean(string='Set Incomplete', copy=False)
 
     # Computed through sudo, not related, on purpose. grand_total sums
-    # expected_net, which §10.6 restricts to Procurement/Accounting — a plain
+    # expected_net, which restricts to Procurement/Accounting — a plain
     # related field would make Inventory Acceptance raise AccessError for the
     # LGD Inventory group. Inventory is meant to see this one order total (it
     # is the figure Accept makes billable) and nothing else of the vendor cost
@@ -256,7 +260,7 @@ class PurchaseOrderLine(models.Model):
         'lgd.qc.fail.reason', string='Fail Reason', copy=False)
     lgd_fail_note = fields.Text(string='Fail Note', copy=False)
 
-    # ── Inventory and returns ──────────────────────────────────────────
+    # ── Inventory & returns ──────────────────────────────────────────
     lgd_accepted_by = fields.Many2one('res.users', string='Accepted By', copy=False)
     lgd_accepted_at = fields.Datetime(string='Accepted On', copy=False)
     lgd_return_method = fields.Selection([
@@ -282,7 +286,7 @@ class PurchaseOrderLine(models.Model):
 
     @api.depends('order_id.date_order')
     def _compute_lgd_commit_deadline(self):
-        """§5.2 — date_order + lgd.commit_window_days (default 7).
+        """date_order + lgd.commit_window_days (default 7).
 
         Informational only: it blocks nothing and cancels nothing."""
         days = self._lgd_commit_window_days()
@@ -311,19 +315,10 @@ class PurchaseOrderLine(models.Model):
                 "lgd.commit_window_days is not a number (%r); using 7.", param)
             return 7
 
-    # ── Go-live backfill for the §5.1 stamp ────────────────────────────
+    # ── Go-live backfill for the stamp ────────────────────────────
     @api.model
     def _lgd_backfill_accepted_stamp(self):
-        """Stamp lgd_accepted_at on the sale line of stones already accepted.
 
-        §5.1 stamps the customer side at the moment Accept runs, so stones
-        accepted before that code existed carry the stamp on the purchase line
-        only and would never appear on Awaiting Vault (§7.1). This copies the
-        Operations timestamp across for them.
-
-        Safe to re-run: a sale line that already carries a stamp is left
-        alone, so it never overwrites a later, more accurate value.
-        """
         lines = self.search([
             ('lgd_stage', '=', 'in_inventory'),
             ('sale_line_id', '!=', False),
@@ -337,7 +332,7 @@ class PurchaseOrderLine(models.Model):
                      len(lines))
         return len(lines)
 
-    # ── Shared operations helpers (§3.8) ────────────────────────────────
+    # ── Shared operations helpers ────────────────────────────────
     # Two-line delegates onto models/lgd_ops_mixin.py. The logic itself lives
     # in one place so the de-duplication cannot drift between models.
     @api.model
@@ -390,22 +385,7 @@ class PurchaseOrderLine(models.Model):
 
     # ── Which checks apply ─────────────────────────────────────────────
     def _lgd_required_checks(self, scope='all'):
-        """Ticks a stone must carry before Receive or Pass will run.
 
-        Deliberately empty. The §7.2 tick mechanism was dropped by decision:
-        the inward ``lgd_chk_*`` boxes and the per-note ``lgd_ok_*`` boxes are
-        no longer demanded, and none of them appears on a screen. QC reads the
-        order notes on the inspection grid and exercises judgement instead.
-
-        The method is kept rather than deleted because Receive (§8.3) and Pass
-        (§8.8) both call it through _lgd_missing_checks(), and because it is
-        the one place to re-introduce a requirement. Anything returned here
-        MUST have a cell on the QC form, or Pass becomes impossible and no
-        screen explains why — that was defect U4.
-
-        The fields themselves are untouched: they still hold whatever was
-        ticked before this change, so nothing is lost if the rule comes back.
-        """
         self.ensure_one()
         return []
 
@@ -770,7 +750,7 @@ class PurchaseOrderLine(models.Model):
             if line.order_id.state != 'purchase':
                 yield _("not confirmed yet. Procurement must confirm the PO first.")
 
-        self._lgd_guard(('qc_passed',), problems)
+        self._lgd_guard(('qc_passed', 'on_memo'), problems)
         now = fields.Datetime.now()
         for line in self:
             line._lgd_accept_chain()
@@ -779,14 +759,52 @@ class PurchaseOrderLine(models.Model):
                 'lgd_accepted_by': self.env.uid,
                 'lgd_accepted_at': now,
             })
-            # §5.1 — the join between Operations and the customer side. This
-            # stamp is what puts the stone on Inventory's Awaiting Vault list;
-            # without it §5.2 has nothing to work on. sudo() is required, not
-            # defensive: the Inventory group holds no write on
-            # sale.order.line beyond the ACL row, and this is a system stamp
-            # of a fact the user has just committed (§4.6.2).
+
             if line.sale_line_id:
-                line.sale_line_id.sudo().write({'lgd_accepted_at': now})
+                # Clearing lgd_vendor_memo is what "buying in" a memo stone
+                # means: its PO is confirmed, so it is owned and payable now.
+                line.sale_line_id.sudo().write({
+                    'lgd_accepted_at': now,
+                    'lgd_vendor_memo': False,
+                })
+        return True
+
+    # ── Take a stone into custody on vendor memo ───────────────────────
+    def action_lgd_take_on_memo(self):
+        self._lgd_check_group(GROUP_INVENTORY)
+        return self._lgd_action_take_on_memo()
+
+    def _lgd_action_take_on_memo(self):
+
+        def problems(line):
+            if line.order_id.state == 'purchase':
+                yield _("this purchase order is already confirmed — accept the "
+                        "stone into stock instead of holding it on memo.")
+            elif line.order_id.state not in ('draft', 'sent'):
+                yield _("the purchase order is %s; a stone can only be held on "
+                        "memo while the RFQ is open.") % line.order_id.state
+            if not line.sale_line_id:
+                yield _("not linked to an order line. Ask Procurement to link "
+                        "it first.")
+
+        self._lgd_guard(('qc_passed',), problems)
+        now = fields.Datetime.now()
+        for line in self:
+            line.write({
+                'lgd_stage': 'on_memo',
+                'lgd_accepted_by': self.env.uid,
+                'lgd_accepted_at': now,
+            })
+            # Same stamp Accept uses, so the stone reaches Awaiting Vault and
+            # can be dispatched — flagged so every screen downstream knows it
+            # is not ours. sudo() for the same reason.
+            line.sale_line_id.sudo().write({
+                'lgd_accepted_at': now,
+                'lgd_vendor_memo': True,
+            })
+            line.order_id._lgd_log(body=_(
+                "%s held on vendor memo — not purchased, not in stock."
+            ) % line._lgd_stone_description())
         return True
 
     # ── Mark returned to vendor ───────────────────────────────────────

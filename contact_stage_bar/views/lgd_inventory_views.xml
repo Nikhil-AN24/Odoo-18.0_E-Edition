@@ -8,6 +8,10 @@
                 <search string="Stones">
                     <field name="lgd_invoice_number" string="Invoice Number"/>
                     <field name="certificate" string="Certificate"/>
+                    <filter name="lgd_vendor_memo" string="On Vendor Memo"
+                            domain="[('lgd_vendor_memo', '=', True)]"/>
+                    <filter name="lgd_owned" string="Owned by us"
+                            domain="[('lgd_vendor_memo', '=', False)]"/>
                     <group expand="0" string="Group By">
                         <filter name="lgd_group_invoice" string="Invoice Number"
                                 context="{'group_by': 'lgd_invoice_number'}"/>
@@ -21,7 +25,8 @@
             <field name="name">lgd.awaiting.vault.list</field>
             <field name="model">sale.order.line</field>
             <field name="arch" type="xml">
-                <list string="Awaiting Vault" create="0" delete="0">
+                <list string="Awaiting Vault" create="0" delete="0"
+                      decoration-info="lgd_vendor_memo">
                     <header>
                         <button name="action_lgd_place_in_vault" type="object"
                                 string="Placed in vault" class="btn-primary"/>
@@ -32,7 +37,9 @@
                     <field name="carat_weight" string="Carat"/>
                     <field name="color" string="Colour"/>
                     <field name="clarity" string="Clarity"/>
-                    <field name="lgd_accepted_at" string="Accepted On"/>
+                    <field name="lgd_accepted_at" string="In Custody Since"/>
+                    <field name="lgd_vendor_memo" string="On Memo"
+                           widget="boolean_toggle" readonly="1"/>
                     <button name="action_lgd_place_in_vault" type="object"
                             string="Placed in vault" class="btn-link"/>
                 </list>
@@ -59,7 +66,8 @@
             <field name="model">sale.order.line</field>
             <field name="arch" type="xml">
                 <list string="In Vault" create="0" delete="0"
-                      decoration-muted="lgd_set_incomplete">
+                      decoration-muted="lgd_set_incomplete"
+                      decoration-info="lgd_vendor_memo">
                     <header>
                         <button name="action_lgd_hand_to_dispatch" type="object"
                                 string="Handed to Dispatch" class="btn-primary"/>
@@ -73,6 +81,8 @@
                     <field name="lgd_vault_by" string="Vaulted By"/>
                     <field name="lgd_vault_at" string="Vaulted On"/>
                     <field name="lgd_set_incomplete" string="Set Incomplete"
+                           widget="boolean_toggle" readonly="1"/>
+                    <field name="lgd_vendor_memo" string="On Memo"
                            widget="boolean_toggle" readonly="1"/>
                     <button name="action_lgd_hand_to_dispatch" type="object"
                             string="Handed to Dispatch" class="btn-link"/>
