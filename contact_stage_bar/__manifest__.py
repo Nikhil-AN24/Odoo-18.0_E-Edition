@@ -53,6 +53,7 @@
         "views/lgd_inventory_accept_views.xml",
         "views/lgd_ops_wizard_views.xml",
         "views/lgd_ops_menus.xml",
+        "views/lgd_inventory_views.xml",
         "report/sale_report_inherit.xml",
         "report/augmont_tax_invoice.xml",
         'data/augmont_retry_cron.xml',

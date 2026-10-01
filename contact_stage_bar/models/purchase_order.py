@@ -45,9 +45,13 @@ class PurchaseOrderLine(models.Model):
     )
 
 
+    # §10.6.2: vendor cost is Procurement/Accounting data. groups= here refuses
+    # the read over RPC as well as hiding the column, so an Operations user
+    # cannot reach the number even outside the UI.
     rate_usd = fields.Monetary(
         string='Procurement Price/carat',
         currency_field='source_currency_id',
+        groups='contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_accounting,base.group_system',
     )
 
     source_currency_id = fields.Many2one(
@@ -152,6 +156,7 @@ class PurchaseOrderLine(models.Model):
     per_ct_discounted_rate = fields.Monetary(
         string='Per ct. Discounted Rate', currency_field='source_currency_id',
         compute='_compute_per_ct_discounted_rate', store=True, readonly=True,
+        groups='contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_accounting,base.group_system',
         help="Procurement Price/carat less the vendor discount %. "
              "e.g. 100 - 1% = 99. Shown in the SO/RFQ currency.",
     )
@@ -162,6 +167,7 @@ class PurchaseOrderLine(models.Model):
     expected_net = fields.Monetary(
         string='Expected Net', currency_field='inr_currency_id',
         compute='_compute_expected_net', store=True, readonly=True,
+        groups='contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_accounting,base.group_system',
         help="Per ct. Discounted Rate x Carat. Always shown in INR.",
     )
 
@@ -302,7 +308,8 @@ class PurchaseOrder(models.Model):
     # INR) and NOTHING else; it never rewrites the Procurement Price/carat.
     # currency_name drives the USD-only visibility.
     currency_name = fields.Char(related='currency_id.name')
-    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2), tracking=True)
+    bank_rate = fields.Float(string="Bank Rate", digits=(16, 2), tracking=True,
+                             groups='contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_accounting,base.group_system')
 
     # Header mirror of the line-level flag. The Products grid (order_line) stays
     # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /

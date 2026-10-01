@@ -155,6 +155,24 @@ class SaleOrder(models.Model):
                 order.vat = False
                 order.ein_number = False
 
+    # ── Who may still touch Order Lines after confirmation ──────────────
+    can_edit_line_availability = fields.Boolean(
+        compute='_compute_can_edit_line_availability',
+        help="Mirrors sale.order.line.can_edit_availability at order level so "
+             "the Order Lines grid can stay editable for the roles that are "
+             "allowed to change Availability after the order is confirmed.")
+
+    def _compute_can_edit_line_availability(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        for order in self:
+            order.can_edit_line_availability = allowed
+
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
         Augmont Tax Invoice PDF, in one click.
@@ -2864,10 +2882,16 @@ class SaleOrderLine(models.Model):
             'final_price_unit': final_price_unit,
         }
 
-    def _replacement_create_po(self, product, vendor, gross_total):
+    def _replacement_create_po(self, product, vendor, gross_total, sale_line,
+                               price_per_carat=None):
         """Raise the vendor PO for the replacement: origin,
         order_number and location like the Add Product wizard, priced at gross
-        cost, with vendor terms filled from the stone classification."""
+        cost, with vendor terms filled from the stone classification.
+
+        sale_line is the replacement order line this PO exists to buy. It is
+        required, not optional: without sale_line_id the PO line never reaches
+        Logistics' Expected Stones, so the replacement stone is ordered from
+        the vendor and then silently drops out of the flow (§10.3, P10)."""
         self.ensure_one()
         order = self.order_id
         po = self.env['purchase.order'].create({
@@ -2888,12 +2912,18 @@ class SaleOrderLine(models.Model):
             'date_planned': fields.Datetime.now(),
             'stone_type': product.stone_type or self.stone_type,
             'stone_certification_type': self.stone_certification_type,
+            'sale_line_id': sale_line.id,
+            # "Procurement Price/carat" on the PO line. Without this only the
+            # gross total survived the wizard and the per-carat rate the buyer
+            # actually agreed was lost.
+            'rate_usd': price_per_carat or 0.0,
         })
         discount, days = po_line._get_vendor_terms(vendor)
         po_line.write({'discount_percent': discount, 'payment_days': days})
         return po
 
-    def _create_replacement(self, product, vendor, gross_total, price_outcome):
+    def _create_replacement(self, product, vendor, gross_total, price_outcome,
+                            price_per_carat=None):
         """Create the replacement line and its PO, then complete immediately or
         leave it pending Sales confirmation."""
         self.ensure_one()
@@ -2915,7 +2945,22 @@ class SaleOrderLine(models.Model):
             'replaces_line_id': self.id,
             'replacement_pending_sales': needs_sales,
         })
-        self._replacement_create_po(product, vendor, gross_total)
+        if not new_line:
+            # Belt and braces behind the exemption above. Carrying on here is
+            # what turned a blocked insert into lost data: a PO with no
+            # sale_line_id that can never reach Logistics, a Sales approval
+            # activity for a line that does not exist, and the original stone
+            # closed as Replaced with replaced_by_line_id empty.
+            raise UserError(_(
+                "The replacement line could not be created for %(stone)s, so "
+                "nothing was changed. Nothing has been replaced — please "
+                "report this with the order number (%(order)s)."
+            ) % {
+                'stone': self.product_template_id.display_name or self.id,
+                'order': order.name,
+            })
+        self._replacement_create_po(product, vendor, gross_total, new_line,
+                                    price_per_carat=price_per_carat)
         # Mark the original "Replaced" immediately on Submit — both paths.
         # When the change still needs Sales sign-off we ALSO raise the activity;
         # a later rejection reverts the original back to Not available.
@@ -3086,17 +3131,60 @@ class SaleOrderLine(models.Model):
     # family and any other internal group — sees it read-only.
     can_edit_availability = fields.Boolean(compute='_compute_can_edit_availability')
 
+    #: Statuses a person may still set by hand on a CONFIRMED order.
+    #: Everything omitted here is in flight or terminal — its status is owned
+    #: by the pack, dispatch and delivery steps, so it must not be re-typed
+    #: (that was the original complaint about Payment Pending). The pre-flight
+    #: Deliberately the minimum: diamond_booked is here only because a
+    #: replacement stone is born at that status on an already-confirmed order,
+    #: and Procurement must be able to move it on. Once it reaches confirmed it
+    #: locks like any other line.
+    _LGD_HAND_EDITABLE_STATUSES = (
+        'qc_fail',          # retire a stone QC rejected
+        'diamond_booked',   # a replacement, so Procurement can confirm it
+    )
+
     @api.depends_context('uid')
+    @api.depends('availability_status', 'order_id.state')
     def _compute_can_edit_availability(self):
+        """Who may change Availability, and on which lines.
+
+        Before the order is confirmed the grid works as it always has: the
+        Procurement roles set Diamond Booked / Confirmed / Not available while
+        the quotation is being built.
+
+        Once the order is confirmed, only the pre-flight statuses in
+        _LGD_HAND_EDITABLE_STATUSES stay open. A Payment Pending or Dispatched
+        line must not be re-typed by hand — its status is owned by the pack,
+        dispatch and delivery steps. A replacement stone is born at
+        diamond_booked on an already-confirmed order, so those stay editable
+        or the replacement could never be moved on to confirmed.
+        """
         user = self.env.user
-        allowed = (
+        allowed_role = (
             user.has_group('base.group_system')
             or user.has_group('contact_stage_bar.group_lgd_superadmin')
             or user.has_group('contact_stage_bar.group_lgd_procurement')
             or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
         )
         for line in self:
-            line.can_edit_availability = allowed
+            if not allowed_role:
+                line.can_edit_availability = False
+            elif line.order_id.state == 'draft':
+                line.can_edit_availability = True
+            else:
+                # Judge on the SAVED status, never the one being typed.
+                # Reading line.availability_status here flips this field to
+                # readonly the instant the user picks Cancelled — and Odoo
+                # omits readonly fields from the save payload, so the edit
+                # disappears on save with no error at all. _origin is the
+                # database-backed record, so the gate stays stable for the
+                # whole edit and only re-evaluates once the change is stored.
+                origin = line._origin
+                saved = (origin.availability_status if origin
+                         else line.availability_status)
+                line.can_edit_availability = (
+                    saved in self._LGD_HAND_EDITABLE_STATUSES)
 
     vendor_city = fields.Char(string="Vendor City",related='vendor_id.city')
     is_block = fields.Boolean(string="Block", default=False,readonly=True)
@@ -3346,7 +3434,19 @@ class SaleOrderLine(models.Model):
             # Only apply the guard to diamond_booked lines with no order_number.
             # Lines created from the website API always have order_number set, so
             # they will always pass through correctly.
-            if order_id and new_status == 'diamond_booked' and not has_order_number:
+            # The replacement engine is a legitimate creator, not a stray
+            # duplicate: _create_replacement already flags itself with
+            # from_replacement_engine, and a line that replaces another always
+            # carries replaces_line_id. Without this exemption the guard eats
+            # the replacement line on any order that has a stone in flight —
+            # which is exactly when a stone gets replaced — leaving the
+            # original marked Replaced with nothing to replace it.
+            is_replacement = (
+                self.env.context.get('from_replacement_engine')
+                or vals.get('replaces_line_id')
+            )
+            if (order_id and new_status == 'diamond_booked'
+                    and not has_order_number and not is_replacement):
                 order = self.env['sale.order'].browse(order_id)
                 # Check if ANY line on this order has already moved past 'confirmed'
                 in_flight_lines = order.order_line.filtered(

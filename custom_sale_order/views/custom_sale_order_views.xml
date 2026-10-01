@@ -271,9 +271,15 @@
 
 
     <!-- Smart button on Customer RFQ → the Offline Order(s) it created -->
+    <!-- Disabled: the "Offline Orders" smart button is hidden on the Customer
+         RFQ form. This view exists only to add that button, so switching the
+         whole view off removes it (and the otherwise-empty button box with
+         it) rather than leaving an invisible control behind. The button and
+         its action are left intact — set active back to True to restore it. -->
     <record id="view_customer_rfq_form_offline_button" model="ir.ui.view">
         <field name="name">customer.rfq.form.offline.button</field>
         <field name="model">customer.rfq</field>
+        <field name="active" eval="False"/>
         <field name="inherit_id" ref="contact_stage_bar.view_customer_rfq_form"/>
         <field name="arch" type="xml">
             <xpath expr="//div[@class='oe_title']" position="before">

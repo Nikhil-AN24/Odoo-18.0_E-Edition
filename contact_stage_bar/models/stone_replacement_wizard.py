@@ -193,7 +193,8 @@ class StoneReplacement(models.TransientModel):
 
         gross_total = (self.gross_price_per_carat or 0.0) * (self.carat_value or 0.0)
         outcome = line._replacement_price_outcome(product, gross_total)
-        line._create_replacement(product, self.vendor_id, gross_total, outcome)
+        line._create_replacement(product, self.vendor_id, gross_total, outcome,
+                                 price_per_carat=self.gross_price_per_carat)
 
         message = (
             _("Replacement created and sent to Sales for confirmation.")

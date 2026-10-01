@@ -1,7 +1,64 @@
+import logging
+
 from odoo import models, api
+
+_logger = logging.getLogger(__name__)
 
 class IrUiMenuHideSaleExtras(models.Model):
     _inherit = 'ir.ui.menu'
+
+    #: Root menus someone built through the UI that no module owns. They
+    #: carry no XML ID, so no data file can remove them — they have to be
+    #: deleted per database. Logistics/QC PRD §12.5 lists this as a go-live
+    #: step and names "Logistics" and "Quality" explicitly.
+    _LGD_STALE_UI_ROOTS = ('Logistics', 'Quality', 'Dispatch',
+                           'LGD Inventory', 'Orders', 'Margins')
+
+    @api.model
+    def _lgd_remove_stale_ui_menus(self, names=None):
+        """Delete hand-made root menus that duplicate the real ones.
+
+        Deliberately conservative — a menu is only removed when all four hold:
+
+        * it is a root menu (no parent);
+        * its name is in the list, defaulting to _LGD_STALE_UI_ROOTS;
+        * **no module owns it** (no ir.model.data row), so the real
+          contact_stage_bar roots can never match; and
+        * it has no children, which protects menus still in use such as
+          "Mail Server" and "Amplitude".
+
+        Safe to re-run: a second call finds nothing. Returns how many went.
+        Deleting the menu does not touch the action it pointed at — core's
+        Receipts action stays where the Inventory app uses it.
+        """
+        names = list(names or self._LGD_STALE_UI_ROOTS)
+        # ir.ui.menu.search_fetch filters every result through a cached set of
+        # menus visible to the current user, so a plain search can silently
+        # miss rows. 'ir.ui.menu.full_list' (core's own key — dots, not
+        # underscores) turns that filter off; flushing first makes sure
+        # anything written earlier in this transaction is on disk to be found.
+        self.env.flush_all()
+        self.env.registry.clear_cache()
+        owned = set(self.env['ir.model.data'].sudo().search(
+            [('model', '=', 'ir.ui.menu')]).mapped('res_id'))
+        stale = self.sudo().with_context(**{
+            'ir.ui.menu.full_list': True,
+        }).search([
+            ('parent_id', '=', False),
+            ('name', 'in', names),
+        ]).filtered(lambda m: m.id not in owned and not m.child_id)
+
+        if not stale:
+            _logger.info("No stale UI-created root menus found.")
+            return 0
+
+        for menu in stale:
+            _logger.info("Removing stale UI root menu %s (id=%s, action=%s).",
+                         menu.name, menu.id, menu.action or 'none')
+        count = len(stale)
+        stale.unlink()
+        self.env.registry.clear_cache()
+        return count
 
     @api.model
     def _reparent_customer_rfq(self):
@@ -83,6 +140,8 @@ class IrUiMenuHideSaleExtras(models.Model):
             'sales': user.has_group('contact_stage_bar.group_lgd_sales'),
             'logistics': user.has_group('contact_stage_bar.group_lgd_logistics'),
             'shipment': user.has_group('contact_stage_bar.group_lgd_shipment'),
+            'quality': user.has_group('contact_stage_bar.group_lgd_quality'),
+            'inventory': user.has_group('contact_stage_bar.group_lgd_inventory'),
             'accounting': user.has_group('contact_stage_bar.group_lgd_accounting'),
             'hr': user.has_group('contact_stage_bar.group_lgd_hr'),
             'marketing': user.has_group('contact_stage_bar.group_lgd_marketing'),
@@ -105,6 +164,7 @@ class IrUiMenuHideSaleExtras(models.Model):
             
         if lgd_groups['logistics']:
             allowed_root_refs.add('custom_sale_order.menu_custom_sale_root')
+            allowed_root_refs.add('contact_stage_bar.menu_lgd_logistics_root')
             allowed_root_names.update(['Logistics', 'Offline order'])
             
         if lgd_groups['shipment']:
@@ -112,6 +172,17 @@ class IrUiMenuHideSaleExtras(models.Model):
             allowed_root_refs.update(['stock.menu_stock_root'])
             allowed_root_names.update(['Dispatch', 'Logistics', 'LGD Inventory', 'Inventory'])
             
+        if lgd_groups['quality']:
+            allowed_root_refs.add('contact_stage_bar.menu_lgd_qc_root')
+
+        if lgd_groups['inventory']:
+            # Inventory works inside Odoo's own Inventory app now, under the
+            # "LGD Inventory" menu — there is no Inventory Acceptance root any
+            # more. Allowing the app root is what makes those submenus
+            # reachable; group_lgd_inventory implies stock.group_stock_user,
+            # so the app itself is already permitted.
+            allowed_root_refs.add('stock.menu_stock_root')
+
         if lgd_groups['accounting']:
             # Full Accounting module, plus VIEW-ONLY access to the Sales & Procurement apps.
             allowed_root_refs.update([

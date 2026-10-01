@@ -511,28 +511,44 @@ class StockPicking(models.Model):
 
     sale_id = fields.Many2one('sale.order', store=True)
 
+    # §10.6 / §11 information barrier. Customer identity, address and contact
+    # details are not Operations data: Logistics, QC and Inventory handle the
+    # stone, never the person it is for. groups= is set on the Python field as
+    # well as in the view so an RPC read is refused too, not just hidden in the
+    # UI. These are related fields, which Odoo recomputes as superuser
+    # (fields.py: related_sudo defaults to True), so restricting them does not
+    # break the recompute for anyone.
     shipping_address = fields.Text(
         related='sale_id.shipping_address',
         string='Shipping Address',
-        
+        groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system',
     )
     billing_address = fields.Text(
         related='sale_id.billing_address',
         string='Billing Address',
-        store=True
+        store=True,
+        groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system',
     )
     sdk_augmont_number = fields.Char(related='sale_id.sdk_augmont_number',string="Online Order Number")
     state = fields.Selection(selection_add=[('pack', 'Packed')])
-    phone = fields.Char(related="partner_id.phone", string="Phone", store=True)
-    email_id = fields.Char(related="partner_id.email", string="Email Id", store=True)
+    phone = fields.Char(related="partner_id.phone", string="Phone", store=True,
+                        groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
+    email_id = fields.Char(related="partner_id.email", string="Email Id", store=True,
+                           groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
 
-    street1 = fields.Char(related='partner_id.street', string="Street1")
+    street1 = fields.Char(related='partner_id.street', string="Street1",
+                          groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
 
-    street_2 = fields.Char(related='partner_id.street2', string="Street 2")
-    city = fields.Char(related='partner_id.city', string="City")
-    state_id = fields.Many2one(related='partner_id.state_id', string="State")
-    zip = fields.Char(related='partner_id.zip', string="ZIP")
-    country = fields.Many2one(related='partner_id.country_id', string="Country")
+    street_2 = fields.Char(related='partner_id.street2', string="Street 2",
+                           groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
+    city = fields.Char(related='partner_id.city', string="City",
+                       groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
+    state_id = fields.Many2one(related='partner_id.state_id', string="State",
+                               groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
+    zip = fields.Char(related='partner_id.zip', string="ZIP",
+                      groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
+    country = fields.Many2one(related='partner_id.country_id', string="Country",
+                          groups='contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system')
 
     tracker_name = fields.Char(string="Delivered By")
     tracking_number = fields.Char(string="Courier Number",copy="False")

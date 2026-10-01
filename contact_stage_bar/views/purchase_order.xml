@@ -166,6 +166,9 @@
 
             <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']" position="after">
                 <field name="expected_net" string="Expected Net" widget="monetary" options="{'currency_field': 'inr_currency_id'}" optional="show" readonly="1"/>
+
+                <field name="sale_line_id" string="Order Line" optional="hide"/>
+                <field name="lgd_invoice_number" string="Invoice No." optional="hide" readonly="1"/>
             </xpath>
 
             <xpath expr="//page[@name='purchase_delivery_invoice']" position="attributes">

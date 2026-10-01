@@ -2,16 +2,12 @@
 <odoo>
     <data>
 
-        <!-- Three app roots, each visible only to its own team plus
-             Administration. These replace the old UI-created "Logistics" and
-             "Quality" menus, which have no XML ID and are deleted at go-live -->
-
         <!-- ─────────────── Logistics ─────────────── -->
         <record id="menu_lgd_logistics_root" model="ir.ui.menu">
             <field name="name">Logistics</field>
             <field name="parent_id" eval="False"/>
             <field name="sequence">6</field>
-            <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
+            <field name="web_icon">contact_stage_bar,static/description/logistics_icon.png</field>
             <field name="groups_id" eval="[(6, 0, [
                 ref('contact_stage_bar.group_lgd_logistics'),
                 ref('base.group_system')])]"/>
@@ -53,7 +49,8 @@
             <field name="name">Quality Control</field>
             <field name="parent_id" eval="False"/>
             <field name="sequence">7</field>
-            <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
+            <!-- Its own icon, so it is not mistaken for Sales in the app grid. -->
+            <field name="web_icon">contact_stage_bar,static/description/quality_icon.png</field>
             <field name="groups_id" eval="[(6, 0, [
                 ref('contact_stage_bar.group_lgd_quality'),
                 ref('base.group_system')])]"/>
@@ -85,25 +82,14 @@
                   groups="base.group_system"/>
 
         <!-- ─────────────── Inventory Acceptance ─────────────── -->
-        <record id="menu_lgd_inventory_root" model="ir.ui.menu">
-            <field name="name">Inventory Acceptance</field>
-            <field name="parent_id" eval="False"/>
-            <field name="sequence">8</field>
-            <field name="web_icon">contact_stage_bar,static/description/icon.png</field>
-            <field name="groups_id" eval="[(6, 0, [
-                ref('contact_stage_bar.group_lgd_inventory'),
-                ref('base.group_system')])]"/>
-        </record>
-
         <menuitem id="menu_lgd_awaiting_acceptance"
                   name="Awaiting Acceptance"
-                  parent="menu_lgd_inventory_root"
+                  parent="contact_stage_bar.menu_lgd_inventory"
                   action="action_lgd_awaiting_acceptance"
-                  sequence="1"/>
+                  sequence="1"
+                  groups="contact_stage_bar.group_lgd_inventory,base.group_system"/>
 
-        <!-- ─────────────── Ready to Commit ───────────────
-             Procurement keeps working in the Purchase app, so this one hangs
-             off the existing Purchase menu rather than a root of its own. -->
+        <!-- ─────────────── Procurement Ready to Commit ─────────────── -->
         <menuitem id="menu_lgd_ready_to_commit"
                   name="Ready to Commit"
                   parent="purchase.menu_procurement_management"

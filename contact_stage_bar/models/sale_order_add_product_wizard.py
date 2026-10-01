@@ -36,39 +36,14 @@ class SaleOrderAddProductWizard(models.TransientModel):
             })
             product.action_fetch_certificate_data()
 
-        # ============================================
-        # NEW: ALWAYS CREATE RFQ WHEN PRODUCT IS ADDED
-        # ============================================
-        vendor = product.seller_ids[:1].partner_id
-        if not vendor:
-            raise UserError("Vendor is missing for this product. Cannot create purchase order.")
-
-        # NEW: PO VALUES
-        po_vals = {
-            'partner_id': vendor.id,
-            'origin': order.name,                  # NEW
-            'location': order.location,            # NEW
-            'order_number': order.sdk_augmont_number,  # NEW
-        }
-
-        # NEW: CREATE RFQ
-        purchase_order = self.env['purchase.order'].create(po_vals)
-
-        # NEW: ADD PRODUCT LINE TO RFQ
-        self.env['purchase.order.line'].create({
-            'order_id': purchase_order.id,
-            'product_id': product.product_variant_id.id,
-            'name': product.name,
-            'product_qty': 1,
-            'price_unit': product.final_price,
-            'date_planned': fields.Datetime.now(),
-        })
-
-        # NEW: LOG MESSAGE IN SALE ORDER
-        order.message_post(
-            body=f"New RFQ <b>{purchase_order.name}</b> created automatically for the added product."
-        )
-
+        # Order of work matters here. The sale order line has to exist before
+        # the RFQ, because the PO line carries sale_line_id back to it — that
+        # link is what puts the stone on Logistics' Expected Stones list and
+        # what every later stage reads (§10.3). Raising the RFQ first, as this
+        # did, left the PO line orphaned and the stone invisible to Logistics.
+        #
+        # The duplicate check also has to run before anything is created, so a
+        # rejected add never raises an RFQ at all.
         duplicate_line = order.order_line.filtered(
             lambda l: l.certificate == product.certificate and
                     l.stock_number == product.stock_number and
@@ -85,32 +60,55 @@ class SaleOrderAddProductWizard(models.TransientModel):
                 "Please add a different product."
             )
 
-        existing_line = order.order_line.filtered(
-            lambda l: l.product_id == product.product_variant_id
-        )
+        vendor = product.seller_ids[:1].partner_id
+        if not vendor:
+            raise UserError("Vendor is missing for this product. Cannot create purchase order.")
 
-        if existing_line:
-            existing_line.product_uom_qty += 1
-        else:
-            line_vals = {
-                'order_id': order.id,
-                'is_custom_product': True,
-                'product_id': product.product_variant_id.id,
-                'product_template_id': product.id,
-                'name': product.name,
-                'product_uom_qty': 1,
-                'price_unit': product.final_price_margin if product.final_price_margin > 0 else product.final_price,
-                'final_price': product.list_price,
-                'vendor_id': product.seller_ids[:1].partner_id.id if product.seller_ids else False,
-            }
-            # If the order already has a QC-failed / unavailable line, this product
-            # is a replacement added for the remaining flow — start it fresh at
-            # diamond_booked so it re-enters the availability workflow. Normal
-            # (draft) adds are left untouched.
-            if any(l.availability_status in ('qc_fail', 'not_available')
-                   for l in order.order_line):
-                line_vals['availability_status'] = 'diamond_booked'
-            order.order_line.create(line_vals)
+        line_vals = {
+            'order_id': order.id,
+            'is_custom_product': True,
+            'product_id': product.product_variant_id.id,
+            'product_template_id': product.id,
+            'name': product.name,
+            'product_uom_qty': 1,
+            'price_unit': product.final_price_margin if product.final_price_margin > 0 else product.final_price,
+            'final_price': product.list_price,
+            'vendor_id': vendor.id,
+        }
+        # If the order already has a QC-failed / unavailable line, this product
+        # is a replacement added for the remaining flow — start it fresh at
+        # diamond_booked so it re-enters the availability workflow. Normal
+        # (draft) adds are left untouched.
+        if any(l.availability_status in ('qc_fail', 'not_available')
+               for l in order.order_line):
+            line_vals['availability_status'] = 'diamond_booked'
+
+        # Always a new line, never product_uom_qty += 1 on an existing one
+        # (§10.3, P9). Each physical stone is tracked on its own through
+        # inward, QC and acceptance, so two stones sharing one order line
+        # cannot be received, passed or failed independently.
+        sale_line = order.order_line.create(line_vals)
+
+        purchase_order = self.env['purchase.order'].create({
+            'partner_id': vendor.id,
+            'origin': order.name,
+            'location': order.location,
+            'order_number': order.sdk_augmont_number,
+        })
+
+        self.env['purchase.order.line'].create({
+            'order_id': purchase_order.id,
+            'product_id': product.product_variant_id.id,
+            'name': product.name,
+            'product_qty': 1,
+            'price_unit': product.final_price,
+            'date_planned': fields.Datetime.now(),
+            'sale_line_id': sale_line.id,
+        })
+
+        order.message_post(
+            body=f"New RFQ <b>{purchase_order.name}</b> created automatically for the added product."
+        )
 
     # def action_add_product(self):
     #     self.ensure_one()
