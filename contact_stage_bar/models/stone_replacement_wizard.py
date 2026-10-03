@@ -1,8 +1,6 @@
 import re
-
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
-
 
 class StoneReplacement(models.TransientModel):
     """Replace Stone wizard. Two entry modes:
@@ -95,15 +93,30 @@ class StoneReplacement(models.TransientModel):
             raise UserError(_("Enter the IGI report number first."))
         result = igi_service.fetch_by_report_number(self.env, report)
         if not result or result.get('error'):
+
+            error = (result or {}).get('error')
+            if error == 'not_found':
+                message = _("Report %s is not registered with IGI. Please "
+                            "check the number, or enter the specs by hand."
+                            ) % report
+                kind = 'warning'
+            elif error == 'not_configured':
+                message = _("IGI lookup is not set up correctly on this "
+                            "system, so no number can be checked. Please tell "
+                            "an administrator and enter the specs by hand.")
+                kind = 'danger'
+            else:
+                message = _("IGI is temporarily unavailable. Please enter the "
+                            "specs by hand; you can retry later.")
+                kind = 'warning'
             self.mode = 'manual'
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _("IGI"),
-                    'message': _("IGI could not return report %s — please enter "
-                                 "the specs by hand.") % report,
-                    'type': 'warning',
+                    'message': message,
+                    'type': kind,
                     'sticky': False,
                 },
             }

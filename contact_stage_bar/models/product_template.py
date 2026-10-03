@@ -147,7 +147,6 @@ class ProductTemplate(models.Model):
                     parts.append(f"{weight_float:.2f}ct")
                 except (ValueError, IndexError):
                     parts.append(f"{record.weight_carat}ct")
-
             
             # Color
             if record.color:
@@ -155,22 +154,17 @@ class ProductTemplate(models.Model):
                 
             # Clarity
             if record.clarity:
-                parts.append(record.clarity)
-            
+                parts.append(record.clarity)            
                 
              # Cut
             if record.cut:
                 short = GRADE_SHORT_NAMES.get(record.cut.upper(), record.cut)
                 parts.append(short)
 
-            
-
             # Polish
             if record.polish:
                 short = GRADE_SHORT_NAMES.get(record.polish.upper(), record.polish)
                 parts.append(short)
-
-            
 
             # Symmetry
             if record.symmetry:
@@ -277,12 +271,16 @@ class ProductTemplate(models.Model):
     
     def copy(self, default=None):
         self.ensure_one()
-        if default is None:
-            default = {}
-        default['name'] = '[DUPLICATE]'  
-        return super().copy(default)
-
-                
+        default = dict(default or {})
+        default.setdefault('name', '[DUPLICATE]')
+        new = super().copy(default)
+        if (new.name or '').strip() == '[DUPLICATE]':
+            composed = new._name_from_self()
+            if composed:
+                # super() so this does not re-enter the spec mirroring below:
+                # nothing about the stone changed, only its label.
+                super(ProductTemplate, new).write({'name': composed})
+        return new
 
     def action_fetch_igi_data(self):
         from ..services import igi_service
@@ -303,12 +301,24 @@ class ProductTemplate(models.Model):
         if result.get('error') == 'not_found':
             return self._igi_notify(
                 'warning',
-                _("IGI could not find report %s. Please check the number or "
-                  "enter specs manually.") % self.certificate,
+                _("IGI has no report %s. Please check the number, or enter "
+                  "the specs manually. (If you are sure the number is right, "
+                  "IGI may be having trouble — try again shortly.)"
+                  ) % self.certificate,
+            )
+        if result.get('error') == 'not_configured':
+            return self._igi_notify(
+                'danger',
+                _("IGI lookup is not set up correctly on this system, so no "
+                  "number can be checked. Please tell an administrator and "
+                  "enter the specs manually for now."),
             )
         if result.get('error') == 'unavailable':
+            detail = result.get('detail')
             return self._igi_notify(
                 'warning',
+                _("IGI says: %s Please enter specs manually; you can retry "
+                  "later.") % detail if detail else
                 _("IGI is temporarily unavailable. Please enter specs "
                   "manually; you can retry later."),
             )
@@ -577,8 +587,6 @@ class ProductTemplate(models.Model):
                 rec.final_price = record.get("finalPrice")
                 rec.final_price_margin = record.get("finalPriceMargin") or 0.0
                 rec.price_per_carat = record.get("pricePerCaratMargin") or 0.0
-
-
                 rec.barcode = record.get("certNumber") or False
                 rec.fluorescence_intensity  = record.get("fluorescenceIntensity") or False
                 rec.fluorescence_color  = record.get("fluorescenceColor") or False
@@ -629,7 +637,6 @@ class ProductTemplate(models.Model):
                 rec.description = f"API request failed: {str(e)}"
                 _logger.exception("API request failed for %s", url)
       
-
 class ProductProduct(models.Model):
     _inherit = "product.product"
 
@@ -651,12 +658,8 @@ class ProductProduct(models.Model):
         self.ensure_one()
         return self.product_tmpl_id.action_fetch_igi_data()
 
-
-
 class ProductSupplierinfo(models.Model):
     _inherit = 'product.supplierinfo'
 
     vendor_final_price = fields.Float(string="Vendor Final Price")
     vendor_per_carat_price = fields.Float(string="Vendor Per Carat Price")
-    
-    

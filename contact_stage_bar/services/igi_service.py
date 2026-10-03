@@ -1,13 +1,11 @@
-
 import logging
 import re
-
 import requests
-
 _logger = logging.getLogger(__name__)
 
 _ENDPOINT = 'https://api.igi.org/ReportDetail.php'
-_TIMEOUT = 15  # seconds
+_DEFAULT_TIMEOUT = 30  # seconds
+_TIMEOUT_PARAM = 'igi.timeout_seconds'
 _HEADER_KEY = 'augmont'
 _CONFIG_PARAM = 'igi.header_token'
 
@@ -43,26 +41,42 @@ def fetch_by_report_number(env, report_no):
     token = env['ir.config_parameter'].sudo().get_param(_CONFIG_PARAM)
     if not token:
         _logger.warning("IGI: missing ir.config_parameter '%s'", _CONFIG_PARAM)
-        return {'error': 'unavailable'}
+        return {'error': 'not_configured'}
+
+    try:
+        timeout = int(env['ir.config_parameter'].sudo().get_param(
+            _TIMEOUT_PARAM, _DEFAULT_TIMEOUT))
+    except (TypeError, ValueError):
+        timeout = _DEFAULT_TIMEOUT
 
     try:
         resp = requests.get(
             _ENDPOINT,
             params={'Printno': str(report_no).strip()},
             headers={_HEADER_KEY: token, 'Accept': 'application/json'},
-            timeout=_TIMEOUT,
+            timeout=timeout,
             allow_redirects=True,
         )
     except requests.RequestException as exc:
         _logger.warning("IGI: transport error for %s: %s", report_no, exc)
         return {'error': 'unavailable'}
 
-    if resp.status_code == 400:
+    # 400, 404 and — in IGI's case — 502 all mean "no such report".
+    # 502 is not a typo. 
+    # A genuine IGI outage looks different and is still handled below: 503
+    # with a JSON body carrying reason="upstream_database_error".
+    if resp.status_code in (400, 404, 502):
         return {'error': 'not_found'}
+    # The credential was refused. That is an administrator's problem, not the
+    # user's, and it fails identically for every number.
+    if resp.status_code in (401, 403):
+        _logger.warning("IGI: credential refused (HTTP %s) — check '%s'",
+                        resp.status_code, _CONFIG_PARAM)
+        return {'error': 'not_configured'}
     if resp.status_code != 200:
         _logger.warning("IGI: HTTP %s for %s; head=%r",
                         resp.status_code, report_no, resp.text[:200])
-        return {'error': 'unavailable'}
+        return {'error': 'unavailable', 'detail': _igi_error_text(resp)}
 
     body = resp.text or ''
     if '<b>' in body[:100] or '<html' in body[:100].lower():
@@ -80,6 +94,51 @@ def fetch_by_report_number(env, report_no):
 
     return _normalise(payload[0])
 
+def healthcheck(env, report_no='578344353'):
+
+    import time
+    started = time.time()
+    result = fetch_by_report_number(env, report_no)
+    elapsed = round(time.time() - started, 1)
+
+    error = (result or {}).get('error')
+    if not result:
+        status, verdict = 'error', "No report number was supplied."
+    elif not error:
+        status, verdict = 'ok', (
+            "IGI is working. Report %s returned specs." % report_no)
+    elif error == 'not_configured':
+        status, verdict = 'not_configured', (
+            "Our side: the 'igi.header_token' system parameter is missing or "
+            "IGI refused it. Lookups cannot work until it is set.")
+    elif error == 'not_found':
+        status, verdict = 'not_found', (
+            "IGI is working, but it has no report %s. If you know that number "
+            "is valid, check it for typos." % report_no)
+    else:
+        detail = (result or {}).get('detail')
+        status, verdict = 'down', (
+            "IGI's side: %s" % (detail or "the API did not respond."))
+
+    summary = {
+        'status': status,
+        'verdict': verdict,
+        'seconds': elapsed,
+        'report_no': report_no,
+    }
+    _logger.info("IGI healthcheck: %s in %ss — %s", status, elapsed, verdict)
+    return summary
+
+def _igi_error_text(resp):
+    """IGI's own explanation, when the body carries one."""
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    if isinstance(payload, dict):
+        text = payload.get('error') or payload.get('message')
+        return text.strip() if isinstance(text, str) and text.strip() else None
+    return None
 
 def _normalise(raw):
     out = {'raw': raw}
@@ -111,13 +170,11 @@ def _normalise(raw):
         _split_fluorescence(out.get('fluorescence'))
     return out
 
-
 def _parse_carat(val):
     if not val:
         return None
     m = re.search(r'([\d.]+)', val)
     return float(m.group(1)) if m else None
-
 
 def _parse_pct(val):
     if not val:
@@ -128,7 +185,6 @@ def _parse_pct(val):
 
 def _norm_clarity(val):
     return val.replace(' ', '') if val else val
-
 
 def _parse_measurements(val):
     if not val:
@@ -141,14 +197,12 @@ def _parse_measurements(val):
         return float(m.group(1)), float(m.group(2)), float(m.group(3))
     return None, None, None
 
-
 def _is_lab_grown(description, report_number):
     if description and 'LABORATORY GROWN' in description.upper():
         return True
     if report_number and str(report_number).upper().startswith('LG'):
         return True
     return False
-
 
 _FLUOR_INTENSITIES = ('VERY STRONG', 'STRONG', 'MEDIUM', 'FAINT', 'NONE')
 _FLUOR_COLORS = ('BLUE', 'YELLOW', 'GREEN', 'ORANGE', 'RED', 'WHITE', 'VIOLET', 'PINK')
