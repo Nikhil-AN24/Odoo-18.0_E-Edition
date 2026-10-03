@@ -763,13 +763,15 @@ class PurchaseOrderLine(models.Model):
             if line.sale_line_id:
                 # Clearing lgd_vendor_memo is what "buying in" a memo stone
                 # means: its PO is confirmed, so it is owned and payable now.
-                line.sale_line_id.sudo().write({
+                sale_line = line.sale_line_id.sudo()
+                sale_line.write({
                     'lgd_accepted_at': now,
                     'lgd_vendor_memo': False,
                 })
+                sale_line._lgd_put_in_vault()
         return True
 
-    # ── Take a stone into custody on vendor memo ───────────────────────
+    # ── Take a stone into custody on vendor memo ─────────────
     def action_lgd_take_on_memo(self):
         self._lgd_check_group(GROUP_INVENTORY)
         return self._lgd_action_take_on_memo()
@@ -796,12 +798,14 @@ class PurchaseOrderLine(models.Model):
                 'lgd_accepted_at': now,
             })
             # Same stamp Accept uses, so the stone reaches Awaiting Vault and
-            # can be dispatched — flagged so every screen downstream knows it
-            # is not ours. sudo() for the same reason.
-            line.sale_line_id.sudo().write({
+            # can be dispatched — flagged so every screen downstream knows it is not ours. sudo() for the same reason.
+            sale_line = line.sale_line_id.sudo()
+            sale_line.write({
                 'lgd_accepted_at': now,
                 'lgd_vendor_memo': True,
             })
+            # A memo stone is physically in the vault too it is simply not ours yet.
+            sale_line._lgd_put_in_vault()
             line.order_id._lgd_log(body=_(
                 "%s held on vendor memo — not purchased, not in stock."
             ) % line._lgd_stone_description())

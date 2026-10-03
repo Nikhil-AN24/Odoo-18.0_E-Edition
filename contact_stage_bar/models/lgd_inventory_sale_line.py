@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-
 from odoo import _, api, fields, models
 from .lgd_ops_mixin import lgd_notify, lgd_responsible_user
 from odoo.exceptions import AccessError, UserError
@@ -40,21 +39,26 @@ class SaleOrderLine(models.Model):
         string="Invoice No.")
 
     # The Operations record for this stone. Computed rather than stored: the
-    # link is owned by the purchase side, and a stale copy here would send a
-    # stone through the flow under the wrong set (§4.1).
+    # link is owned by the purchase side, and a stale copy here would send a stone through the flow under the wrong set.
     lgd_po_line_id = fields.Many2one(
         'purchase.order.line', string="Stone record",
         compute='_compute_lgd_po_line_id')
     lgd_set_incomplete = fields.Boolean(
         string="Set incomplete", compute='_compute_lgd_po_line_id')
 
+    lgd_set_label = fields.Char(
+        string="Set Label", compute='_compute_lgd_po_line_id')
+    lgd_qc_decided_at = fields.Datetime(
+        string="QC Decided On", compute='_compute_lgd_po_line_id')
+    lgd_inr_currency_id = fields.Many2one(
+        'res.currency', compute='_compute_lgd_po_line_id')
+    lgd_po_total = fields.Monetary(
+        string="Pricing", compute='_compute_lgd_po_line_id',
+        currency_field='lgd_inr_currency_id')
+
     @api.depends('lgd_accepted_at')
     def _compute_lgd_po_line_id(self):
-        """Most recent purchase line for this stone that is still alive.
 
-        sudo(): Inventory holds no access to purchase.order.line beyond the
-        Operations screens, and this only surfaces the QC set flag (§4.6.2).
-        """
         po_lines = self.env['purchase.order.line'].sudo().search(
             [('sale_line_id', 'in', self.ids),
              ('lgd_stage', 'not in',
@@ -67,6 +71,10 @@ class SaleOrderLine(models.Model):
             po_line = by_sale_line.get(line.id)
             line.lgd_po_line_id = po_line
             line.lgd_set_incomplete = bool(po_line and po_line.lgd_set_incomplete)
+            line.lgd_set_label = po_line.lgd_set_label if po_line else False
+            line.lgd_qc_decided_at = po_line.lgd_qc_decided_at if po_line else False
+            line.lgd_inr_currency_id = po_line.inr_currency_id if po_line else False
+            line.lgd_po_total = po_line.lgd_po_total if po_line else 0.0
 
     # ── Shared operations helpers ────────────────────────────────
     # Two-line delegates onto models/lgd_ops_mixin.py. The logic itself lives
@@ -103,33 +111,23 @@ class SaleOrderLine(models.Model):
         if found:
             raise UserError("\n".join(found))
 
-    # ── Placed in vault ────────────────────────────────────────────
-    def action_lgd_place_in_vault(self):
-        self._lgd_check_group(GROUP_INVENTORY)
-        return self._lgd_action_place_in_vault()
+    # ── Into the vault ──────────────────────────────────────────────────
+    def _lgd_put_in_vault(self):
 
-    def _lgd_action_place_in_vault(self):
-        def problems(line):
-            if not line.lgd_accepted_at:
-                yield _("This stone has not been accepted into stock yet.")
-            elif line.lgd_in_vault:
-                yield _("Already vaulted by %(who)s on %(when)s.") % {
-                    'who': line.lgd_vault_by.name or _('someone'),
-                    'when': fields.Datetime.to_string(line.lgd_vault_at),
-                }
+        fresh = self.filtered(lambda line: not line.lgd_in_vault)
+        if not fresh:
+            return True
 
-        self._lgd_guard(problems)
-        now = fields.Datetime.now()
-        self.write({
+        fresh.write({
             'lgd_in_vault': True,
             'lgd_vault_by': self.env.uid,
-            'lgd_vault_at': now,
+            'lgd_vault_at': fields.Datetime.now(),
         })
 
         # Alert Dispatch once per order, not once per stone.
         responsible = self._lgd_responsible_user(
             'lgd.dispatch_responsible_login', GROUP_SHIPMENT)
-        for order in self.mapped('order_id'):
+        for order in fresh.mapped('order_id'):
             vaulted = order.order_line.filtered('lgd_in_vault')
             self._lgd_notify(
                 order,
@@ -140,9 +138,6 @@ class SaleOrderLine(models.Model):
                     'count': len(vaulted),
                 },
                 responsible)
-
-        # (order._lgd_try_create_invoice) belongs to and is not
-        # wired yet — see the build note. Nothing here touches accounting.
         return True
 
     # ── Handed to Dispatch ─────────────────────────────────────────
