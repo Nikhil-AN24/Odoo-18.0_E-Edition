@@ -6,7 +6,31 @@
         <field name="name">stone.replacement.form</field>
         <field name="model">stone.replacement</field>
         <field name="arch" type="xml">
-            <form string="Replace Stone">
+            <form string="Replace Stone" class="lgd_marks_required">
+                <!-- Odoo marks a re* mandatory rquired field only by tinting its input
+                     border, and the label element never receives
+                     o_required_modifier — the field widget does, and it sits
+                     after the label in the DOM. :has() with a sibling
+                     combinator is what lets the label reach forward to its own input. -->
+                <style>
+                    /* Keep the whole label on one line. Without this the
+                       marker wraps on its own below a long label such as
+                       "Vendor Price / Carat", which also carries a tooltip
+                       superscript — the line break landed between the two. */
+                    .lgd_marks_required .o_wrap_label:has(+ .o_wrap_input .o_required_modifier) .o_form_label,
+                    .lgd_marks_required .o_wrap_label:has(+ div .o_required_modifier) .o_form_label {
+                        white-space: nowrap;
+                    }
+                    /* A non-breaking space so the marker can never be
+                       separated from what precedes it, even if the nowrap
+                       above is ever overridden. */
+                    .lgd_marks_required .o_wrap_label:has(+ .o_wrap_input .o_required_modifier) .o_form_label::after,
+                    .lgd_marks_required .o_wrap_label:has(+ div .o_required_modifier) .o_form_label::after {
+                        content: "\00a0*";
+                        color: #dc3545;
+                        font-weight: 700;
+                    }
+                </style>
                 <group>
                     <field name="sale_line_id" invisible="1"/>
                     <field name="mode" widget="radio" options="{'horizontal': True}"/>
@@ -41,16 +65,16 @@
                              IGI, and marking them required would block that
                              button (it saves first). action_submit enforces
                              them server-side instead. -->
-                        <field name="stone_type"/>
+                        <field name="stone_type" required="1"/>
                         <field name="lab"/>
-                        <field name="shapes"/>
-                        <field name="weight_carat"/>
+                        <field name="shape_id" options="{'no_create': True}"/>
+                        <field name="weight_carat" required="1"/>
                         <field name="color"/>
                         <field name="clarity"/>
                         <field name="cut"/>
-                        <field name="polish"/>
-                        <field name="symmetry"/>
-                        <field name="fluorescence_intensity"/>
+                        <field name="polish_id" options="{'no_create': True}"/>
+                        <field name="symmetry_id" options="{'no_create': True}"/>
+                        <field name="fluorescence_id" options="{'no_create': True}"/>
                         <field name="fluorescence_color"/>
                         <field name="treatments"/>
                         <field name="measurements"/>
@@ -60,8 +84,8 @@
 
                 <group>
                     <group string="Vendor &amp; Buying Price">
-                        <field name="vendor_id"/>
-                        <field name="gross_price_per_carat"/>
+                        <field name="vendor_id" required="1"/>
+                        <field name="gross_price_per_carat" required="1"/>
                         <field name="carat_value"/>
                         <field name="gross_total"/>
                     </group>
