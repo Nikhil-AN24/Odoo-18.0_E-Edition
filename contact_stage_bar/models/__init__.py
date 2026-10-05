@@ -23,3 +23,5 @@ from . import lgd_ops_purchase_line
 from . import lgd_ops_purchase_order
 from . import lgd_ops_audit
 from . import lgd_inventory_sale_line
+from . import lgd_courier_agent
+from . import lgd_dispatch

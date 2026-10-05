@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- its own paperformat. Deliberately NOT paperformat_label_6x3,
+             whose width and height are transposed. -->
+        <record id="paperformat_lgd_label" model="report.paperformat">
+            <field name="name">LGD Dispatch Label</field>
+            <field name="format">custom</field>
+            <field name="page_width">100</field>
+            <field name="page_height">150</field>
+            <field name="orientation">Portrait</field>
+            <field name="margin_top">3</field>
+            <field name="margin_bottom">3</field>
+            <field name="margin_left">3</field>
+            <field name="margin_right">3</field>
+            <field name="header_line" eval="False"/>
+            <field name="header_spacing">0</field>
+        </record>
+
+        <record id="action_lgd_dispatch_label" model="ir.actions.report">
+            <field name="name">Dispatch Label</field>
+            <field name="model">lgd.dispatch</field>
+            <field name="report_type">qweb-pdf</field>
+            <!-- report_name must carry the module prefix and match the
+                 template's XML ID exactly, or it resolves to nothing. -->
+            <field name="report_name">contact_stage_bar.report_lgd_dispatch_label</field>
+            <field name="paperformat_id" ref="paperformat_lgd_label"/>
+            <field name="binding_model_id" eval="False"/>
+        </record>
+
+        <template id="report_lgd_dispatch_label">
+            <t t-call="web.basic_layout">
+                <t t-foreach="docs" t-as="doc">
+                    <div class="page" style="font-family:sans-serif;">
+                        <div style="font-size:15px;font-weight:bold;"
+                             t-esc="doc.ship_name"/>
+                        <div style="font-size:12px;margin-top:4px;">
+                            <div t-esc="doc.ship_street"/>
+                            <div t-if="doc.ship_street2" t-esc="doc.ship_street2"/>
+                            <div>
+                                <span t-esc="doc.ship_city"/>
+                                <span t-if="doc.ship_state">, <span t-esc="doc.ship_state"/></span>
+                                <span t-if="doc.ship_zip"> - <span t-esc="doc.ship_zip"/></span>
+                            </div>
+                            <div t-if="doc.ship_country" t-esc="doc.ship_country"/>
+                            <div t-if="doc.ship_phone">Ph: <span t-esc="doc.ship_phone"/></div>
+                        </div>
+                        <div style="margin-top:8px;font-size:12px;">
+                            <div>Invoice: <span t-esc="doc.invoice_number or doc.name"/></div>
+                            <div>Stones: <span t-esc="doc.stone_count"/></div>
+                            <div>Parcel: <span t-esc="doc.name"/></div>
+                        </div>
+                        <div style="margin-top:10px;border-top:1px solid #000;
+                                    padding-top:4px;font-size:8px;">
+                            <div style="font-weight:bold;">If undelivered, return to:</div>
+                            <div t-esc="doc.order_id.company_id.name"/>
+                            <div t-esc="doc.order_id.company_id.street"/>
+                            <div>
+                                <span t-esc="doc.order_id.company_id.city"/>
+                                <span t-if="doc.order_id.company_id.zip"> - <span
+                                      t-esc="doc.order_id.company_id.zip"/></span>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

@@ -69,3 +69,8 @@ access_account_move_lgd_shipment,account.move.lgd.shipment,account.model_account
 access_account_move_line_lgd_shipment,account.move.line.lgd.shipment,account.model_account_move_line,contact_stage_bar.group_lgd_shipment,1,0,0,0
 access_account_move_lgd_sales,account.move.lgd.sales,account.model_account_move,contact_stage_bar.group_lgd_sales,1,0,0,0
 access_account_move_line_lgd_sales,account.move.line.lgd.sales,account.model_account_move_line,contact_stage_bar.group_lgd_sales,1,0,0,0
+access_lgd_dispatch_shipment,lgd.dispatch.shipment,model_lgd_dispatch,contact_stage_bar.group_lgd_shipment,1,1,1,0
+access_lgd_dispatch_system,lgd.dispatch.system,model_lgd_dispatch,base.group_system,1,1,1,1
+access_lgd_courier_agent_user,lgd.courier.agent.user,model_lgd_courier_agent,base.group_user,1,0,0,0
+access_lgd_courier_agent_shipment,lgd.courier.agent.shipment,model_lgd_courier_agent,contact_stage_bar.group_lgd_shipment,1,1,1,1
+access_lgd_courier_agent_system,lgd.courier.agent.system,model_lgd_courier_agent,base.group_system,1,1,1,1

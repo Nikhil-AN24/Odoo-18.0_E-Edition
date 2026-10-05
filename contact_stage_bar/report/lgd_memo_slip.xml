@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- The memo slip. Same A4 layout as the tax invoice so it
+             reads as a familiar document, but unmistakably NOT one: it
+             carries no invoice number, says so in words, and creates no
+             accounting record of any kind. -->
+        <record id="action_lgd_memo_slip" model="ir.actions.report">
+            <field name="name">Memo Slip</field>
+            <field name="model">lgd.dispatch</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">contact_stage_bar.report_lgd_memo_slip</field>
+            <field name="paperformat_id" ref="contact_stage_bar.paperformat_augmont_tax_invoice"/>
+            <field name="binding_model_id" eval="False"/>
+        </record>
+
+        <template id="report_lgd_memo_slip">
+            <t t-call="web.basic_layout">
+                <t t-foreach="docs" t-as="doc">
+                    <div class="page" style="font-family:sans-serif;position:relative;">
+
+                        <!-- The watermark: unmistakable at a glance -->
+                        <div style="position:absolute;top:38%;left:0;width:100%;
+                                    text-align:center;font-size:110px;
+                                    color:#f0f0f0;font-weight:bold;
+                                    letter-spacing:14px;z-index:0;">MEMO</div>
+
+                        <div style="position:relative;z-index:1;">
+                            <!-- Heading sits where "Tax Invoice" sits on the
+                                 invoice, and in the same size -->
+                            <h2 style="text-align:center;margin-bottom:2px;">MEMO</h2>
+                            <div style="text-align:center;font-style:italic;
+                                        font-size:11px;margin-bottom:14px;">
+                                Goods sent on approval. This is not a tax invoice.
+                            </div>
+
+                            <table style="width:100%;font-size:11px;margin-bottom:12px;">
+                                <tr>
+                                    <td style="vertical-align:top;width:50%;">
+                                        <strong t-esc="doc.order_id.company_id.name"/>
+                                        <div t-esc="doc.order_id.company_id.street"/>
+                                        <div t-esc="doc.order_id.company_id.street2"/>
+                                        <div>
+                                            <span t-esc="doc.order_id.company_id.city"/>
+                                            <span t-if="doc.order_id.company_id.zip"> - <span
+                                                  t-esc="doc.order_id.company_id.zip"/></span>
+                                        </div>
+                                    </td>
+                                    <td style="vertical-align:top;width:50%;">
+                                        <strong>Sent to</strong>
+                                        <div t-esc="doc.ship_name"/>
+                                        <div t-esc="doc.ship_street"/>
+                                        <div t-if="doc.ship_street2" t-esc="doc.ship_street2"/>
+                                        <div>
+                                            <span t-esc="doc.ship_city"/>
+                                            <span t-if="doc.ship_state">, <span t-esc="doc.ship_state"/></span>
+                                            <span t-if="doc.ship_zip"> - <span t-esc="doc.ship_zip"/></span>
+                                        </div>
+                                        <div t-if="doc.ship_phone">Ph: <span t-esc="doc.ship_phone"/></div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <table style="width:100%;font-size:11px;margin-bottom:10px;">
+                                <tr>
+                                    <td>Memo reference: <strong t-esc="doc.name"/></td>
+                                    <td style="text-align:right;">
+                                        Date: <span t-esc="context_timestamp(doc.create_date).strftime('%d/%m/%Y')"/>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top:4px;">
+                                        <strong>Return by:
+                                            <span t-esc="doc.memo_due_date"
+                                                  t-options="{'widget': 'date'}"/>
+                                        </strong>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #000;">
+                                        <th style="text-align:left;">Certificate</th>
+                                        <th style="text-align:left;">Shape</th>
+                                        <th style="text-align:right;">Carat</th>
+                                        <th style="text-align:left;">Colour</th>
+                                        <th style="text-align:left;">Clarity</th>
+                                        <th style="text-align:right;">Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="doc.line_ids" t-as="line"
+                                        style="border-bottom:1px solid #eee;">
+                                        <td t-esc="line.certificate"/>
+                                        <td t-esc="line.shapes"/>
+                                        <td style="text-align:right;" t-esc="line.carat_weight"/>
+                                        <td t-esc="line.color"/>
+                                        <td t-esc="line.clarity"/>
+                                        <td style="text-align:right;"
+                                            t-esc="line.price_unit"
+                                            t-options="{'widget': 'monetary', 'display_currency': doc.order_id.currency_id}"/>
+                                    </tr>
+                                </tbody>
+                                <tfoot>
+                                    <tr style="border-top:1px solid #000;font-weight:bold;">
+                                        <td colspan="5" style="text-align:right;">
+                                            Total (<span t-esc="doc.stone_count"/> stones)
+                                        </td>
+                                        <td style="text-align:right;"
+                                            t-esc="sum(doc.line_ids.mapped('price_unit'))"
+                                            t-options="{'widget': 'monetary', 'display_currency': doc.order_id.currency_id}"/>
+                                    </tr>
+                                </tfoot>
+                            </table>
+
+                            <div style="margin-top:16px;font-size:10px;font-style:italic;">
+                                Please confirm which stones you are keeping by
+                                <span t-esc="doc.memo_due_date"
+                                      t-options="{'widget': 'date'}"/>.
+                                Stones not kept must be returned by that date.
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ═══════════ READY TO DISPATCH (sale.order.line) ═══════════ -->
+        <record id="view_lgd_ready_to_dispatch_list" model="ir.ui.view">
+            <field name="name">lgd.ready.to.dispatch.list</field>
+            <field name="model">sale.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Ready to Dispatch" create="0" delete="0"
+                      decoration-muted="lgd_set_incomplete">
+                    <header>
+                        <button name="action_lgd_make_parcel" type="object"
+                                string="Make parcel" class="btn-primary"/>
+                    </header>
+                    <field name="lgd_invoice_number" string="Invoice Number"/>
+                    <field name="certificate" string="Certificate"/>
+                    <field name="shapes" string="Shape"/>
+                    <field name="carat_weight" string="Carat"/>
+                    <field name="color" string="Colour"/>
+                    <field name="clarity" string="Clarity"/>
+                    <field name="lgd_set_incomplete" string="Set Incomplete"
+                           widget="boolean_toggle" readonly="1"/>
+                    <field name="availability_status" string="Availability"/>
+                    <field name="lgd_vendor_memo" string="On Memo"
+                           widget="boolean_toggle" readonly="1"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_ready_to_dispatch" model="ir.actions.act_window">
+            <field name="name">Ready to Dispatch</field>
+            <field name="res_model">sale.order.line</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_ready_to_dispatch_list"/>
+            <field name="domain">[('lgd_ready_to_dispatch', '=', True)]</field>
+            <field name="context">{'group_by': 'lgd_invoice_number'}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">Nothing ready to dispatch.</p>
+                <p>Hand a stone to Dispatch from In Vault and it appears here.</p>
+            </field>
+        </record>
+
+        <!-- ═══════════════════ PARCELS ═══════════════════ -->
+        <record id="view_lgd_dispatch_list" model="ir.ui.view">
+            <field name="name">lgd.dispatch.list</field>
+            <field name="model">lgd.dispatch</field>
+            <field name="arch" type="xml">
+                <list string="Parcels" create="0" delete="0"
+                      decoration-danger="follow_up_count &gt; 3 or memo_overdue"
+                      decoration-warning="approval_state == 'pending'"
+                      decoration-info="dispatch_type == 'memo'">
+                    <field name="name"/>
+                    <field name="dispatch_type"/>
+                    <field name="invoice_number"/>
+                    <field name="stone_count"/>
+                    <field name="route"/>
+                    <field name="agent_id"/>
+                    <field name="state"/>
+                    <field name="approval_state"/>
+                    <field name="memo_due_date"/>
+                    <field name="handed_over_at"/>
+                    <field name="follow_up_count"/>
+                    <field name="memo_overdue" column_invisible="1"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="view_lgd_dispatch_form" model="ir.ui.view">
+            <field name="name">lgd.dispatch.form</field>
+            <field name="model">lgd.dispatch</field>
+            <field name="arch" type="xml">
+                <form string="Parcel" create="0" delete="0">
+                    <header>
+                        <button name="action_lgd_print_label" type="object"
+                                string="Print label" class="btn-secondary"/>
+                        <button name="action_lgd_print_memo_slip" type="object"
+                                string="Print memo slip" class="btn-secondary"
+                                invisible="dispatch_type != 'memo'"/>
+                        <button name="action_lgd_hand_over" type="object"
+                                string="Handed over" class="btn-primary"
+                                invisible="state != 'draft'"/>
+                        <button name="action_lgd_confirm_delivery" type="object"
+                                string="Confirm delivery" class="btn-primary"
+                                invisible="state != 'handed_over' or dispatch_type != 'sale'"/>
+                        <button name="action_lgd_cancel" type="object"
+                                string="Cancel" class="btn-secondary"
+                                invisible="state != 'draft'"/>
+                        <button name="action_lgd_approve_partial" type="object"
+                                string="Approve partial" class="btn-success"
+                                invisible="approval_state != 'pending'"/>
+                        <button name="action_lgd_refuse_partial" type="object"
+                                string="Refuse partial" class="btn-danger"
+                                invisible="approval_state != 'pending'"/>
+                        <field name="state" widget="statusbar"
+                               statusbar_visible="draft,handed_over,delivered"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title">
+                            <h1><field name="name" readonly="1"/></h1>
+                        </div>
+                        <group>
+                            <group string="Deliver to">
+                                <field name="ship_name" readonly="1"/>
+                                <field name="ship_street" readonly="1"/>
+                                <field name="ship_street2" readonly="1"/>
+                                <field name="ship_city" readonly="1"/>
+                                <field name="ship_state" readonly="1"/>
+                                <field name="ship_zip" readonly="1"/>
+                                <field name="ship_country" readonly="1"/>
+                                <field name="ship_phone" readonly="1"/>
+                                <field name="invoice_number" readonly="1"/>
+                                <field name="stone_count" readonly="1"/>
+                            </group>
+                            <group string="Carrier">
+                                <field name="route"/>
+                                <field name="agent_id"
+                                       domain="[('agent_type', '=', route)]"
+                                       options="{'no_create': True}"/>
+                                <field name="agent_phone" readonly="1"/>
+                                <field name="tracking_number"
+                                       invisible="route != 'courier'"
+                                       required="route == 'courier'"/>
+                                <field name="tracking_url"
+                                       invisible="route != 'courier'"/>
+                            </group>
+                        </group>
+                        <group>
+                            <group string="Type">
+                                <field name="dispatch_type"
+                                       readonly="state != 'draft'"/>
+                                <field name="memo_due_date"
+                                       invisible="dispatch_type != 'memo'"
+                                       required="dispatch_type == 'memo'"/>
+                            </group>
+                            <group string="Checks">
+                                <field name="label_printed" readonly="1"/>
+                                <field name="invoice_move_id" readonly="1"
+                                       invisible="dispatch_type != 'sale'"/>
+                                <field name="memo_slip_printed" readonly="1"
+                                       invisible="dispatch_type != 'memo'"/>
+                                <field name="invoice_enclosed"/>
+                            </group>
+                        </group>
+                        <group string="Partial dispatch"
+                               invisible="approval_state == 'not_required'">
+                            <field name="partial_reason"/>
+                            <field name="approval_state" readonly="1"/>
+                            <field name="approved_by" readonly="1"/>
+                            <field name="approved_at" readonly="1"/>
+                        </group>
+                        <notebook>
+                            <page string="Stones" name="stones">
+                                <field name="line_ids" readonly="1">
+                                    <list create="0" delete="0">
+                                        <field name="certificate"/>
+                                        <field name="shapes"/>
+                                        <field name="carat_weight"/>
+                                        <field name="color"/>
+                                        <field name="clarity"/>
+                                        <field name="availability_status"/>
+                                    </list>
+                                </field>
+                            </page>
+                            <page string="Follow-up" name="followup"
+                                  invisible="state == 'draft'">
+                                <group>
+                                    <group>
+                                        <field name="handed_over_by" readonly="1"/>
+                                        <field name="handed_over_at" readonly="1"/>
+                                        <field name="follow_up_count" readonly="1"/>
+                                        <field name="last_follow_up_on" readonly="1"/>
+                                    </group>
+                                    <group>
+                                        <field name="delivery_confirmed_by" readonly="1"/>
+                                        <field name="delivery_confirmed_at" readonly="1"/>
+                                        <field name="delivery_note"/>
+                                    </group>
+                                </group>
+                            </page>
+                        </notebook>
+                    </sheet>
+                    <chatter/>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_lgd_parcels" model="ir.actions.act_window">
+            <field name="name">Parcels</field>
+            <field name="res_model">lgd.dispatch</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[('state', 'in', ('draft', 'handed_over'))]</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">No parcels yet.</p>
+                <p>Select stones on Ready to Dispatch and press Make parcel.</p>
+            </field>
+        </record>
+
+        <!-- ═══════ AWAITING DELIVERY CONFIRMATION ═══════ -->
+        <record id="action_lgd_awaiting_delivery" model="ir.actions.act_window">
+            <field name="name">Awaiting Delivery Confirmation</field>
+            <field name="res_model">lgd.dispatch</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[('state', '=', 'handed_over'), ('dispatch_type', '=', 'sale')]</field>
+            <field name="context">{'search_default_order_by_oldest': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">Nothing awaiting confirmation.</p>
+            </field>
+        </record>
+
+        <!-- ═══════════════ MEMOS OUT ═══════════════ -->
+        <record id="action_lgd_memos_out" model="ir.actions.act_window">
+            <field name="name">Memos Out</field>
+            <field name="res_model">lgd.dispatch</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[('dispatch_type', '=', 'memo'), ('state', '=', 'handed_over')]</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">No memos are out.</p>
+                <p>This is what is with clients right now, and what is overdue.</p>
+            </field>
+        </record>
+
+        <!-- ═══════ COURIERS &amp; ANGADIAS ═══════ -->
+        <record id="view_lgd_courier_agent_list" model="ir.ui.view">
+            <field name="name">lgd.courier.agent.list</field>
+            <field name="model">lgd.courier.agent</field>
+            <field name="arch" type="xml">
+                <list string="Couriers &amp; Angadias" editable="bottom">
+                    <field name="agent_type"/>
+                    <field name="name"/>
+                    <field name="firm_name"/>
+                    <field name="phone"/>
+                    <field name="city"/>
+                    <field name="note" optional="hide"/>
+                    <field name="active" widget="boolean_toggle"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_courier_agent" model="ir.actions.act_window">
+            <field name="name">Couriers &amp; Angadias</field>
+            <field name="res_model">lgd.courier.agent</field>
+            <field name="view_mode">list</field>
+            <field name="context">{'group_by': 'agent_type'}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">No carriers yet.</p>
+                <p>Add the couriers and Angadias Dispatch hands parcels to.</p>
+            </field>
+        </record>
+
+    </data>
+</odoo>

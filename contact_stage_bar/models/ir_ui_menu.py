@@ -6,13 +6,7 @@ _logger = logging.getLogger(__name__)
 
 class IrUiMenuHideSaleExtras(models.Model):
     _inherit = 'ir.ui.menu'
-
-    #: Root menus someone built through the UI that no module owns. They
-    #: carry no XML ID, so no data file can remove them — they have to be
-    #: deleted per database. Logistics/QC PRD §12.5 lists this as a go-live
-    #: step and names "Logistics" and "Quality" explicitly.
-    _LGD_STALE_UI_ROOTS = ('Logistics', 'Quality', 'Dispatch',
-                           'LGD Inventory', 'Orders', 'Margins')
+    _LGD_STALE_UI_ROOTS = ('Orders', 'Margins')
 
     @api.model
     def _lgd_remove_stale_ui_menus(self, names=None):
@@ -47,6 +41,14 @@ class IrUiMenuHideSaleExtras(models.Model):
             ('parent_id', '=', False),
             ('name', 'in', names),
         ]).filtered(lambda m: m.id not in owned and not m.child_id)
+
+        protected = self.sudo().with_context(**{
+            'ir.ui.menu.full_list': True,
+        }).search([('parent_id', '=', False), ('name', 'in', names)]) - stale
+        if protected:
+            _logger.info(
+                "Leaving %s module-owned or non-empty root menu(s) alone: %s",
+                len(protected), protected.mapped('name'))
 
         if not stale:
             _logger.info("No stale UI-created root menus found.")
@@ -168,9 +170,11 @@ class IrUiMenuHideSaleExtras(models.Model):
             allowed_root_names.update(['Logistics', 'Offline order'])
             
         if lgd_groups['shipment']:
-            # Allows Inventory, Dispatch, Logistics, and LGD Inventory
-            allowed_root_refs.update(['stock.menu_stock_root'])
-            allowed_root_names.update(['Dispatch', 'Logistics', 'LGD Inventory', 'Inventory'])
+            allowed_root_refs.update([
+                'stock.menu_stock_root',
+                'contact_stage_bar.menu_lgd_dispatch_root',
+            ])
+            allowed_root_names.update(['Logistics', 'LGD Inventory', 'Inventory'])
             
         if lgd_groups['quality']:
             allowed_root_refs.add('contact_stage_bar.menu_lgd_qc_root')

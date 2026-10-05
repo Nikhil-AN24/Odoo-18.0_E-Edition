@@ -12,7 +12,6 @@ GROUP_SHIPMENT = 'contact_stage_bar.group_lgd_shipment'
 #: Line statuses that mean the stone will never ship on this order.
 LGD_DEAD_STATUSES = ('cancelled', 'replaced', 'not_available', 'qc_fail')
 
-
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
 
@@ -33,6 +32,20 @@ class SaleOrderLine(models.Model):
              "its purchase order is an open RFQ, so nothing is in stock and "
              "nothing is payable. Confirming the PO buys it in and clears "
              "this flag.")
+
+    lgd_dispatch_id = fields.Many2one(
+        'lgd.dispatch', string="Parcel", copy=False, index=True)
+    lgd_ready_to_dispatch = fields.Boolean(
+        compute='_compute_lgd_ready_to_dispatch', store=True,
+        help="With Dispatch, not yet in a parcel, and still alive.")
+
+    @api.depends('lgd_to_dispatch', 'lgd_dispatch_id', 'availability_status')
+    def _compute_lgd_ready_to_dispatch(self):
+        for line in self:
+            line.lgd_ready_to_dispatch = bool(
+                line.lgd_to_dispatch
+                and not line.lgd_dispatch_id
+                and line.availability_status not in LGD_DEAD_STATUSES)
 
     lgd_invoice_number = fields.Char(
         related='order_id.sdk_augmont_number', store=True, index=True,
@@ -140,6 +153,82 @@ class SaleOrderLine(models.Model):
                 responsible)
         return True
 
+    # ── Make up a parcel ───────────────────────────────────────────
+    def action_lgd_make_parcel(self):
+        self._lgd_check_group(GROUP_SHIPMENT)
+        return self._lgd_action_make_parcel()
+
+    def _lgd_action_make_parcel(self):
+        """One parcel, one customer order. Every problem is collected before
+        anything is created (R7), and it all happens in one go (R8)."""
+        if not self:
+            raise UserError(_("Select the stones to put in the parcel."))
+
+        orders = self.mapped('order_id')
+        if len(orders) > 1:
+            raise UserError(_("Select stones from one order at a time."))
+        order = orders
+
+        def problems(line):
+            if not line.lgd_ready_to_dispatch:
+                yield _("is not ready for dispatch.")
+            if line.lgd_set_incomplete:
+                yield _("is part of a set that is waiting for a replacement.")
+
+        found = []
+        for line in self:
+            for message in problems(line):
+                found.append("%s: %s" % (line._lgd_label(), message))
+        if found:
+            raise UserError("\n".join(found))
+
+        # The all-stones rule: anything else on the order still alive and not
+        # already in a parcel makes this a partial send.
+        outstanding = order.order_line.filtered(
+            lambda l: l not in self
+            and not l.lgd_dispatch_id
+            and l.availability_status not in LGD_DEAD_STATUSES
+            and l.product_id)
+
+        if not outstanding:
+            approval = 'not_required'
+        elif order.lgd_partial_dispatch_allowed:
+            approval = 'approved'
+        else:
+            approval = 'pending'
+
+        partner = order.partner_shipping_id or order.partner_id
+        parcel = self.env['lgd.dispatch'].sudo().create({
+            'order_id': order.id,
+            'approval_state': approval,
+            # Copied, not linked: Dispatch has no contact access, and the
+            # label must still show what was actually sent if the customer's address changes later.
+            'ship_name': partner.name,
+            'ship_street': partner.street,
+            'ship_street2': partner.street2,
+            'ship_city': partner.city,
+            'ship_state': partner.state_id.name,
+            'ship_zip': partner.zip,
+            'ship_country': partner.country_id.name,
+            'ship_phone': partner.phone or partner.mobile,
+            'invoice_number': order.sdk_augmont_number,
+        })
+        self.sudo().write({'lgd_dispatch_id': parcel.id})
+
+        if approval == 'pending':
+            parcel.sudo().message_post(body=_(
+                "Partial dispatch: %(sending)s of %(total)s stone(s) are going "
+                "out. Waiting for the Operations head to approve."
+            ) % {'sending': len(self), 'total': len(self) + len(outstanding)})
+
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'lgd.dispatch',
+            'res_id': parcel.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+
     # ── Handed to Dispatch ─────────────────────────────────────────
     def action_lgd_hand_to_dispatch(self):
         self._lgd_check_group(GROUP_INVENTORY)
@@ -160,3 +249,14 @@ class SaleOrderLine(models.Model):
             'lgd_to_dispatch_at': fields.Datetime.now(),
         })
         return True
+
+
+class SaleOrder(models.Model):
+    _inherit = 'sale.order'
+
+    lgd_partial_dispatch_allowed = fields.Boolean(
+        copy=False,
+        help="Set when the Operations head approves a partial send, so later "
+             "parcels on the same order do not ask again.")
+    lgd_partial_approved_by = fields.Many2one('res.users', copy=False)
+    lgd_partial_approved_at = fields.Datetime(copy=False)
