@@ -58,6 +58,11 @@ class LgdDispatch(models.Model):
     invoice_move_id = fields.Many2one(
         'account.move', string="Invoice", copy=False)
     invoice_enclosed = fields.Boolean(string="Invoice enclosed")
+    # A memo carries a memo slip, not an invoice, so it gets its own tick with
+    # the same force as invoice_enclosed: handover refuses without it.
+    memo_enclosed = fields.Boolean(string="Memo enclosed")
+    invoice_slip_printed = fields.Boolean(
+        string="Invoice Slip Printed", readonly=True)
     label_printed = fields.Boolean(readonly=True)
 
     # ── Who and when ────────────────────────────────────────────────────
@@ -160,10 +165,12 @@ class LgdDispatch(models.Model):
                 problems.append(_("Set the return-by date for this memo."))
             if not self.memo_slip_printed:
                 problems.append(_("Print the memo slip first."))
-        if not self.invoice_enclosed:
+        if self.dispatch_type == 'memo':
+            if not self.memo_enclosed:
+                problems.append(
+                    _("Tick that the memo slip is enclosed before handing over."))
+        elif not self.invoice_enclosed:
             problems.append(
-                _("Tick that the memo slip is enclosed before handing over.")
-                if self.dispatch_type == 'memo' else
                 _("Tick that the paperwork is enclosed before handing over."))
         if not self.label_printed:
             problems.append(_("Print the label first."))
@@ -309,6 +316,23 @@ class LgdDispatch(models.Model):
         self.sudo().write({'memo_slip_printed': True})
         return self.env.ref(
             'contact_stage_bar.action_lgd_memo_slip').report_action(self)
+
+    def action_lgd_print_invoice_slip(self):
+        self._lgd_check_group()
+        self.ensure_one()
+        if self.dispatch_type != 'sale':
+            raise UserError(_("Only a sale parcel has an invoice slip."))
+        if not self.invoice_move_id:
+            raise UserError(_(
+                "There is no invoice for this parcel yet. Invoicing is not "
+                "switched on, so nothing can be printed."))
+        if self.invoice_move_id.state != 'posted':
+            raise UserError(_(
+                "The invoice is prepared but not yet issued. It is numbered "
+                "when the parcel is handed over."))
+        self.sudo().write({'invoice_slip_printed': True})
+        return self.env.ref(
+            'account.account_invoices').report_action(self.invoice_move_id)
 
     # ── Print the label ────────────────────────────────────────────
     def action_lgd_print_label(self):

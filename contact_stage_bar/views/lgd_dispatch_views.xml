@@ -77,15 +77,18 @@
                         <button name="action_lgd_print_memo_slip" type="object"
                                 string="Print memo slip" class="btn-secondary"
                                 invisible="dispatch_type != 'memo'"/>
+                        <button name="action_lgd_print_invoice_slip" type="object"
+                                string="Print invoice slip" class="btn-secondary"
+                                invisible="dispatch_type != 'sale'"/>
                         <button name="action_lgd_hand_over" type="object"
                                 string="Handed over" class="btn-primary"
+                                invisible="state != 'draft'"/>
+                        <button name="action_lgd_cancel" type="object"
+                                string="Cancel" class="btn-secondary"
                                 invisible="state != 'draft'"/>
                         <button name="action_lgd_confirm_delivery" type="object"
                                 string="Confirm delivery" class="btn-primary"
                                 invisible="state != 'handed_over' or dispatch_type != 'sale'"/>
-                        <button name="action_lgd_cancel" type="object"
-                                string="Cancel" class="btn-secondary"
-                                invisible="state != 'draft'"/>
                         <button name="action_lgd_approve_partial" type="object"
                                 string="Approve partial" class="btn-success"
                                 invisible="approval_state != 'pending'"/>
@@ -129,11 +132,14 @@
                             </group>
                             <group string="Checks">
                                 <field name="label_printed" readonly="1"/>
-                                <field name="invoice_move_id" readonly="1"
+                                <field name="invoice_slip_printed" readonly="1"
                                        invisible="dispatch_type != 'sale'"/>
                                 <field name="memo_slip_printed" readonly="1"
                                        invisible="dispatch_type != 'memo'"/>
-                                <field name="invoice_enclosed"/>
+                                <field name="invoice_enclosed"
+                                       invisible="dispatch_type != 'sale'"/>
+                                <field name="memo_enclosed"
+                                       invisible="dispatch_type != 'memo'"/>
                             </group>
                         </group>
                         <group string="Partial dispatch"
