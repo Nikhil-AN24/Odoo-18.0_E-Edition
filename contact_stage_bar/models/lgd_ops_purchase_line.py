@@ -37,6 +37,9 @@ class PurchaseOrderLine(models.Model):
     lgd_carat = fields.Char(related='sale_line_id.carat_weight', string='Carat')
     lgd_colour = fields.Char(related='sale_line_id.color', string='Colour')
     lgd_clarity = fields.Char(related='sale_line_id.clarity', string='Clarity')
+
+    lgd_availability_status = fields.Selection(
+        related='sale_line_id.availability_status', string='Availability')
     lgd_cert_type = fields.Selection(
         related='sale_line_id.stone_certification_type', string='Certification')
     lgd_line_type = fields.Selection(
