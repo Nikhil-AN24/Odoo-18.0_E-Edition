@@ -102,13 +102,6 @@
                         <group>
                             <group string="Deliver to">
                                 <field name="ship_name" readonly="1"/>
-                                <field name="ship_street" readonly="1"/>
-                                <field name="ship_street2" readonly="1"/>
-                                <field name="ship_city" readonly="1"/>
-                                <field name="ship_state" readonly="1"/>
-                                <field name="ship_zip" readonly="1"/>
-                                <field name="ship_country" readonly="1"/>
-                                <field name="ship_phone" readonly="1"/>
                                 <field name="invoice_number" readonly="1"/>
                                 <field name="stone_count" readonly="1"/>
                             </group>
@@ -118,6 +111,7 @@
                                        domain="[('agent_type', '=', route)]"
                                        options="{'no_create': True}"/>
                                 <field name="agent_phone" readonly="1"/>
+                                <field name="estimated_delivery_date"/>
                                 <field name="tracking_number"
                                        invisible="route != 'courier'"
                                        required="route == 'courier'"/>

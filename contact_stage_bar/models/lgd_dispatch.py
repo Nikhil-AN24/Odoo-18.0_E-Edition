@@ -48,6 +48,9 @@ class LgdDispatch(models.Model):
     agent_id = fields.Many2one(
         'lgd.courier.agent', string="Handed to", tracking=True)
     agent_phone = fields.Char(related='agent_id.phone', store=True)
+    estimated_delivery_date = fields.Date(
+        string="Estimated Delivery Date", tracking=True,
+        help="The date the carrier expects to deliver this parcel.")
     tracking_number = fields.Char()
     tracking_url = fields.Char()
 
