@@ -130,7 +130,7 @@ class StoneReplacement(models.TransientModel):
         for wiz in self:
             value = 0.0
             if wiz.weight_carat:
-                match = re.search(r'([\d.]+)', str(wiz.weight_carat))
+                match = re.search(r'(-?[\d.]+)', str(wiz.weight_carat))
                 if match:
                     try:
                         value = float(match.group(1))
@@ -244,14 +244,26 @@ class StoneReplacement(models.TransientModel):
         create the replacement."""
         self.ensure_one()
         line = self.sale_line_id
+        problems = []
         if not self.vendor_id:
-            raise UserError(_("Select the vendor."))
-        if not self.gross_price_per_carat:
-            raise UserError(_("Enter the gross buying price per carat."))
+            problems.append(_("Select the vendor."))
         if not self.stone_type:
-            raise UserError(_("Select the replacement stone type."))
+            problems.append(_("Select the replacement stone type."))
         if not self.weight_carat:
-            raise UserError(_("Enter the carat weight."))
+            problems.append(_("Enter the carat weight."))
+        elif self.carat_value <= 0.0:
+            # A stone cannot weigh nothing or less, whichever source filled the
+            # field in. Checked here rather than on the Char so the IGI and
+            # manual paths are held to the same rule.
+            problems.append(_(
+                "Carat weight must be greater than zero (got %s).",
+                self.weight_carat))
+        if not self.gross_price_per_carat:
+            problems.append(_("Enter the gross buying price per carat."))
+        elif self.gross_price_per_carat < 0.0:
+            problems.append(_("Vendor price per carat cannot be negative."))
+        if problems:
+            raise UserError('\n'.join(problems))
 
         line = line.sudo()
         product = line._replacement_resolve_product(self._spec_vals())

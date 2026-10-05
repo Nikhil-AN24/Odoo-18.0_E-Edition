@@ -2929,6 +2929,10 @@ class SaleOrderLine(models.Model):
         self.ensure_one()
         order = self.order_id
         needs_sales = price_outcome['needs_sales']
+        # Procurement Price/carat is a stored compute seeded from the RFQ price
+        vendor_price_vals = {}
+        if price_per_carat and 'procurement_price_per_carat' in self._fields:
+            vendor_price_vals['procurement_price_per_carat'] = price_per_carat
         new_line = self.env['sale.order.line'].with_context(
             from_replacement_engine=True,
         ).create({
@@ -2944,6 +2948,7 @@ class SaleOrderLine(models.Model):
             'availability_status': 'diamond_booked',
             'replaces_line_id': self.id,
             'replacement_pending_sales': needs_sales,
+            **vendor_price_vals,
         })
         if not new_line:
             # Belt and braces behind the exemption above. Carrying on here is
@@ -3383,7 +3388,6 @@ class SaleOrderLine(models.Model):
             'target': 'new',  # popup instead of new page
         }
 
-
     @api.depends(
         'product_uom_qty', 'price_unit', 'tax_id',
         'currency_id', 'product_id', 'order_id',
@@ -3405,7 +3409,6 @@ class SaleOrderLine(models.Model):
         active_lines = self - zero_lines
         if active_lines:
             super(SaleOrderLine, active_lines)._compute_amount()
-
 
     @api.onchange('availability_status')
     def _onchange_availability_status(self):
