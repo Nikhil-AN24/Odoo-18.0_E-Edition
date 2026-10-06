@@ -24,6 +24,8 @@
             <!-- report_name must carry the module prefix and match the
                  template's XML ID exactly, or it resolves to nothing. -->
             <field name="report_name">contact_stage_bar.report_lgd_dispatch_label</field>
+            <field name="report_file">contact_stage_bar.report_lgd_dispatch_label</field>
+            <field name="print_report_name">'Dispatch Label-%s' % (object.name or '')</field>
             <field name="paperformat_id" ref="paperformat_lgd_label"/>
             <field name="binding_model_id" eval="False"/>
         </record>
@@ -31,8 +33,6 @@
         <template id="report_lgd_dispatch_label">
             <t t-call="web.basic_layout">
                 <t t-foreach="docs" t-as="doc">
-                    <!-- print-color-adjust: wkhtmltopdf drops panel grounds
-                         without it, which is what made the label come out black and white. -->
                     <div class="page"
                          style="font-family:Helvetica,Arial,sans-serif;
                                 color:#2F3A4F;
