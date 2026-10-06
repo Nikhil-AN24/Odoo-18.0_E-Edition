@@ -130,6 +130,8 @@
                     <field name="name" string="Purchase Order Number"/>
                     <field name="partner_id" string="Vendor"/>
                     <group expand="0" string="Group By">
+                        <filter name="lgd_group_invoice" string="Invoice Number"
+                                context="{'group_by': 'order_number'}"/>
                         <filter name="lgd_group_vendor" string="Vendor"
                                 context="{'group_by': 'partner_id'}"/>
                     </group>
@@ -149,7 +151,11 @@
                  lgd_invoice_number bound to a purchase.order action, which is
                  what raised "Unknown field lgd_certificate". -->
             <field name="search_view_id" ref="view_lgd_qc_order_search"/>
-            <field name="context">{}</field>
+            <!-- Grouped by invoice, not left flat: QC inspects an invoice at a
+                 time, and one invoice can carry more than one purchase order.
+                 Flat, those POs sat in separate rows with nothing tying them
+                 together. The filter stays removable from the search bar. -->
+            <field name="context">{'search_default_lgd_group_invoice': 1}</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">Nothing to inspect.</p>
                 <p>Confirm receipt of a stone and its invoice appears here.</p>

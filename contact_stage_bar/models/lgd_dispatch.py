@@ -165,7 +165,6 @@ class LgdDispatch(models.Model):
                 problems.append(_("Set the return-by date for this memo."))
             if not self.memo_slip_printed:
                 problems.append(_("Print the memo slip first."))
-        if self.dispatch_type == 'memo':
             if not self.memo_enclosed:
                 problems.append(
                     _("Tick that the memo slip is enclosed before handing over."))
@@ -223,20 +222,94 @@ class LgdDispatch(models.Model):
         self.activity_ids.filtered(
             lambda a: a.summary == _("Confirm delivery — %s") % self.name
         ).unlink()
-        self._lgd_close_order_if_done()
         return True
 
-    def _lgd_close_order_if_done(self):
-        """When every line on the order is settled, the order is complete."""
+    # ── The parcel came back ──────────────────────────────────────
+    lgd_has_returned_lines = fields.Boolean(
+        compute='_compute_lgd_has_returned_lines',
+        string="Has returned stones")
+
+    @api.depends('line_ids.availability_status')
+    def _compute_lgd_has_returned_lines(self):
+        for parcel in self:
+            parcel.lgd_has_returned_lines = any(
+                line.availability_status == 'return_of_order'
+                for line in parcel.line_ids)
+
+    def action_lgd_return_of_order(self):
+        self._lgd_check_group()
         self.ensure_one()
+        if self.state not in ('handed_over', 'delivered'):
+            raise UserError(_(
+                "Only a parcel that has left the building can come back. "
+                "This one is still in %s.")
+                % dict(self._fields['state'].selection).get(self.state))
+        self.line_ids.sudo().write({'availability_status': 'return_of_order'})
+        if self.state == 'delivered':
+            self.sudo().write({
+                'state': 'handed_over',
+                'delivery_confirmed_by': False,
+                'delivery_confirmed_at': False,
+            })
+        self.sudo().message_post(body=_(
+            "Returned to us — %(count)s stone(s) marked Return of Order by "
+            "%(user)s."
+        ) % {'count': len(self.line_ids), 'user': self.env.user.name})
+        return True
+
+    def action_lgd_re_dispatch(self):
+        """Send a returned parcel out again."""
+        self._lgd_check_group()
+        self.ensure_one()
+        returned = self.line_ids.filtered(
+            lambda l: l.availability_status == 'return_of_order')
+        if not returned:
+            raise UserError(_(
+                "Nothing on this parcel has come back, so there is nothing to "
+                "send out again."))
+        returned.sudo().write({'availability_status': 're_dispatched'})
+        self.sudo().message_post(body=_(
+            "Re-dispatched — %(count)s stone(s) sent out again by %(user)s."
+        ) % {'count': len(returned), 'user': self.env.user.name})
+        return True
+
+    # ── Complete the order ────────────────────────────────────────
+    def action_lgd_complete_order(self):
+        self._lgd_check_group()
+        self.ensure_one()
+        problems = []
+        if self.state != 'delivered':
+            problems.append(_("Confirm delivery before completing the order."))
         order = self.order_id.sudo()
-        settled = ('delivered', 'cancelled', 'replaced', 'order_completed')
-        active = order.order_line.filtered(
-            lambda l: l.availability_status not in settled)
-        if not active:
-            order.order_line.filtered(
-                lambda l: l.availability_status == 'delivered'
-            ).write({'availability_status': 'order_completed'})
+        if not order:
+            problems.append(_("This parcel is not linked to an order."))
+        else:
+            settled = ('delivered', 'cancelled', 'replaced', 'order_completed')
+            outstanding = order.order_line.filtered(
+                lambda l: l.availability_status not in settled)
+            if outstanding:
+                problems.append(_(
+                    "%(count)s stone(s) on %(order)s are still in flight, so "
+                    "the order is not finished yet."
+                ) % {'count': len(outstanding),
+                     'order': order.name})
+            # The payment leg runs alongside dispatch, not inside it. An order
+            # is only complete once the money is in, evidenced by the UTR captured at Payment Completed.
+            if 'utr_number' in order._fields and not (order.utr_number or '').strip():
+                problems.append(_(
+                    "Payment is not recorded for %s. Confirm the payment with "
+                    "its UTR number before completing the order."
+                ) % order.name)
+        if problems:
+            raise UserError("\n".join(problems))
+
+        to_close = order.order_line.filtered(
+            lambda l: l.availability_status == 'delivered')
+        to_close.write({'availability_status': 'order_completed'})
+        self.sudo().message_post(body=_(
+            "Order completed by %(user)s — %(count)s stone(s) closed."
+        ) % {'user': self.env.user.name, 'count': len(to_close)})
+        return True
 
     # ── Cancel a parcel ───────────────────────────────────────────
     def action_lgd_cancel(self):

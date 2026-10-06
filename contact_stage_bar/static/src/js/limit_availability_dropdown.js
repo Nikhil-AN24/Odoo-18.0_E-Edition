@@ -12,6 +12,16 @@ const MANUAL_ALLOWED = ["diamond_booked", "confirmed", "not_available", "cancell
 // The matching row-level gate lives in sale.order.line.can_edit_availability.
 const QC_FAIL_ALLOWED = ["qc_fail", "cancelled"];
 
+const FLOW_ALLOWED = {
+    dispatched:      ["dispatched", "delivered", "return_of_order"],
+    return_of_order: ["return_of_order", "re_dispatched", "delivered"],
+    re_dispatched:   ["re_dispatched", "delivered", "return_of_order"],
+    // Delivered is a resting state. Order Completed is reached by the Complete
+    // order button on the parcel, which checks payment first, so it is not
+    // offered here.
+    delivered:       ["delivered", "return_of_order"],
+};
+
 patch(SelectionField.prototype, {
 
     get options() {
@@ -25,9 +35,13 @@ patch(SelectionField.prototype, {
             return allOptions.filter(([value]) => QC_FAIL_ALLOWED.includes(value));
         }
 
+        if (current in FLOW_ALLOWED) {
+            return allOptions.filter(([value]) => FLOW_ALLOWED[current].includes(value));
+        }
+
         // Keep the record's CURRENT value in the list too, so a line already at
-        // an auto-set status (e.g. Dispatched) still renders correctly instead
-        // of showing blank when the cell is opened.
+        // an auto-set status (e.g. Payment Pending) still renders correctly
+        // instead of showing blank when the cell is opened.
         return allOptions.filter(
             ([value]) => MANUAL_ALLOWED.includes(value) || value === current
         );

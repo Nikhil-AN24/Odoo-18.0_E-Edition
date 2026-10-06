@@ -26,7 +26,7 @@ ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Dispatched": ["Delivered", "Return of Order"],
     "Return of Order": ["Re - Dispatched", "Delivered"],
     "Re - Dispatched": ["Delivered", "Return of Order"],
-    "Delivered": ["Order Completed"],
+    "Delivered": ["Order Completed", "Return of Order"],
     "Cancelled": [],
     "Order Completed": [],
 }
@@ -3134,7 +3134,21 @@ class SaleOrderLine(models.Model):
     # everyone else sees it read-only.
     can_edit_vendor = fields.Boolean(compute='_compute_can_edit_vendor')
 
+    _LGD_CLOSED_LINE_STATUSES = ('not_available', 'cancelled', 'qc_fail')
+
+    lgd_line_closed = fields.Boolean(
+        compute='_compute_lgd_line_closed', string="Line closed")
+
+    @api.depends('availability_status')
+    def _compute_lgd_line_closed(self):
+        for line in self:
+            origin = line._origin
+            saved = (origin.availability_status if origin
+                     else line.availability_status)
+            line.lgd_line_closed = saved in self._LGD_CLOSED_LINE_STATUSES
+
     @api.depends_context('uid')
+    @api.depends('lgd_line_closed')
     def _compute_can_edit_vendor(self):
         user = self.env.user
         allowed = (
@@ -3143,7 +3157,9 @@ class SaleOrderLine(models.Model):
             or user.has_group('contact_stage_bar.group_lgd_procurement')
         )
         for line in self:
-            line.can_edit_vendor = allowed
+            # Availability itself is NOT gated here: a QC Fail line still has
+            # to be movable to Cancelled, which is can_edit_availability's job.
+            line.can_edit_vendor = allowed and not line.lgd_line_closed
 
     # Who may change the Availability selection on the Sale Order: Admin /
     # LGD SuperAdmin / LGD Procurement / LGD Procurement Manager (the last two
@@ -3162,6 +3178,10 @@ class SaleOrderLine(models.Model):
     _LGD_HAND_EDITABLE_STATUSES = (
         'qc_fail',          # retire a stone QC rejected
         'diamond_booked',   # a replacement, so Procurement can confirm it
+        'dispatched',
+        'return_of_order',
+        're_dispatched',
+        'delivered',
     )
 
     @api.depends_context('uid')

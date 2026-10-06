@@ -16,7 +16,12 @@ class PaymentConfirmationWizard(models.TransientModel):
     def action_confirm_yes(self):
         """User clicked Yes - Payment completed"""
         self.ensure_one()
-        
+        if not (self.utr_number or '').strip():
+            raise UserError(_(
+                "Enter the UTR number before confirming the payment. "
+                "Payment Completed is what releases the order for dispatch, "
+                "so it needs the bank reference."))
+
         _logger.info(
             "💰 [PACK WIZARD - YES] Picking: %s | SO: %s | UTR: %s",
             self.picking_id.name if self.picking_id else 'N/A',
