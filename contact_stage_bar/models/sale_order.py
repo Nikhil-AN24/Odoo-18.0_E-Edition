@@ -13,6 +13,7 @@ import  logging
 _logger = logging.getLogger(__name__)
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
+_LGD_DEAD_LINE_STATUSES = ('cancelled', 'not_available', 'replaced')
 
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Diamond Booked": ["Confirmed", "Not available"],
@@ -3544,12 +3545,31 @@ class SaleOrderLine(models.Model):
             if not po_lines_for_so_line:
                 continue
 
-            # Scenario A: Single source document → cancel entire RFQ
+            # Scenario A: cancel the whole RFQ only when nothing on it is
+            # still wanted. "Single source document" is NOT enough on its own:
+            # an order with three stones has three lines on one RFQ, and
+            # cancelling one of them used to cancel the RFQ — killing the
+            # procurement for the two siblings that were still live.
             if len(origin_names) == 1 and origin_names[0] == order.name:
                 other_so_lines = po.order_line.filtered(
                     lambda pl: pl.sale_order_id and pl.sale_order_id.id != order.id
                 ) if has_sale_order else POL
-                if not other_so_lines:
+                remaining = po.order_line - po_lines_for_so_line
+                if has_sale_link:
+                    live_siblings = remaining.filtered(
+                        lambda pl: (not pl.sale_line_id
+                                    or pl.sale_line_id.availability_status
+                                    not in _LGD_DEAD_LINE_STATUSES)
+                    )
+                else:
+                    live_siblings = remaining
+                if live_siblings:
+                    _logger.info(
+                        "[AUTO-RFQ-CANCEL] Keeping RFQ %s: %d line(s) on it are "
+                        "still live for %s; reducing instead of cancelling.",
+                        po.name, len(live_siblings), order.name
+                    )
+                if not other_so_lines and not live_siblings:
                     _logger.info(
                         "🚫 [AUTO-RFQ-CANCEL] Cancelling RFQ %s (single source: %s)",
                         po.name, order.name
@@ -3575,9 +3595,14 @@ class SaleOrderLine(models.Model):
                         pl.unlink()
                     else:
                         pl.product_qty = new_qty
-                # Update origin: remove this SO's name
-                remaining_origins = [n for n in origin_names if n != order.name]
-                po.origin = ', '.join(remaining_origins) if remaining_origins else False
+
+                still_here = po.order_line.filtered(
+                    lambda pl: pl.sale_line_id
+                    and pl.sale_line_id.order_id.id == order.id
+                ) if has_sale_link else POL
+                if not still_here:
+                    remaining_origins = [n for n in origin_names if n != order.name]
+                    po.origin = ', '.join(remaining_origins) if remaining_origins else False
 
                 # ── Re-trigger auto-QC if remaining SO lines are now all in_qc_process ──
                 # Handles case: B → In QC (RFQ stays draft), then A cancelled — now
