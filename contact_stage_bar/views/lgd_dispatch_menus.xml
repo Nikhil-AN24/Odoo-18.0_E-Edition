@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- The Dispatch root. Matched by XML ID in ir_ui_menu.py,
+             never by name, so a rename cannot silently hide it. -->
+        <record id="menu_lgd_dispatch_root" model="ir.ui.menu">
+            <field name="name">Dispatch</field>
+            <field name="parent_id" eval="False"/>
+            <field name="sequence">7</field>
+            <field name="web_icon">contact_stage_bar,static/description/dispatch_icon.png</field>
+            <field name="groups_id" eval="[(6, 0, [
+                ref('contact_stage_bar.group_lgd_shipment'),
+                ref('base.group_system')])]"/>
+        </record>
+
+        <menuitem id="menu_lgd_ready_to_dispatch"
+                  name="Ready to Dispatch"
+                  parent="menu_lgd_dispatch_root"
+                  action="action_lgd_ready_to_dispatch"
+                  sequence="1"/>
+
+        <menuitem id="menu_lgd_parcels"
+                  name="Parcels"
+                  parent="menu_lgd_dispatch_root"
+                  action="action_lgd_parcels"
+                  sequence="2"/>
+
+        <menuitem id="menu_lgd_awaiting_delivery"
+                  name="Awaiting Delivery Confirmation"
+                  parent="menu_lgd_dispatch_root"
+                  action="action_lgd_awaiting_delivery"
+                  sequence="3"/>
+
+        <menuitem id="menu_lgd_memos_out"
+                  name="Memos Out"
+                  parent="menu_lgd_dispatch_root"
+                  action="action_lgd_memos_out"
+                  sequence="4"/>
+
+        <menuitem id="menu_lgd_dispatch_config"
+                  name="Configuration"
+                  parent="menu_lgd_dispatch_root"
+                  sequence="9"/>
+
+        <menuitem id="menu_lgd_courier_agent"
+                  name="Couriers &amp; Angadias"
+                  parent="menu_lgd_dispatch_config"
+                  action="action_lgd_courier_agent"
+                  sequence="1"/>
+    </data>
+</odoo>

@@ -1,8 +1,8 @@
+import logging
 import re
-
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
-
+_logger = logging.getLogger(__name__)
 
 class StoneReplacement(models.TransientModel):
     """Replace Stone wizard. Two entry modes:
@@ -24,20 +24,78 @@ class StoneReplacement(models.TransientModel):
 
     igi_report_no = fields.Char(string="IGI Report Number")
 
-    # ── Replacement stone spec (filled by IGI, or typed in Manual mode) ──────
-    lab = fields.Char(string="Lab")
-    shapes = fields.Char(string="Shape")
+    LAB_SELECTION = [
+        ('IGI', 'IGI'), ('GIA', 'GIA'), ('HRD', 'HRD'),
+        ('SGL', 'SGL'), ('GSI', 'GSI'), ('Other', 'Other'),
+    ]
+    TREATMENT_SELECTION = [(t, t) for t in (
+        'None', 'CVD', 'HPHT', 'Irradiated', 'Laser Drilled',
+        'Fracture Filled', 'Other',
+    )]
+    lab = fields.Selection(LAB_SELECTION, string="Lab")
+    shape_id = fields.Many2one('customer.rfq.shape', string="Shape")
     weight_carat = fields.Char(string="Carat Weight")
+    # Free text by choice: these carry lab-specific wording and fancy-colour
+    # descriptions that no fixed list covers well, so the user types them &  whatever IGI returns is kept verbatim.
     color = fields.Char(string="Colour")
     clarity = fields.Char(string="Clarity")
     cut = fields.Char(string="Cut")
-    polish = fields.Char(string="Polish")
-    symmetry = fields.Char(string="Symmetry")
-    fluorescence_intensity = fields.Char(string="Fluorescence")
+    polish_id = fields.Many2one(
+        'customer.rfq.grade', string="Polish",
+        domain="[('category', '=', 'polish')]")
+    symmetry_id = fields.Many2one(
+        'customer.rfq.grade', string="Symmetry",
+        domain="[('category', '=', 'symmetry')]")
+    fluorescence_id = fields.Many2one(
+        'customer.rfq.grade', string="Fluorescence",
+        domain="[('category', '=', 'fluorescence')]")
     fluorescence_color = fields.Char(string="Fluorescence Color")
-    treatments = fields.Char(string="Treatments")
+    treatments = fields.Selection(TREATMENT_SELECTION, string="Treatments")
     measurements = fields.Char(string="Measurements")
     certificate = fields.Char(string="Certificate Number")
+
+    # ── Resolving IGI's wording onto the pickers ────────────────────────
+    def _resolve_grade(self, category, value):
+        """IGI shouts its grades ("EXCELLENT"); the master is title case."""
+        if not value:
+            return False
+        Grade = self.env['customer.rfq.grade']
+        match = Grade.search([
+            ('category', '=', category),
+            ('name', '=ilike', str(value).strip()),
+        ], limit=1)
+        if not match:
+            _logger.warning(
+                "Replacement: IGI %s %r matches no %s grade; left blank for "
+                "the user to pick.", category, value, category)
+        return match
+
+    def _resolve_shape(self, value):
+        """IGI says "ROUND BRILLIANT"; the master says "Round"."""
+        if not value:
+            return False
+        Shape = self.env['customer.rfq.shape']
+        text = str(value).strip()
+        match = Shape.search([('name', '=ilike', text)], limit=1)
+        if not match and text.split():
+            match = Shape.search(
+                [('name', '=ilike', text.split()[0])], limit=1)
+        if not match:
+            _logger.warning(
+                "Replacement: IGI shape %r matches no master shape; left "
+                "blank for the user to pick.", value)
+        return match
+
+    @staticmethod
+    def _resolve_selection(options, value):
+        """Case-insensitive match onto a fixed list; blank when unknown."""
+        if not value:
+            return False
+        text = str(value).strip()
+        for key, _label in options:
+            if key.lower() == text.lower():
+                return key
+        return False
     stone_type = fields.Selection(
         [('natural', 'Natural'), ('lab_grown', 'Lab Grown')],
         string="Stone Type")
@@ -72,7 +130,7 @@ class StoneReplacement(models.TransientModel):
         for wiz in self:
             value = 0.0
             if wiz.weight_carat:
-                match = re.search(r'([\d.]+)', str(wiz.weight_carat))
+                match = re.search(r'(-?[\d.]+)', str(wiz.weight_carat))
                 if match:
                     try:
                         value = float(match.group(1))
@@ -95,31 +153,48 @@ class StoneReplacement(models.TransientModel):
             raise UserError(_("Enter the IGI report number first."))
         result = igi_service.fetch_by_report_number(self.env, report)
         if not result or result.get('error'):
+
+            error = (result or {}).get('error')
+            if error == 'not_found':
+                message = _("Report %s is not registered with IGI. Please "
+                            "check the number, or enter the specs by hand."
+                            ) % report
+                kind = 'warning'
+            elif error == 'not_configured':
+                message = _("IGI lookup is not set up correctly on this "
+                            "system, so no number can be checked. Please tell "
+                            "an administrator and enter the specs by hand.")
+                kind = 'danger'
+            else:
+                message = _("IGI is temporarily unavailable. Please enter the "
+                            "specs by hand; you can retry later.")
+                kind = 'warning'
             self.mode = 'manual'
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _("IGI"),
-                    'message': _("IGI could not return report %s — please enter "
-                                 "the specs by hand.") % report,
-                    'type': 'warning',
+                    'message': message,
+                    'type': kind,
                     'sticky': False,
                 },
             }
         self.write({
-            'shapes': (result.get('shape') or '').title() or False,
+            'shape_id': self._resolve_shape(result.get('shape')).id or False,
             'weight_carat': str(result.get('carat_value')) if result.get('carat_value') else False,
             'color': result.get('color'),
             'clarity': result.get('clarity_norm'),
             'cut': result.get('cut'),
-            'polish': result.get('polish'),
-            'symmetry': result.get('symmetry'),
+            'polish_id': self._resolve_grade('polish', result.get('polish')).id or False,
+            'symmetry_id': self._resolve_grade('symmetry', result.get('symmetry')).id or False,
             # IGI omits these for some stones — default to "None" so the column
             # never renders blank on the replaced line.
-            'fluorescence_intensity': result.get('fluorescence_intensity') or 'None',
+            'fluorescence_id': self._resolve_grade(
+                'fluorescence', result.get('fluorescence_intensity') or 'None').id or False,
             'fluorescence_color': result.get('fluorescence_color') or 'None',
-            'treatments': result.get('treatment') or 'None',
+            'treatments': self._resolve_selection(
+                self.TREATMENT_SELECTION, result.get('treatment') or 'None'),
             'measurements': result.get('measurements'),
             'certificate': result.get('report_number') or report,
             'lab': 'IGI',
@@ -150,14 +225,14 @@ class StoneReplacement(models.TransientModel):
         return {
             'certificate': (self.certificate or '').strip() or False,
             'labs': self.lab or ('IGI' if self.mode == 'igi' else False),
-            'shapes': self.shapes,
+            'shapes': self.shape_id.name or False,
             'weight_carat': self.weight_carat,
             'color': self.color,
             'clarity': self.clarity,
             'cut': self.cut,
-            'polish': self.polish,
-            'symmetry': self.symmetry,
-            'fluorescence_intensity': self.fluorescence_intensity or 'None',
+            'polish': self.polish_id.name or False,
+            'symmetry': self.symmetry_id.name or False,
+            'fluorescence_intensity': self.fluorescence_id.name or 'None',
             'fluorescence_color': self.fluorescence_color or 'None',
             'treatments': self.treatments or 'None',
             'measurements': self.measurements,
@@ -169,22 +244,33 @@ class StoneReplacement(models.TransientModel):
         create the replacement."""
         self.ensure_one()
         line = self.sale_line_id
+        problems = []
         if not self.vendor_id:
-            raise UserError(_("Select the vendor."))
-        if not self.gross_price_per_carat:
-            raise UserError(_("Enter the gross buying price per carat."))
+            problems.append(_("Select the vendor."))
         if not self.stone_type:
-            raise UserError(_("Select the replacement stone type."))
+            problems.append(_("Select the replacement stone type."))
         if not self.weight_carat:
-            raise UserError(_("Enter the carat weight."))
+            problems.append(_("Enter the carat weight."))
+        elif self.carat_value <= 0.0:
+            # A stone cannot weigh nothing or less, whichever source filled the
+            # field in. Checked here rather than on the Char so the IGI and
+            # manual paths are held to the same rule.
+            problems.append(_(
+                "Carat weight must be greater than zero (got %s).",
+                self.weight_carat))
+        if not self.gross_price_per_carat:
+            problems.append(_("Enter the gross buying price per carat."))
+        elif self.gross_price_per_carat < 0.0:
+            problems.append(_("Vendor price per carat cannot be negative."))
+        if problems:
+            raise UserError('\n'.join(problems))
 
         line = line.sudo()
         product = line._replacement_resolve_product(self._spec_vals())
         line._replacement_check_duplicate(product.certificate, exclude_line=line)
         line._replacement_check_hard_rules(product)
 
-        # Make sure the chosen vendor is a seller on the product so the PO and
-        # the line's vendor resolve.
+        # Make sure the chosen vendor is a seller on the product so the PO & the line's vendor resolve.
         if self.vendor_id.id not in product.seller_ids.mapped('partner_id').ids:
             self.env['product.supplierinfo'].sudo().create({
                 'product_tmpl_id': product.id,
@@ -193,7 +279,8 @@ class StoneReplacement(models.TransientModel):
 
         gross_total = (self.gross_price_per_carat or 0.0) * (self.carat_value or 0.0)
         outcome = line._replacement_price_outcome(product, gross_total)
-        line._create_replacement(product, self.vendor_id, gross_total, outcome)
+        line._create_replacement(product, self.vendor_id, gross_total, outcome,
+                                 price_per_carat=self.gross_price_per_carat)
 
         message = (
             _("Replacement created and sent to Sales for confirmation.")

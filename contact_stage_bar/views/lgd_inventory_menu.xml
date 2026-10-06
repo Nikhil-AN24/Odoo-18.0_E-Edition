@@ -30,11 +30,10 @@
         </field>
     </record>
 
-    <!-- Menu Item for LGD Inventory -->
-    <menuitem
-        id="menu_lgd_inventory"
-        name="LGD Inventory"
-        parent="stock.menu_stock_root"
-        action="action_lgd_inventory_picking"
-        sequence="20"/>
+    <record id="menu_lgd_inventory" model="ir.ui.menu">
+        <field name="name">LGD Inventory</field>
+        <field name="parent_id" ref="stock.menu_stock_root"/>
+        <field name="sequence">20</field>
+        <field name="action" eval="False"/>
+    </record>
 </odoo>

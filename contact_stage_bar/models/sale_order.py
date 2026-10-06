@@ -13,6 +13,7 @@ import  logging
 _logger = logging.getLogger(__name__)
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
+_LGD_DEAD_LINE_STATUSES = ('cancelled', 'not_available', 'replaced')
 
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Diamond Booked": ["Confirmed", "Not available"],
@@ -25,7 +26,7 @@ ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Dispatched": ["Delivered", "Return of Order"],
     "Return of Order": ["Re - Dispatched", "Delivered"],
     "Re - Dispatched": ["Delivered", "Return of Order"],
-    "Delivered": ["Order Completed"],
+    "Delivered": ["Order Completed", "Return of Order"],
     "Cancelled": [],
     "Order Completed": [],
 }
@@ -155,6 +156,24 @@ class SaleOrder(models.Model):
                 order.vat = False
                 order.ein_number = False
 
+    # ── Who may still touch Order Lines after confirmation ──────────────
+    can_edit_line_availability = fields.Boolean(
+        compute='_compute_can_edit_line_availability',
+        help="Mirrors sale.order.line.can_edit_availability at order level so "
+             "the Order Lines grid can stay editable for the roles that are "
+             "allowed to change Availability after the order is confirmed.")
+
+    def _compute_can_edit_line_availability(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+            or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
+        )
+        for order in self:
+            order.can_edit_line_availability = allowed
+
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
         Augmont Tax Invoice PDF, in one click.
@@ -218,7 +237,21 @@ class SaleOrder(models.Model):
     gst_treatment = fields.Selection([
         ('within_maharashtra', 'Within Maharashtra'),
         ('outside_maharashtra', 'Outside Maharashtra'),
-    ], string='GST Treatment')
+    ], string='GST Treatment',
+        compute='_compute_gst_treatment', store=True, readonly=False)
+
+    @api.depends('partner_id', 'partner_id.state_id', 'company_id')
+    def _compute_gst_treatment(self):
+
+        for order in self:
+            customer_state = order.partner_id.state_id
+            company_state = order.company_id.state_id or order.company_id.partner_id.state_id
+            if not customer_state or not company_state:
+                order.gst_treatment = order.gst_treatment
+                continue
+            order.gst_treatment = ('within_maharashtra'
+                                   if customer_state == company_state
+                                   else 'outside_maharashtra')
     
     payment_ids = fields.Many2many(
         'account.payment',
@@ -2864,10 +2897,16 @@ class SaleOrderLine(models.Model):
             'final_price_unit': final_price_unit,
         }
 
-    def _replacement_create_po(self, product, vendor, gross_total):
+    def _replacement_create_po(self, product, vendor, gross_total, sale_line,
+                               price_per_carat=None):
         """Raise the vendor PO for the replacement: origin,
         order_number and location like the Add Product wizard, priced at gross
-        cost, with vendor terms filled from the stone classification."""
+        cost, with vendor terms filled from the stone classification.
+
+        sale_line is the replacement order line this PO exists to buy. It is
+        required, not optional: without sale_line_id the PO line never reaches
+        Logistics' Expected Stones, so the replacement stone is ordered from
+        the vendor and then silently drops out of the flow (§10.3, P10)."""
         self.ensure_one()
         order = self.order_id
         po = self.env['purchase.order'].create({
@@ -2888,17 +2927,27 @@ class SaleOrderLine(models.Model):
             'date_planned': fields.Datetime.now(),
             'stone_type': product.stone_type or self.stone_type,
             'stone_certification_type': self.stone_certification_type,
+            'sale_line_id': sale_line.id,
+            # "Procurement Price/carat" on the PO line. Without this only the
+            # gross total survived the wizard and the per-carat rate the buyer
+            # actually agreed was lost.
+            'rate_usd': price_per_carat or 0.0,
         })
         discount, days = po_line._get_vendor_terms(vendor)
         po_line.write({'discount_percent': discount, 'payment_days': days})
         return po
 
-    def _create_replacement(self, product, vendor, gross_total, price_outcome):
+    def _create_replacement(self, product, vendor, gross_total, price_outcome,
+                            price_per_carat=None):
         """Create the replacement line and its PO, then complete immediately or
         leave it pending Sales confirmation."""
         self.ensure_one()
         order = self.order_id
         needs_sales = price_outcome['needs_sales']
+        # Procurement Price/carat is a stored compute seeded from the RFQ price
+        vendor_price_vals = {}
+        if price_per_carat and 'procurement_price_per_carat' in self._fields:
+            vendor_price_vals['procurement_price_per_carat'] = price_per_carat
         new_line = self.env['sale.order.line'].with_context(
             from_replacement_engine=True,
         ).create({
@@ -2914,8 +2963,24 @@ class SaleOrderLine(models.Model):
             'availability_status': 'diamond_booked',
             'replaces_line_id': self.id,
             'replacement_pending_sales': needs_sales,
+            **vendor_price_vals,
         })
-        self._replacement_create_po(product, vendor, gross_total)
+        if not new_line:
+            # Belt and braces behind the exemption above. Carrying on here is
+            # what turned a blocked insert into lost data: a PO with no
+            # sale_line_id that can never reach Logistics, a Sales approval
+            # activity for a line that does not exist, and the original stone
+            # closed as Replaced with replaced_by_line_id empty.
+            raise UserError(_(
+                "The replacement line could not be created for %(stone)s, so "
+                "nothing was changed. Nothing has been replaced — please "
+                "report this with the order number (%(order)s)."
+            ) % {
+                'stone': self.product_template_id.display_name or self.id,
+                'order': order.name,
+            })
+        self._replacement_create_po(product, vendor, gross_total, new_line,
+                                    price_per_carat=price_per_carat)
         # Mark the original "Replaced" immediately on Submit — both paths.
         # When the change still needs Sales sign-off we ALSO raise the activity;
         # a later rejection reverts the original back to Not available.
@@ -3069,7 +3134,21 @@ class SaleOrderLine(models.Model):
     # everyone else sees it read-only.
     can_edit_vendor = fields.Boolean(compute='_compute_can_edit_vendor')
 
+    _LGD_CLOSED_LINE_STATUSES = ('not_available', 'cancelled', 'qc_fail')
+
+    lgd_line_closed = fields.Boolean(
+        compute='_compute_lgd_line_closed', string="Line closed")
+
+    @api.depends('availability_status')
+    def _compute_lgd_line_closed(self):
+        for line in self:
+            origin = line._origin
+            saved = (origin.availability_status if origin
+                     else line.availability_status)
+            line.lgd_line_closed = saved in self._LGD_CLOSED_LINE_STATUSES
+
     @api.depends_context('uid')
+    @api.depends('lgd_line_closed')
     def _compute_can_edit_vendor(self):
         user = self.env.user
         allowed = (
@@ -3078,7 +3157,9 @@ class SaleOrderLine(models.Model):
             or user.has_group('contact_stage_bar.group_lgd_procurement')
         )
         for line in self:
-            line.can_edit_vendor = allowed
+            # Availability itself is NOT gated here: a QC Fail line still has
+            # to be movable to Cancelled, which is can_edit_availability's job.
+            line.can_edit_vendor = allowed and not line.lgd_line_closed
 
     # Who may change the Availability selection on the Sale Order: Admin /
     # LGD SuperAdmin / LGD Procurement / LGD Procurement Manager (the last two
@@ -3086,17 +3167,64 @@ class SaleOrderLine(models.Model):
     # family and any other internal group — sees it read-only.
     can_edit_availability = fields.Boolean(compute='_compute_can_edit_availability')
 
+    #: Statuses a person may still set by hand on a CONFIRMED order.
+    #: Everything omitted here is in flight or terminal — its status is owned
+    #: by the pack, dispatch and delivery steps, so it must not be re-typed
+    #: (that was the original complaint about Payment Pending). The pre-flight
+    #: Deliberately the minimum: diamond_booked is here only because a
+    #: replacement stone is born at that status on an already-confirmed order,
+    #: and Procurement must be able to move it on. Once it reaches confirmed it
+    #: locks like any other line.
+    _LGD_HAND_EDITABLE_STATUSES = (
+        'qc_fail',          # retire a stone QC rejected
+        'diamond_booked',   # a replacement, so Procurement can confirm it
+        'dispatched',
+        'return_of_order',
+        're_dispatched',
+        'delivered',
+    )
+
     @api.depends_context('uid')
+    @api.depends('availability_status', 'order_id.state')
     def _compute_can_edit_availability(self):
+        """Who may change Availability, and on which lines.
+
+        Before the order is confirmed the grid works as it always has: the
+        Procurement roles set Diamond Booked / Confirmed / Not available while
+        the quotation is being built.
+
+        Once the order is confirmed, only the pre-flight statuses in
+        _LGD_HAND_EDITABLE_STATUSES stay open. A Payment Pending or Dispatched
+        line must not be re-typed by hand — its status is owned by the pack,
+        dispatch and delivery steps. A replacement stone is born at
+        diamond_booked on an already-confirmed order, so those stay editable
+        or the replacement could never be moved on to confirmed.
+        """
         user = self.env.user
-        allowed = (
+        allowed_role = (
             user.has_group('base.group_system')
             or user.has_group('contact_stage_bar.group_lgd_superadmin')
             or user.has_group('contact_stage_bar.group_lgd_procurement')
             or user.has_group('contact_stage_bar.group_lgd_procurement_manager')
         )
         for line in self:
-            line.can_edit_availability = allowed
+            if not allowed_role:
+                line.can_edit_availability = False
+            elif line.order_id.state == 'draft':
+                line.can_edit_availability = True
+            else:
+                # Judge on the SAVED status, never the one being typed.
+                # Reading line.availability_status here flips this field to
+                # readonly the instant the user picks Cancelled — and Odoo
+                # omits readonly fields from the save payload, so the edit
+                # disappears on save with no error at all. _origin is the
+                # database-backed record, so the gate stays stable for the
+                # whole edit and only re-evaluates once the change is stored.
+                origin = line._origin
+                saved = (origin.availability_status if origin
+                         else line.availability_status)
+                line.can_edit_availability = (
+                    saved in self._LGD_HAND_EDITABLE_STATUSES)
 
     vendor_city = fields.Char(string="Vendor City",related='vendor_id.city')
     is_block = fields.Boolean(string="Block", default=False,readonly=True)
@@ -3295,7 +3423,6 @@ class SaleOrderLine(models.Model):
             'target': 'new',  # popup instead of new page
         }
 
-
     @api.depends(
         'product_uom_qty', 'price_unit', 'tax_id',
         'currency_id', 'product_id', 'order_id',
@@ -3317,7 +3444,6 @@ class SaleOrderLine(models.Model):
         active_lines = self - zero_lines
         if active_lines:
             super(SaleOrderLine, active_lines)._compute_amount()
-
 
     @api.onchange('availability_status')
     def _onchange_availability_status(self):
@@ -3346,7 +3472,19 @@ class SaleOrderLine(models.Model):
             # Only apply the guard to diamond_booked lines with no order_number.
             # Lines created from the website API always have order_number set, so
             # they will always pass through correctly.
-            if order_id and new_status == 'diamond_booked' and not has_order_number:
+            # The replacement engine is a legitimate creator, not a stray
+            # duplicate: _create_replacement already flags itself with
+            # from_replacement_engine, and a line that replaces another always
+            # carries replaces_line_id. Without this exemption the guard eats
+            # the replacement line on any order that has a stone in flight —
+            # which is exactly when a stone gets replaced — leaving the
+            # original marked Replaced with nothing to replace it.
+            is_replacement = (
+                self.env.context.get('from_replacement_engine')
+                or vals.get('replaces_line_id')
+            )
+            if (order_id and new_status == 'diamond_booked'
+                    and not has_order_number and not is_replacement):
                 order = self.env['sale.order'].browse(order_id)
                 # Check if ANY line on this order has already moved past 'confirmed'
                 in_flight_lines = order.order_line.filtered(
@@ -3427,12 +3565,31 @@ class SaleOrderLine(models.Model):
             if not po_lines_for_so_line:
                 continue
 
-            # Scenario A: Single source document → cancel entire RFQ
+            # Scenario A: cancel the whole RFQ only when nothing on it is
+            # still wanted. "Single source document" is NOT enough on its own:
+            # an order with three stones has three lines on one RFQ, and
+            # cancelling one of them used to cancel the RFQ — killing the
+            # procurement for the two siblings that were still live.
             if len(origin_names) == 1 and origin_names[0] == order.name:
                 other_so_lines = po.order_line.filtered(
                     lambda pl: pl.sale_order_id and pl.sale_order_id.id != order.id
                 ) if has_sale_order else POL
-                if not other_so_lines:
+                remaining = po.order_line - po_lines_for_so_line
+                if has_sale_link:
+                    live_siblings = remaining.filtered(
+                        lambda pl: (not pl.sale_line_id
+                                    or pl.sale_line_id.availability_status
+                                    not in _LGD_DEAD_LINE_STATUSES)
+                    )
+                else:
+                    live_siblings = remaining
+                if live_siblings:
+                    _logger.info(
+                        "[AUTO-RFQ-CANCEL] Keeping RFQ %s: %d line(s) on it are "
+                        "still live for %s; reducing instead of cancelling.",
+                        po.name, len(live_siblings), order.name
+                    )
+                if not other_so_lines and not live_siblings:
                     _logger.info(
                         "🚫 [AUTO-RFQ-CANCEL] Cancelling RFQ %s (single source: %s)",
                         po.name, order.name
@@ -3458,9 +3615,14 @@ class SaleOrderLine(models.Model):
                         pl.unlink()
                     else:
                         pl.product_qty = new_qty
-                # Update origin: remove this SO's name
-                remaining_origins = [n for n in origin_names if n != order.name]
-                po.origin = ', '.join(remaining_origins) if remaining_origins else False
+
+                still_here = po.order_line.filtered(
+                    lambda pl: pl.sale_line_id
+                    and pl.sale_line_id.order_id.id == order.id
+                ) if has_sale_link else POL
+                if not still_here:
+                    remaining_origins = [n for n in origin_names if n != order.name]
+                    po.origin = ', '.join(remaining_origins) if remaining_origins else False
 
                 # ── Re-trigger auto-QC if remaining SO lines are now all in_qc_process ──
                 # Handles case: B → In QC (RFQ stays draft), then A cancelled — now
@@ -4023,10 +4185,7 @@ class SaleOrderLine(models.Model):
 
         return super(SaleOrderLine, final_lines)._action_launch_stock_rule(previous_product_uom_qty)
         
-
 class AccountPayment(models.Model):
     _inherit = "account.payment"
 
     sale_order_id = fields.Many2one('sale.order',  string="Sale Order")
-
- 

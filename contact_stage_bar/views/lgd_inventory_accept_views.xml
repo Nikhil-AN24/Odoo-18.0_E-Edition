@@ -15,6 +15,8 @@
                     <header>
                         <button name="action_lgd_accept" type="object"
                                 string="Accept" class="btn-primary"/>
+                        <button name="action_lgd_take_on_memo" type="object"
+                                string="Hold on memo" class="btn-secondary"/>
                     </header>
                     <field name="lgd_invoice_number"/>
                     <field name="lgd_certificate"/>
@@ -22,11 +24,21 @@
                     <field name="lgd_carat"/>
                     <field name="lgd_colour"/>
                     <field name="lgd_clarity"/>
+                    <field name="inr_currency_id" column_invisible="1"/>
+                    <field name="lgd_po_total" widget="monetary"
+                           options="{'currency_field': 'inr_currency_id'}"/>
                     <field name="lgd_set_label"/>
-                    <field name="lgd_set_incomplete" widget="boolean_toggle"/>
                     <field name="lgd_qc_decided_at"/>
+                    <!-- Which path is open depends on the purchase order:
+                         a confirmed PO can be accepted into stock, an open
+                         RFQ can only be held on memo. -->
+                    <field name="lgd_po_state" string="PO"/>
                     <button name="action_lgd_accept" type="object"
-                            string="Accept" class="btn-primary"/>
+                            string="Accept" class="btn-primary"
+                            invisible="lgd_po_state != 'purchase'"/>
+                    <button name="action_lgd_take_on_memo" type="object"
+                            string="Hold on memo" class="btn-secondary"
+                            invisible="lgd_po_state == 'purchase'"/>
                 </list>
             </field>
         </record>
@@ -37,11 +49,17 @@
             <field name="view_mode">list</field>
             <field name="view_id" ref="view_lgd_awaiting_acceptance_list"/>
             <field name="search_view_id" ref="contact_stage_bar.view_lgd_ops_line_search"/>
-            <field name="domain">[('lgd_stage', '=', 'qc_passed'), ('order_id.state', '=', 'purchase')]</field>
+            <!-- Stones on an open RFQ belong here as well: they cannot be
+                 accepted into stock yet, but they can be held on vendor memo.
+                 The PO column and the buttons show which applies. -->
+            <field name="domain">['|',
+                '&amp;', ('lgd_stage', '=', 'qc_passed'), ('order_id.state', 'in', ('draft', 'sent', 'purchase')),
+                '&amp;', ('lgd_stage', '=', 'on_memo'), ('order_id.state', '=', 'purchase')]</field>
             <field name="context">{'group_by': 'lgd_invoice_number'}</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">Nothing awaiting acceptance.</p>
-                <p>Stones appear here once Procurement confirms their purchase order.</p>
+                <p>Stones appear here as soon as QC passes them. Accept the ones
+                   whose purchase order is confirmed; hold the rest on vendor memo.</p>
             </field>
         </record>
 

@@ -45,18 +45,20 @@
                     <field name="lgd_collection_method"/>
                     <field name="lgd_collector_id"/>
 
-                    <!-- Both buttons stay hidden until the row records how the
-                         stone arrived and who took it in. A list button has no
-                         disabled state in Odoo, so invisible= is the mechanism;
-                         the same rule is enforced server-side in
-                         _lgd_collection_problems, which also covers the header
-                         buttons and RPC. -->
+                    <!-- Both buttons stay hidden until the row records how
+                         the stone arrived. Collected By is no longer part of
+                         the test: it is a computed column that always carries
+                         a name, so only Collection can actually be blank. A
+                         list button has no disabled state in Odoo, so
+                         invisible= is the mechanism; the same rule is enforced
+                         server-side in _lgd_collection_problems, which also
+                         covers the header buttons and RPC. -->
                     <button name="action_lgd_receive" type="object"
                             string="Receive" class="btn-success"
-                            invisible="not lgd_collection_method or not lgd_collector_id"/>
+                            invisible="not lgd_collection_method"/>
                     <button name="action_lgd_open_reject_wizard" type="object"
                             string="Reject" class="btn-danger"
-                            invisible="not lgd_collection_method or not lgd_collector_id"/>
+                            invisible="not lgd_collection_method"/>
                 </list>
             </field>
         </record>

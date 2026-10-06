@@ -745,14 +745,27 @@ class CustomerRfq(models.Model):
 
     @api.onchange('cut_preset')
     def _onchange_cut_preset(self):
+        """Fill the three grade pills from the preset — and empty them again
+        when the preset is cleared.
 
+        Odoo's selection_badge already deselects when you click the badge that
+        is active (BadgeSelectionField.onChange sets the field to False for any
+        field that is not required, and this one is not). What was missing is
+        the other half: clearing the preset used to return early and leave the
+        pills ticked, so the screen still showed 3EX's grades with no badge
+        selected and no way to undo them. Clearing the preset now clears what
+        it filled in.
+        """
+        Grade = self.env['customer.rfq.grade']
         if not self.cut_preset:
+            self.cut_grade_ids = Grade.browse()
+            self.polish_grade_ids = Grade.browse()
+            self.symmetry_grade_ids = Grade.browse()
             return
         mapping = self._CUT_PRESET_GRADES.get(self.cut_preset)
         if not mapping:
             return
         cut_codes, polish_codes, sym_codes = mapping
-        Grade = self.env['customer.rfq.grade']
         self.cut_grade_ids = Grade.search(
             [('category', '=', 'cut'), ('code', 'in', cut_codes)])
         self.polish_grade_ids = Grade.search(
@@ -768,6 +781,28 @@ class CustomerRfq(models.Model):
             if rec.quantity <= 0:
                 raise ValidationError(_(
                     "Quantity must be a whole number greater than zero."))
+
+    @api.constrains('carat')
+    def _check_carat_positive(self):
+        """A stone cannot weigh nothing or less than nothing."""
+        for rec in self:
+            if rec.stone_certification_type == 'non_certified':
+                continue
+            if rec.carat is not False and rec.carat <= 0:
+                raise ValidationError(_(
+                    "Carat / Stone must be greater than zero."))
+
+    @api.constrains('color')
+    def _check_color_is_not_numeric(self):
+        """Colour is a grade or a fancy-colour name — D, G, Fancy Yellow —
+        never a number. Digits here are almost always a value typed into the
+        wrong field, and they travel all the way to the stone specs."""
+        for rec in self:
+            value = (rec.color or '').strip()
+            if value and any(character.isdigit() for character in value):
+                raise ValidationError(_(
+                    "Colour cannot contain numbers — use a grade such as D or "
+                    "G, or a fancy colour name. You entered: %s") % value)
 
     @api.constrains('shape_ids')
     def _check_single_shape(self):

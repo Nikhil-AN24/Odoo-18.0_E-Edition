@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from odoo import _, api, fields, models
+from .lgd_ops_mixin import lgd_notify, lgd_responsible_user
 from odoo.exceptions import AccessError, UserError
 
 _logger = logging.getLogger(__name__)
@@ -12,8 +13,6 @@ GROUP_INVENTORY = 'contact_stage_bar.group_lgd_inventory'
 GROUP_PROCUREMENT = 'contact_stage_bar.group_lgd_procurement'
 GROUP_SYSTEM = 'base.group_system'
 
-# Stage -> (who did it, when), used to name the other user in the "already
-# processed" error (§8 preamble).
 _LGD_STAGE_ACTOR = {
     'received': ('lgd_received_by', 'lgd_received_at'),
     'rejected': ('lgd_rejected_by', 'lgd_rejected_at'),
@@ -25,11 +24,10 @@ _LGD_STAGE_ACTOR = {
     'returned': ('lgd_returned_by', 'lgd_returned_at'),
 }
 
-
 class PurchaseOrderLine(models.Model):
     _inherit = 'purchase.order.line'
 
-    # ── §7.1 Link and display (all read-only, from the core sale_line_id) ────
+    # ── Link and display (all read-only, from the core sale_line_id) ────
     lgd_invoice_number = fields.Char(
         related='sale_line_id.order_id.sdk_augmont_number',
         store=True, index=True, string='Invoice No.')
@@ -39,6 +37,9 @@ class PurchaseOrderLine(models.Model):
     lgd_carat = fields.Char(related='sale_line_id.carat_weight', string='Carat')
     lgd_colour = fields.Char(related='sale_line_id.color', string='Colour')
     lgd_clarity = fields.Char(related='sale_line_id.clarity', string='Clarity')
+
+    lgd_availability_status = fields.Selection(
+        related='sale_line_id.availability_status', string='Availability')
     lgd_cert_type = fields.Selection(
         related='sale_line_id.stone_certification_type', string='Certification')
     lgd_line_type = fields.Selection(
@@ -56,6 +57,7 @@ class PurchaseOrderLine(models.Model):
         ('with_qc', 'Handed to QC'),
         ('in_qc', 'With QC'),
         ('qc_passed', 'Passed QC'),
+        ('on_memo', 'Held on vendor memo'),
         ('in_inventory', 'In Inventory'),
         ('rejected', 'Rejected at inward'),
         ('failed', 'Failed QC'),
@@ -65,6 +67,12 @@ class PurchaseOrderLine(models.Model):
     ], string='Stage', index=True, copy=False,
         help="Empty means Expected. Written only by the Logistics/QC buttons "
              "and the go-live action.")
+    #: The RFQ/PO state, surfaced on the Inventory lists so a user can see at
+    #: a glance whether a stone can be accepted into stock or only held on
+    #: memo. Stored so the Awaiting Acceptance list can group and filter on it.
+    lgd_po_state = fields.Selection(
+        related='order_id.state', string='PO State', store=True, index=True)
+
     lgd_commit_deadline = fields.Date(
         compute='_compute_lgd_commit_deadline', store=True,
         string='Commit By')
@@ -77,8 +85,98 @@ class PurchaseOrderLine(models.Model):
         ('vendor_delivers', 'Vendor delivers'),
         ('we_collect', 'We collect'),
     ], string='Collection', copy=False)
+
+    lgd_collector_set_id = fields.Many2one(
+        'res.users', string='Collected By (recorded)', copy=False)
     lgd_collector_id = fields.Many2one(
-        'res.users', string='Collected By', copy=False)
+        'res.users', string='Collected By', copy=False,
+        compute='_compute_lgd_collector_id',
+        inverse='_inverse_lgd_collector_id',
+        readonly=False, store=False)
+
+    @api.depends('lgd_collector_set_id')
+    @api.depends_context('uid')
+    def _compute_lgd_collector_id(self):
+        for line in self:
+            line.lgd_collector_id = line.lgd_collector_set_id or self.env.user
+
+    def _inverse_lgd_collector_id(self):
+        for line in self:
+            line.lgd_collector_set_id = line.lgd_collector_id
+
+    @api.model
+    def _lgd_backfill_sale_line_links(self):
+        """Link historical PO lines to their order lines.
+
+        Everything downstream of inward reads sale_line_id, so a PO line
+        without it is invisible to Logistics. Lines raised before the wizard
+        and Replace Stone set the link have to be repaired here.
+
+        The only evidence available is purchase.order.origin, which holds the
+        sale order name(s). A link is written ONLY when exactly one candidate
+        order line matches — a wrong link is worse than none, because it would
+        move a real customer's stone through the flow under someone else's
+        order. Ambiguous and unmatched lines are counted and left for
+        Procurement to link by hand. Safe to re-run: already-linked lines are
+        skipped, and a line is never relinked.
+        """
+        # Scopes this to purchase/done orders. Draft and sent are
+        # included as well, deliberately: Expected Stones lists lines on
+        # draft/sent/purchase orders, so a draft RFQ line with no link is
+        # precisely the one that blocks Logistics at inward. The evidence
+        # standard is identical, and the link stays editable by Procurement.
+        lines = self.search([
+            ('sale_line_id', '=', False),
+            ('order_id.state', 'in', ('draft', 'sent', 'purchase', 'done')),
+        ])
+        linked = ambiguous = unmatched = 0
+        for line in lines:
+            names = [n.strip() for n in (line.order_id.origin or '').split(',')
+                     if n.strip()]
+            if not names:
+                unmatched += 1
+                continue
+            candidates = self.env['sale.order.line'].search([
+                ('order_id.name', 'in', names),
+                ('product_id', '=', line.product_id.id),
+                ('line_type', '=', 'lgd'),
+            ])
+            # An order line already spoken for by another PO line is not a
+            # candidate; two PO lines must never point at the same stone.
+            candidates = candidates.filtered(
+                lambda sl: not self.search_count([('sale_line_id', '=', sl.id)]))
+            if len(candidates) == 1:
+                line.sale_line_id = candidates.id
+                linked += 1
+            elif len(candidates) > 1:
+                ambiguous += 1
+            else:
+                unmatched += 1
+        _logger.info(
+            "Sale line backfill: %s linked, %s ambiguous, %s unmatched "
+            "(of %s unlinked lines).", linked, ambiguous, unmatched, len(lines))
+        return {'linked': linked, 'ambiguous': ambiguous,
+                'unmatched': unmatched}
+
+    @api.model
+    def _lgd_migrate_collector_column(self):
+
+        self.env.cr.execute("""
+            SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'purchase_order_line'
+               AND column_name = 'lgd_collector_id'
+        """)
+        if not self.env.cr.fetchone():
+            return
+        self.env.cr.execute("""
+            UPDATE purchase_order_line
+               SET lgd_collector_set_id = lgd_collector_id
+             WHERE lgd_collector_id IS NOT NULL
+               AND lgd_collector_set_id IS NULL
+        """)
+        if self.env.cr.rowcount:
+            _logger.info("Moved %s recorded collector(s) to "
+                         "lgd_collector_set_id.", self.env.cr.rowcount)
 
     lgd_chk_certificate = fields.Boolean(string='Certificate no.', copy=False)
     lgd_chk_shape = fields.Boolean(string='Shape', copy=False)
@@ -141,6 +239,21 @@ class PurchaseOrderLine(models.Model):
 
     lgd_set_label = fields.Char(string='Set Label', copy=False)
     lgd_set_incomplete = fields.Boolean(string='Set Incomplete', copy=False)
+
+    # Computed through sudo, not related, on purpose. grand_total sums
+    # expected_net, which restricts to Procurement/Accounting — a plain
+    # related field would make Inventory Acceptance raise AccessError for the
+    # LGD Inventory group. Inventory is meant to see this one order total (it
+    # is the figure Accept makes billable) and nothing else of the vendor cost
+    # breakdown, so the exception is granted here and only here.
+    lgd_po_total = fields.Monetary(
+        string='Pricing', compute='_compute_lgd_po_total',
+        currency_field='inr_currency_id', readonly=True)
+
+    @api.depends('order_id.grand_total')
+    def _compute_lgd_po_total(self):
+        for line in self:
+            line.lgd_po_total = line.order_id.sudo().grand_total
     lgd_qc_result = fields.Selection(
         [('pass', 'Pass'), ('fail', 'Fail')], string='QC Result', copy=False)
     lgd_qc_decided_by = fields.Many2one(
@@ -150,7 +263,7 @@ class PurchaseOrderLine(models.Model):
         'lgd.qc.fail.reason', string='Fail Reason', copy=False)
     lgd_fail_note = fields.Text(string='Fail Note', copy=False)
 
-    # ── Inventory and returns ──────────────────────────────────────────
+    # ── Inventory & returns ──────────────────────────────────────────
     lgd_accepted_by = fields.Many2one('res.users', string='Accepted By', copy=False)
     lgd_accepted_at = fields.Datetime(string='Accepted On', copy=False)
     lgd_return_method = fields.Selection([
@@ -176,7 +289,7 @@ class PurchaseOrderLine(models.Model):
 
     @api.depends('order_id.date_order')
     def _compute_lgd_commit_deadline(self):
-        """§5.2 — date_order + lgd.commit_window_days (default 7).
+        """date_order + lgd.commit_window_days (default 7).
 
         Informational only: it blocks nothing and cancels nothing."""
         days = self._lgd_commit_window_days()
@@ -205,59 +318,79 @@ class PurchaseOrderLine(models.Model):
                 "lgd.commit_window_days is not a number (%r); using 7.", param)
             return 7
 
-    @api.onchange('lgd_collection_method')
-    def _onchange_lgd_collection_method(self):
-        """Stamp whoever is working the row as the collector, the moment they
-        touch it. Only fills a blank — an existing name is never overwritten,
-        so handing a stone to a colleague is just picking them in the cell."""
-        for line in self:
-            if line.lgd_collection_method and not line.lgd_collector_id:
-                line.lgd_collector_id = self.env.user
+    # ── Go-live backfill for the stamp ────────────────────────────
+    @api.model
+    def _lgd_backfill_accepted_stamp(self):
 
-    # ── Responsible user helper ────────────────────────────────────────
+        lines = self.search([
+            ('lgd_stage', '=', 'in_inventory'),
+            ('sale_line_id', '!=', False),
+            ('lgd_accepted_at', '!=', False),
+            ('sale_line_id.lgd_accepted_at', '=', False),
+        ])
+        for line in lines:
+            line.sale_line_id.sudo().write(
+                {'lgd_accepted_at': line.lgd_accepted_at})
+        _logger.info("Backfilled the vault stamp onto %s sale order line(s).",
+                     len(lines))
+        return len(lines)
+
+    # ── Shared operations helpers ────────────────────────────────
+    # Two-line delegates onto models/lgd_ops_mixin.py. The logic itself lives
+    # in one place so the de-duplication cannot drift between models.
     @api.model
     def _lgd_responsible_user(self, param_key, group_xmlid):
-        """Login from the parameter, else the first active member of the group,
-        else empty. Never raises — a missing responsible must not stop a
-        stone being processed."""
-        login = self.env['ir.config_parameter'].sudo().get_param(param_key)
-        if login:
-            user = self.env['res.users'].sudo().search(
-                [('login', '=', login)], limit=1)
-            if user:
-                return user
-        group = self.env.ref(group_xmlid, raise_if_not_found=False)
-        if group:
-            user = self.env['res.users'].sudo().search(
-                [('groups_id', 'in', group.id), ('active', '=', True)], limit=1)
-            if user:
-                return user
-        _logger.warning(
-            "No responsible user for %s / %s; activity not assigned.",
-            param_key, group_xmlid)
-        return self.env['res.users']
+        return lgd_responsible_user(self.env, param_key, group_xmlid)
+
+    def _lgd_notify(self, record, summary, note, user):
+        return lgd_notify(self.env, record, summary, note, user)
+
+    # ── Split copy defaults (U2) ───────────────────────────────────────
+    #: Carried onto the new RFQ line when ready stones are split off (§5.4).
+    #: Every one of these is copy=False on the field definition, which is
+    #: correct for a duplicated RFQ but wrong for a split: a split line is the
+    #: same physical stone, already inward-checked and QC-passed.
+    _LGD_SPLIT_COPY_FIELDS = (
+        'sale_line_id',
+        'lgd_stage',
+        # inward
+        'lgd_collection_method', 'lgd_collector_set_id',
+        'lgd_received_by', 'lgd_received_at',
+        'lgd_received_certificate',
+        'lgd_chk_certificate', 'lgd_chk_shape', 'lgd_chk_carat',
+        'lgd_chk_quantity', 'lgd_chk_colour', 'lgd_chk_clarity',
+        'lgd_handed_to_qc_by', 'lgd_handed_to_qc_at',
+        # QC
+        'lgd_qc_received_by', 'lgd_qc_received_at',
+        'lgd_ok_order_specific', 'lgd_ok_item', 'lgd_ok_qc_requirements',
+        'lgd_ok_order_item', 'lgd_ok_order_qc',
+        'lgd_qc_chk_inscription', 'lgd_qc_chk_weight',
+        'lgd_qc_chk_measurements', 'lgd_qc_chk_no_damage',
+        'lgd_qc_chk_colour_clarity', 'lgd_qc_chk_screening',
+        'lgd_qc_chk_shape_qty',
+        'lgd_qc_result', 'lgd_qc_decided_by', 'lgd_qc_decided_at',
+        'lgd_set_label', 'lgd_set_incomplete',
+    )
+
+    def _lgd_split_copy_defaults(self):
+        """Values to hand copy() so a split line keeps its identity (U2)."""
+        self.ensure_one()
+        values = {}
+        for name in self._LGD_SPLIT_COPY_FIELDS:
+            field = self._fields.get(name)
+            if not field:
+                continue
+            value = self[name]
+            if field.type == 'many2one':
+                value = value.id
+            values[name] = value
+        return values
 
     # ── Which checks apply ─────────────────────────────────────────────
     def _lgd_required_checks(self, scope='all'):
 
         self.ensure_one()
-        checks = []
-
-        if scope in ('all', 'logistics'):
-            pass
-
-        if scope in ('all', 'qc'):
-            for tick, note in (
-                ('lgd_ok_order_specific', 'lgd_note_order_specific'),
-                ('lgd_ok_item', 'lgd_note_item'),
-                ('lgd_ok_qc_requirements', 'lgd_note_qc_requirements'),
-                ('lgd_ok_order_item', 'lgd_note_order_item'),
-                ('lgd_ok_order_qc', 'lgd_note_order_qc'),
-            ):
-                if (self[note] or '').strip():
-                    checks.append((tick, self._fields[tick].string))
-
-        return checks
+        return []
 
     def _lgd_missing_checks(self, scope):
         """Labels of the checks that are not satisfied yet."""
@@ -318,22 +451,6 @@ class PurchaseOrderLine(models.Model):
         if problems:
             raise UserError("\n".join(problems))
 
-    def _lgd_notify(self, record, summary, note, user):
-        if not record:
-            return
-        domain = [
-            ('res_model', '=', record._name),
-            ('res_id', '=', record.id),
-            ('summary', '=', summary),
-        ]
-        if user:
-            domain.append(('user_id', '=', user.id))
-        if self.env['mail.activity'].sudo().search_count(domain):
-            return
-        record.activity_schedule(
-            'mail.mail_activity_data_todo', summary=summary, note=note,
-            user_id=user.id if user else self.env.uid)
-
     def _lgd_stone_description(self):
         """Specs only — no price, no customer, no salesperson."""
         self.ensure_one()
@@ -351,8 +468,12 @@ class PurchaseOrderLine(models.Model):
         """order-line status writes always carry the bypass key."""
         for line in self:
             sale_line = line.sale_line_id
-            if sale_line and sale_line.availability_status in only_when:
-                sale_line.with_context(
+            if sale_line and sale_line.sudo().availability_status in only_when:
+                # sudo(): Logistics, QC and Inventory hold at most read+write
+                # on sale.order.line through the ACL rows, and the status
+                # transition is a system action driven by data the user has
+                # already committed (§4.6.2). Never a user edit.
+                sale_line.sudo().with_context(
                     skip_auto_procurement=True).write(
                         {'availability_status': status})
 
@@ -388,8 +509,11 @@ class PurchaseOrderLine(models.Model):
             'lgd_received_by': self.env.uid,
             'lgd_received_at': now,
         })
-        self.filtered(lambda l: not l.lgd_collector_id).write(
-            {'lgd_collector_id': self.env.uid})
+        # Freeze the displayed collector into the stored field, so the row
+        # keeps showing who actually took the stone in rather than falling
+        # back to whoever opens the list next.
+        for line in self.filtered(lambda l: not l.lgd_collector_set_id):
+            line.lgd_collector_set_id = line.lgd_collector_id or self.env.user
         for line in self:
             line.order_id._lgd_log(
                 _("Stone received at inward: %s.") % line._lgd_stone_description())
@@ -629,7 +753,7 @@ class PurchaseOrderLine(models.Model):
             if line.order_id.state != 'purchase':
                 yield _("not confirmed yet. Procurement must confirm the PO first.")
 
-        self._lgd_guard(('qc_passed',), problems)
+        self._lgd_guard(('qc_passed', 'on_memo'), problems)
         now = fields.Datetime.now()
         for line in self:
             line._lgd_accept_chain()
@@ -638,6 +762,56 @@ class PurchaseOrderLine(models.Model):
                 'lgd_accepted_by': self.env.uid,
                 'lgd_accepted_at': now,
             })
+
+            if line.sale_line_id:
+                # Clearing lgd_vendor_memo is what "buying in" a memo stone
+                # means: its PO is confirmed, so it is owned and payable now.
+                sale_line = line.sale_line_id.sudo()
+                sale_line.write({
+                    'lgd_accepted_at': now,
+                    'lgd_vendor_memo': False,
+                })
+                sale_line._lgd_put_in_vault()
+        return True
+
+    # ── Take a stone into custody on vendor memo ─────────────
+    def action_lgd_take_on_memo(self):
+        self._lgd_check_group(GROUP_INVENTORY)
+        return self._lgd_action_take_on_memo()
+
+    def _lgd_action_take_on_memo(self):
+
+        def problems(line):
+            if line.order_id.state == 'purchase':
+                yield _("this purchase order is already confirmed — accept the "
+                        "stone into stock instead of holding it on memo.")
+            elif line.order_id.state not in ('draft', 'sent'):
+                yield _("the purchase order is %s; a stone can only be held on "
+                        "memo while the RFQ is open.") % line.order_id.state
+            if not line.sale_line_id:
+                yield _("not linked to an order line. Ask Procurement to link "
+                        "it first.")
+
+        self._lgd_guard(('qc_passed',), problems)
+        now = fields.Datetime.now()
+        for line in self:
+            line.write({
+                'lgd_stage': 'on_memo',
+                'lgd_accepted_by': self.env.uid,
+                'lgd_accepted_at': now,
+            })
+            # Same stamp Accept uses, so the stone reaches Awaiting Vault and
+            # can be dispatched — flagged so every screen downstream knows it is not ours. sudo() for the same reason.
+            sale_line = line.sale_line_id.sudo()
+            sale_line.write({
+                'lgd_accepted_at': now,
+                'lgd_vendor_memo': True,
+            })
+            # A memo stone is physically in the vault too it is simply not ours yet.
+            sale_line._lgd_put_in_vault()
+            line.order_id._lgd_log(body=_(
+                "%s held on vendor memo — not purchased, not in stock."
+            ) % line._lgd_stone_description())
         return True
 
     # ── Mark returned to vendor ───────────────────────────────────────

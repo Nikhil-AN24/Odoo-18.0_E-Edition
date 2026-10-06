@@ -250,7 +250,7 @@
                                 <span t-esc="doc.partner_id.name"/>
                             </td>
                         </tr>
-                         <tr>
+                         <tr groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system">
                             <td style="width:35%; font-weight:bold; border:1px solid black; padding:3px;">MOBILE :</td>
                             <td style="width:65%; border:1px solid black; padding:3px;">
                                 <span t-esc="doc.partner_id.phone"/>
@@ -273,7 +273,12 @@
                             </td>
                         </tr> -->
 
-                        <tr>
+                        <!-- customer rows print only for Sales,
+                             Shipment and Administration. shipping_address now
+                             carries groups= on the Python field, so without
+                             this the report would raise AccessError rather
+                             than simply omit the row for Operations. -->
+                        <tr groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_shipment,base.group_system">
                             <td style="font-weight:bold; border:1px solid black; padding:3px;">SHIPPING ADDRESS :</td>
                             <td style="border:1px solid black; padding:3px;">
                                 <span t-esc="doc.shipping_address"/>

@@ -17,7 +17,7 @@ class PurchaseOrder(models.Model):
 
         for order in self:
             try:
-                order._message_log(body=body)
+                order.sudo()._message_log(body=body)
             except Exception:
                 _logger.warning(
                     "Could not log to %s chatter: %s", order.name, body,
@@ -43,7 +43,13 @@ class PurchaseOrder(models.Model):
 
         new_po = self.copy({'order_line': []})
         for line in ready:
-            line.copy({'order_id': new_po.id})
+            # Every lgd_* field and sale_line_id is copy=False, so a bare
+            # copy() lands on the new RFQ with no customer link and no stage:
+            # the stone would vanish from Awaiting Acceptance and reappear in
+            # Expected Stones as if it had never arrived. Carry the link and
+            # the inward/QC audit trail across explicitly (U2).
+            line.copy(dict(line._lgd_split_copy_defaults(),
+                           order_id=new_po.id))
             line.product_qty = 0
             line.lgd_stage = 'split'
         new_po.button_confirm()

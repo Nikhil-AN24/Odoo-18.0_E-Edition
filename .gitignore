@@ -7,3 +7,6 @@ __pycache__/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Claude Code skills and local agent config
+.claude/

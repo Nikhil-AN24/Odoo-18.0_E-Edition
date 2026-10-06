@@ -196,6 +196,7 @@
             
             <xpath expr="//field[@name='name']" position="before">
                 <field name="sdk_augmont_number" readonly="1"/>
+                <field name="can_edit_line_availability" invisible="1"/>
             </xpath>
             <xpath expr="//field[@name='name']" position="attributes">
                 <attribute name="readonly">1</attribute>
@@ -262,8 +263,18 @@
                 <attribute name="readonly">state != 'draft'</attribute>
             </xpath>
             
+            <!-- Core locks Order Lines only on cancel/locked. This used to
+                 widen that to "anything past draft", which silently defeated
+                 every per-field gate inside the grid: a readonly parent wins,
+                 so Procurement could never change Availability (e.g. QC Fail →
+                 Cancelled) on a confirmed order even though
+                 can_edit_availability said they could. The grid now stays open
+                 for exactly the roles that may edit Availability; everyone
+                 else keeps the hard lock. What those roles can actually write
+                 is still bounded by the per-column readonly attributes and by
+                 _LGD_PROC_SOL_WRITE_ALLOWLIST on the server. -->
             <xpath expr="//field[@name='order_line']" position="attributes">
-                <attribute name="readonly">state != 'draft'</attribute>
+                <attribute name="readonly">state != 'draft' and not can_edit_line_availability</attribute>
             </xpath>
                         
             <xpath expr="//field[@name='order_line']/list/field[@name='product_id']" position="attributes">
@@ -358,16 +369,14 @@
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
                         <field name="can_edit_vendor" column_invisible="True"/>
-                        <!-- One "Vendor Company" column: editable vendor picker on
-                             active lines, read-only "N/A" on Cancelled / Not
-                             available (handled by the vendor_company widget). -->
+                        <field name="lgd_line_closed" column_invisible="True"/>
                         <field name="vendor_id" widget="vendor_company"
                                readonly="not can_edit_vendor"/>
                         <field name="stock_number" readonly="1" string="Vendor SKU"/>
                         <field name="vendor_city" readonly="1" optional="show"/>
                         <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                        <field name="stone_type" optional="show"/>
-                        <field name="stone_certification_type" optional="show"/>
+                        <field name="stone_type" optional="show" readonly="lgd_line_closed"/>
+                        <field name="stone_certification_type" optional="show" readonly="lgd_line_closed"/>
                         <field name="treatments" readonly="1"/>
                     </list>
                 </field>
@@ -415,6 +424,7 @@
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
                 <field name="can_edit_vendor" column_invisible="True"/>
+                <field name="lgd_line_closed" column_invisible="True"/>
                 <!-- One "Vendor Company" column: editable vendor picker on active
                      lines, read-only "N/A" on Cancelled / Not available (handled
                      by the vendor_company widget). -->
@@ -425,8 +435,8 @@
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                <field name="stone_type" optional="show"/>
-                <field name="stone_certification_type" optional="show"/>
+                <field name="stone_type" optional="show" readonly="lgd_line_closed"/>
+                <field name="stone_certification_type" optional="show" readonly="lgd_line_closed"/>
                 <field name="treatments"/>
             
                 <field name="shapes" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>

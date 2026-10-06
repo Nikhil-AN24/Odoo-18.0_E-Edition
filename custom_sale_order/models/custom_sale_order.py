@@ -1,6 +1,5 @@
 from odoo import api, fields, models, _
 from markupsafe import Markup
-
 from odoo.exceptions import UserError
 
 class CustomSaleOrder(models.Model):
@@ -8,7 +7,6 @@ class CustomSaleOrder(models.Model):
     _description = 'Custom Sale Order'
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'date_order desc, id desc'
-
 
     name = fields.Char(string='Order Reference', required=True, copy=False, readonly=True, default='New')
     state = fields.Selection([
@@ -26,7 +24,6 @@ class CustomSaleOrder(models.Model):
         ('sale', 'Sales Order'),
         ('cancel', 'Cancelled'),
     ], string='Order Status', readonly=True, copy=False, index=True, tracking=True, default='draft')
-
 
     sdk_augmont_status = fields.Selection([
         ('Order Received', 'Order Received'),
@@ -391,24 +388,24 @@ class CustomSaleOrder(models.Model):
         # Prepare sale order lines
         order_lines = []
         for line in self.order_line:
-            order_lines.append((0, 0, {
+            line_vals = {
                 'product_id': line.product_template_id.product_variant_id.id,
                 'product_template_id': line.product_template_id.id,
                 'product_uom_qty': line.product_uom_qty,
                 'product_uom': line.product_uom.id,
                 'price_unit': line.price_unit,
                 'discount': line.discount,
-                'tax_id': [(6, 0, line.tax_id.ids)],
                 'name': line.name or line.product_template_id.display_name or '/',
                 'availability_status': line.availability_status,
-            }))
+            }
 
+            if line.tax_id:
+                line_vals['tax_id'] = [(6, 0, line.tax_id.ids)]
+            order_lines.append((0, 0, line_vals))
 
         # Create sale order
         sale_order_vals = {
             'partner_id': self.partner_id.id,
-            # 'partner_invoice_id': self.partner_invoice_id.id,
-            # 'partner_shipping_id': self.partner_shipping_id.id,
             'shipping_address': self.shipping_address,
             'billing_address': self.billing_address,
             'pricelist_id': self.pricelist_id.id,
@@ -430,7 +427,6 @@ class CustomSaleOrder(models.Model):
         }
 
         sale_order = self.env['sale.order'].create(sale_order_vals)
-
         return sale_order
 
     def action_draft(self):

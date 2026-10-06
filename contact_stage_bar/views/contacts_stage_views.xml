@@ -47,7 +47,8 @@
                 <attribute name="required">1</attribute>
             </xpath>
             <xpath expr="//field[@name='mobile'][1]" position="attributes">
-                <attribute name="required">1</attribute>
+                <attribute name="string">Alt. number</attribute>
+                <attribute name="required">0</attribute>
             </xpath>
             <xpath expr="//field[@name='vat'][1]" position="attributes">
                 <attribute name="required">1</attribute>
