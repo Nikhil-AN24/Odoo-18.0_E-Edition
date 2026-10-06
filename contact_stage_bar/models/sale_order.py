@@ -236,7 +236,21 @@ class SaleOrder(models.Model):
     gst_treatment = fields.Selection([
         ('within_maharashtra', 'Within Maharashtra'),
         ('outside_maharashtra', 'Outside Maharashtra'),
-    ], string='GST Treatment')
+    ], string='GST Treatment',
+        compute='_compute_gst_treatment', store=True, readonly=False)
+
+    @api.depends('partner_id', 'partner_id.state_id', 'company_id')
+    def _compute_gst_treatment(self):
+
+        for order in self:
+            customer_state = order.partner_id.state_id
+            company_state = order.company_id.state_id or order.company_id.partner_id.state_id
+            if not customer_state or not company_state:
+                order.gst_treatment = order.gst_treatment
+                continue
+            order.gst_treatment = ('within_maharashtra'
+                                   if customer_state == company_state
+                                   else 'outside_maharashtra')
     
     payment_ids = fields.Many2many(
         'account.payment',
@@ -4126,10 +4140,7 @@ class SaleOrderLine(models.Model):
 
         return super(SaleOrderLine, final_lines)._action_launch_stock_rule(previous_product_uom_qty)
         
-
 class AccountPayment(models.Model):
     _inherit = "account.payment"
 
     sale_order_id = fields.Many2one('sale.order',  string="Sale Order")
-
- 

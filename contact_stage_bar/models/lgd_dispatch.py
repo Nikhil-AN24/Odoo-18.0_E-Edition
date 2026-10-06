@@ -169,9 +169,12 @@ class LgdDispatch(models.Model):
             if not self.memo_enclosed:
                 problems.append(
                     _("Tick that the memo slip is enclosed before handing over."))
-        elif not self.invoice_enclosed:
-            problems.append(
-                _("Tick that the paperwork is enclosed before handing over."))
+        else:
+            if not self.invoice_slip_printed:
+                problems.append(_("Print the invoice slip first."))
+            if not self.invoice_enclosed:
+                problems.append(
+                    _("Tick that the paperwork is enclosed before handing over."))
         if not self.label_printed:
             problems.append(_("Print the label first."))
         if problems:
@@ -322,17 +325,15 @@ class LgdDispatch(models.Model):
         self.ensure_one()
         if self.dispatch_type != 'sale':
             raise UserError(_("Only a sale parcel has an invoice slip."))
-        if not self.invoice_move_id:
+        if not self.order_id:
             raise UserError(_(
-                "There is no invoice for this parcel yet. Invoicing is not "
-                "switched on, so nothing can be printed."))
-        if self.invoice_move_id.state != 'posted':
-            raise UserError(_(
-                "The invoice is prepared but not yet issued. It is numbered "
-                "when the parcel is handed over."))
+                "This parcel is not linked to an order, so there is nothing "
+                "to invoice. Please report this with the parcel reference "
+                "(%s).") % self.name)
         self.sudo().write({'invoice_slip_printed': True})
         return self.env.ref(
-            'account.account_invoices').report_action(self.invoice_move_id)
+            'contact_stage_bar.action_report_augmont_tax_invoice'
+        ).report_action(self.order_id)
 
     # ── Print the label ────────────────────────────────────────────
     def action_lgd_print_label(self):
