@@ -18,7 +18,6 @@ class CustomerRfqShape(models.Model):
         ('name_unique', 'UNIQUE(name)', 'Shape name must be unique.'),
     ]
 
-
 class CustomerRfqGrade(models.Model):
     _name = 'customer.rfq.grade'
     _description = 'Customer RFQ Cut/Polish/Symmetry Grade'
@@ -40,7 +39,6 @@ class CustomerRfqGrade(models.Model):
          'Grade code must be unique per category.'),
     ]
 
-
 class CustomerRfqCancelReason(models.Model):
     _name = 'customer.rfq.cancel.reason'
     _description = 'Customer RFQ Cancellation Reason'
@@ -54,7 +52,6 @@ class CustomerRfqCancelReason(models.Model):
         ('name_unique', 'UNIQUE(name)', 'Cancellation reason must be unique.'),
     ]
 
-
 class CustomerRfqSizeLine(models.Model):
     _name = 'customer.rfq.size.line'
     _description = 'Customer RFQ Size Line'
@@ -64,6 +61,13 @@ class CustomerRfqSizeLine(models.Model):
                              ondelete='cascade', required=True)
     sequence = fields.Integer(default=10)
     quantity = fields.Float(string='Quantity', required=True)
+
+    carat_per_piece = fields.Float(
+        string='Carat/Piece',
+        help='Carat weight of one stone on this row. Used in Pieces mode to '
+             'turn the piece count into a carat weight the Price/carat can '
+             'be extended against.',
+    )
     length_mm = fields.Float(string='Length (mm)')
     width_mm = fields.Float(string='Width (mm)')
     depth_mm = fields.Float(string='Depth (mm)')
@@ -115,14 +119,9 @@ class CustomerRfq(models.Model):
     )
 
     partner_id = fields.Many2one(
-        'res.partner', string='Company Name', tracking=True, required=True,
+        'res.partner', string='Buyer Name', tracking=True, required=True,
     )
 
-    # Domain for the "Company Name" dropdown. It must only offer Accounts
-    # (partner_kind = 'buyer'), never the untagged contacts or vendors. A plain
-    # LGD Sales rep sees only the Accounts assigned to them (user_id); managers,
-    # regional heads, superadmin and system admins see every Account. This
-    # mirrors the Sales > Leads > Accounts menu visibility.
     partner_domain = fields.Char(compute='_compute_partner_domain')
 
     @api.depends('owner_id')
@@ -134,10 +133,13 @@ class CustomerRfq(models.Model):
             or user.has_group('contact_stage_bar.group_lgd_superadmin')
             or user.has_group('base.group_system')
         )
+        dom = [('partner_kind', '=', 'buyer')]
         if user.has_group('contact_stage_bar.group_lgd_sales') and not sees_all:
-            dom = ['&', ('partner_kind', '=', 'buyer'), ('user_id', '=', user.id)]
-        else:
-            dom = [('partner_kind', '=', 'buyer')]
+            dom.append(('user_id', '=', user.id))
+
+        gated_stage_ids = self.env['res.partner']._lgd_gated_stage_ids()
+        if gated_stage_ids:
+            dom.append(('stage_id', 'in', gated_stage_ids))
         dom_str = json.dumps(dom)
         for rec in self:
             rec.partner_domain = dom_str
@@ -338,6 +340,15 @@ class CustomerRfq(models.Model):
     )
 
     carat = fields.Float(string='Carat / Stone', tracking=True)
+    # Natural + Non-Certified (melee) is traded as a parcel: a sieve Size plus a
+    # total carat weight, with no per-stone weight and no piece count. This is
+    # the quantity the Sales Price/carat is extended against on that path.
+    total_carat = fields.Float(
+        string='Total Carat', tracking=True,
+        help='Total carat weight of the parcel. Used on Non-Certified '
+             'Natural RFQs, which are quoted by parcel weight rather than '
+             'per stone.',
+    )
     color = fields.Char(string='Color', tracking=True)
     clarity = fields.Char(string='Clarity', tracking=True)
     size = fields.Char(string='Size', tracking=True)
@@ -428,8 +439,9 @@ class CustomerRfq(models.Model):
         currency_field='currency_id',
         compute='_compute_pricing_totals',
         store=False,
-        help='Extended amount (money), not a rate: '
-             '(Procurement Price/carat × Carat) + Margin. No tax.',
+        help='Per-stone extended amount (money), not a rate: the Order '
+             'Total divided across the stones the Offline Order will '
+             'generate. This is the price_unit of every generated line.',
     )
 
     # Genuine per-carat RATE that Sales quotes — a rate in, a rate out, carat
@@ -450,7 +462,8 @@ class CustomerRfq(models.Model):
         currency_field='currency_id',
         compute='_compute_pricing_totals',
         store=False,
-        help='Per-stone price = Sales Price/carat × Carat/Stone.',
+        help='Per-stone price: the Order Total divided across the stones. '
+             'On the legacy path this is Sales Price/carat × Carat/Stone.',
     )
 
     # Full quote value = per-stone price × number of stones. Equals exactly the sum of the lines the Offline Order will create.
@@ -462,6 +475,15 @@ class CustomerRfq(models.Model):
         help='Full quote value = Sales Price/Stone × number of stones '
              '(the total the Offline Order will sum to).',
     )
+
+    def _is_melee_parcel(self):
+        """True for Natural + Non-Certified RFQs — the sieve-Size path.
+        Mirrors the view conditions on `size` and `total_carat`: these records
+        carry no Carat/Stone and no Quantity, so their weight is a whole-parcel
+        figure that must not be multiplied by a stone count. """
+        self.ensure_one()
+        return (self.stone_certification_type == 'non_certified'
+                and self.stone_type != 'lab_grown')
 
     @staticmethod
     def _carat_to_band(carat):
@@ -555,9 +577,11 @@ class CustomerRfq(models.Model):
             return total
         return max(1, int(self.quantity)) if self.quantity else 1
 
-    @api.depends('price', 'carat', 'tax_ids', 'different_prices',
+    @api.depends('price', 'carat', 'total_carat', 'tax_ids', 'different_prices',
                  'quantity', 'unit_type',
+                 'stone_type', 'stone_certification_type',
                  'size_line_ids', 'size_line_ids.quantity',
+                 'size_line_ids.carat_per_piece',
                  'size_line_ids.costing')
     def _compute_pricing_totals(self):
         """Compute the full pricing breakdown for each RFQ record.
@@ -569,7 +593,8 @@ class CustomerRfq(models.Model):
             taxable_amount    = base_price + margin_amount
             tax_amount        = taxable_amount × combined-tax-rate
                                 (uses account.tax.compute_all for accuracy)
-            total_price       = taxable_amount + tax_amount
+            order_total       = rate × total carat weight of the whole quote
+            total_price       = order_total / stone count  (per-stone money)
 
         The Carat–Margin Table (lgd.margin) is fetched once per batch via sudo()
         so that users who lack read access to lgd.margin (e.g. pure Sales users)
@@ -584,12 +609,25 @@ class CustomerRfq(models.Model):
         for rec in self:
             effective_carat = 0.0
             if rec.size_line_ids:
-                effective_carat = sum(rec.size_line_ids.mapped('quantity')) or 0.0
+                if (rec.unit_type or 'carats') == 'pieces':
+                    # `quantity` is a piece count here, so the order's carat
+                    # weight is pieces x the weight of one stone on that row.
+                    # Summing the piece counts (as this used to) priced every
+                    # stone as if it weighed exactly 1.00 ct.
+                    effective_carat = sum(
+                        (sl.quantity or 0.0) * (sl.carat_per_piece or 0.0)
+                        for sl in rec.size_line_ids
+                    )
+                else:
+                    effective_carat = sum(
+                        rec.size_line_ids.mapped('quantity')) or 0.0
             if not effective_carat and rec.carat:
                 try:
                     effective_carat = float(rec.carat)
                 except (TypeError, ValueError):
                     effective_carat = 0.0
+            if not effective_carat and rec.total_carat:
+                effective_carat = rec.total_carat
 
             # ── 1. Base price ────────────────────────────────────────────────
             # Different prices ON → sum of (per-row costing × per-row quantity).
@@ -639,12 +677,36 @@ class CustomerRfq(models.Model):
             rec.margin_percentage    = rec_margin_pct
             rec.margin_amount        = rec_margin_amount
             rec.tax_amount           = rec_tax_amount
-            rec.total_price          = rec_total
             rec.sale_rate_per_carat  = rec_rate
-            rec.sale_price_per_stone = rec_rate * (rec.carat or 0.0)
-            # Order Total mirrors the Offline Order exactly: every generated
-            # line is priced at total_price, and there are stone-count lines.
-            rec.order_total          = rec_total * rec._rfq_stone_count()
+
+            # Order Total = Sales Price/carat × the TOTAL carat weight of the
+            # whole quote. effective_carat already IS that total on the guided
+            # intake path (the size-line rows are the order's carat weight),
+            # but it is only ONE stone's weight on the legacy path (Carat/Stone
+            # × Quantity), so the two paths have to be extended differently.
+            # Multiplying rec_total by the stone count on BOTH paths double
+            # counted the guided-intake quote by the number of stones.
+            stone_count = rec._rfq_stone_count()
+            if rec.size_line_ids:
+                total_order_carat = effective_carat
+            elif rec._is_melee_parcel():
+                # Parcel weight is the order's total weight, sold as a single
+                # line — extending it by a stone count would double count it
+                # exactly as the guided-intake path used to.
+                total_order_carat = effective_carat
+                stone_count = 1
+            else:
+                total_order_carat = effective_carat * stone_count
+            rec.order_total = rec_rate * total_order_carat
+
+            # Per-stone money is the quote divided across the stones the
+            # Offline Order will generate. This is the price_unit of every
+            # generated line, so order_total == sum(lines) by construction on
+            # both paths. On the legacy path it reduces to rate × Carat/Stone,
+            # which is what it has always been.
+            rec.total_price = (
+                rec.order_total / stone_count) if stone_count else rec_total
+            rec.sale_price_per_stone = rec.total_price
 
     @api.depends('state')
     @api.depends_context('uid')
@@ -973,6 +1035,20 @@ class CustomerRfq(models.Model):
             raise UserError(_("Offline Order can be created only after Procurement sends the RFQ back."))
         if not self.partner_id:
             raise UserError(_("Customer is required to create an Offline Order."))
+        # A quote with no carat weight and no piece count cannot be priced:
+        # Order Total is 0.00 and unit_price below would silently fall back to
+        # the raw Procurement Price/carat — dropping the margin and quoting a
+        # single unit instead of the real quantity. Fail loudly rather than create a mispriced order.
+        if not self.order_total:
+            raise UserError(_(
+                "Order Total is 0.00, so this RFQ cannot be turned into an "
+                "Offline Order.\n\n"
+                "There is no carat weight or piece count to extend the Sales "
+                "Price/carat against. Natural / Non-Certified RFQs currently "
+                "capture only a sieve Size and have no quantity field — the "
+                "quantity has to be recorded before an Offline Order can be "
+                "priced."
+            ))
 
         unit_price = self.total_price if self.total_price else self.price
         product = self._create_requested_stone(unit_price)
@@ -984,7 +1060,9 @@ class CustomerRfq(models.Model):
             'shapes':              ', '.join(self.shape_ids.mapped('name')),
             'color':               self.color,
             'clarity':             self.clarity,
-            'carat_weight':        str(self.carat) if self.carat else False,
+            'carat_weight':        (str(self.carat) if self.carat
+                                    else (str(self.total_carat)
+                                          if self.total_carat else False)),
             'price_unit':          unit_price,
         }
 
@@ -1066,17 +1144,36 @@ class CustomerRfq(models.Model):
                     )
                     if dims:
                         desc = _("%s (%s mm)") % (self.name, dims)
+
+                row_vals = dict(base_vals)
+                if unit_is_pieces:
+                    stone_carat = size_line.carat_per_piece or 0.0
+                else:
+                    # Carats mode: the row's weight split across the stones the rounding produced for that row.
+                    stone_carat = (size_line.quantity or 0.0) / count
+                if stone_carat:
+
+                    row_vals['carat_weight'] = ('%.3f' % stone_carat).rstrip(
+                        '0').rstrip('.')
+                    row_vals['price_unit'] = (
+                        self.sale_rate_per_carat or 0.0) * stone_carat
                 for _n in range(count):
                     line_vals.append({
-                        **base_vals,
+                        **row_vals,
                         'name': desc,
                         'product_uom_qty': 1.0,
                         'rfq_size_line_id': size_line.id,
                     })
             return line_vals
 
-        # Legacy fallback: no guided-intake size lines. Use legacy quantity + size.
-        legacy_qty = int(self.quantity) if self.quantity else 1
+        # Melee parcel: one line for the whole parcel, priced at the parcel
+        # total. Matches stone_count = 1 in _compute_pricing_totals, so
+        # Order Total == sum(lines) even if a stale Quantity survived a certification switch.
+        if self._is_melee_parcel():
+            legacy_qty = 1
+        else:
+            # Legacy fallback: no guided-intake size lines. Use legacy quantity + size.
+            legacy_qty = int(self.quantity) if self.quantity else 1
         if legacy_qty > self._OFFLINE_ORDER_QTY_CONFIRM_THRESHOLD:
             raise UserError(_(
                 "The RFQ quantity (%(qty)d) is above the safety threshold "

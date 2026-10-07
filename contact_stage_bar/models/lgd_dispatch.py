@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
@@ -10,7 +11,6 @@ GROUP_SHIPMENT = 'contact_stage_bar.group_lgd_shipment'
 
 #: Statuses that mean a stone will never go out on this order.
 LGD_DEAD_STATUSES = ('cancelled', 'replaced', 'not_available', 'qc_fail')
-
 
 class LgdDispatch(models.Model):
     _name = 'lgd.dispatch'
@@ -44,7 +44,7 @@ class LgdDispatch(models.Model):
 
     # ── Route and carrier ───────────────────────────────────────────────
     route = fields.Selection(
-        [('courier', 'Courier'), ('angadia', 'Angadia')], tracking=True)
+        [('courier', 'Courier company')], tracking=True, default='courier')
     agent_id = fields.Many2one(
         'lgd.courier.agent', string="Handed to", tracking=True)
     agent_phone = fields.Char(related='agent_id.phone', store=True)
@@ -53,6 +53,10 @@ class LgdDispatch(models.Model):
         help="The date the carrier expects to deliver this parcel.")
     tracking_number = fields.Char()
     tracking_url = fields.Char()
+    upload_slip = fields.Binary(
+        string="Uploading Slip", attachment=True,
+        help="Scanned courier slip or proof-of-handover document.")
+    upload_slip_filename = fields.Char(string="Uploading Slip Filename")
 
     # ── Paperwork ───────────────────────────────────────────────────────
     invoice_move_id = fields.Many2one(
@@ -65,7 +69,7 @@ class LgdDispatch(models.Model):
         string="Invoice Slip Printed", readonly=True)
     label_printed = fields.Boolean(readonly=True)
 
-    # ── Who and when ────────────────────────────────────────────────────
+    # ── Who & when ────────────────────────────────────────────────────
     handed_over_by = fields.Many2one('res.users', readonly=True)
     handed_over_at = fields.Datetime(readonly=True)
     delivery_confirmed_by = fields.Many2one('res.users', readonly=True)
@@ -158,8 +162,7 @@ class LgdDispatch(models.Model):
         if not (self.route and self.agent_id
                 and self.agent_id.agent_type == self.route):
             problems.append(_("Choose the route and who is carrying it."))
-        if self.route == 'courier' and not self.tracking_number:
-            problems.append(_("Enter the courier tracking number."))
+
         if self.dispatch_type == 'memo':
             if not self.memo_due_date:
                 problems.append(_("Set the return-by date for this memo."))
@@ -222,6 +225,22 @@ class LgdDispatch(models.Model):
         self.activity_ids.filtered(
             lambda a: a.summary == _("Confirm delivery — %s") % self.name
         ).unlink()
+
+        body = _(
+            "Delivery confirmed by %(user)s. Handed over %(out)s, "
+            "confirmed %(in)s%(chases)s."
+        ) % {
+            'user': self.env.user.name,
+            'out': self.handed_over_at or _("(not recorded)"),
+            'in': self.delivery_confirmed_at,
+            'chases': (_(" after %s follow-up(s)") % self.follow_up_count
+                       if self.follow_up_count else ''),
+        }
+        if self.dispatch_type == 'memo':
+            body += _(" This closes memo %s.") % self.name
+        if self.delivery_note:
+            body += Markup("<br/>") + _("Note: %s") % self.delivery_note
+        self.sudo().message_post(body=body)
         return True
 
     # ── The parcel came back ──────────────────────────────────────

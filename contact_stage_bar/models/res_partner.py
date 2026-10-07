@@ -1,4 +1,5 @@
-from odoo import models, fields, api
+from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
 class ResPartner(models.Model):
     _inherit = "res.partner"
@@ -137,6 +138,53 @@ class ResPartner(models.Model):
     lead_source = fields.Selection([('website', 'Website'), ('cold_call', 'Cold Call'), ('email', 'Email'), ('marketing_campaign', 'Marketing Campaign')], string='Lead Source', tracking=True)
     graduation_rate = fields.Selection([('0', 'No Rating'),('1', '1'),('2', '2'),('3', '3'),('4', '4'),], string='Graduation Rate', default='0') 
 
+    # ── Gate into Registered / Converted ──────────────────────────────
+    _LGD_ACCOUNT_REQUIRED_FIELDS = (
+        ('name',                "Name"),
+        ('street',              "Street"),
+        ('street2',             "Street2"),
+        ('city',                "City"),
+        ('zip',                 "Zip"),
+        ('state_id',            "State"),
+        ('country_id',          "Country"),
+        ('vat',                 "Tax ID"),
+        ('l10n_in_pan',         "PAN"),
+        ('contact_person_name', "Contact Person Name"),
+        ('phone',               "Phone"),
+        ('email',               "Email"),
+        ('lead_source',         "Lead Source"),
+    )
+
+    _LGD_GATED_STAGE_XMLIDS = (
+        'contact_stage_bar.registered_stage',
+        'contact_stage_bar.converted_stage',
+    )
+
+    def _lgd_gated_stage_ids(self):
+        """Resolve the gated stages, skipping any that no longer exist."""
+        ids = []
+        for xmlid in self._LGD_GATED_STAGE_XMLIDS:
+            stage = self.env.ref(xmlid, raise_if_not_found=False)
+            if stage:
+                ids.append(stage.id)
+        return ids
+
+    def _lgd_validate_stage_gate(self):
+        for partner in self:
+            missing = [
+                label for fname, label in self._LGD_ACCOUNT_REQUIRED_FIELDS
+                if not partner[fname]
+            ]
+            if missing:
+                raise ValidationError(_(
+                    "%(partner)s cannot move to %(stage)s yet.\n\n"
+                    "Complete these fields first:\n%(missing)s"
+                ) % {
+                    'partner': partner.display_name or _("This account"),
+                    'stage': partner.stage_id.name,
+                    'missing': "\n".join("  \u2022 %s" % m for m in missing),
+                })
+
     @api.model
     def _group_expand_stage_id(self, stages, domain):
         return self.env['res.partner.stage'].search([])
@@ -172,10 +220,24 @@ class ResPartner(models.Model):
         partners = super(ResPartner, self.sudo()).create(vals_list)
         partners.filtered(lambda p: not p.shipping_address_differs) \
                 ._sync_shipping_from_billing()
+        gated = partners._lgd_gated_stage_ids()
+        if gated:
+            partners.filtered(
+                lambda p: p.stage_id.id in gated)._lgd_validate_stage_gate()
         return partners
 
     def write(self, vals):
+        # Capture which records are already in a gated stage BEFORE the write,
+        # so an edit to an existing Registered account is not mistaken for a move into one.
+        gate_candidates = self.browse()
+        if 'stage_id' in vals:
+            gated = self._lgd_gated_stage_ids()
+            if gated and vals['stage_id'] in gated:
+                gate_candidates = self.filtered(
+                    lambda p: p.stage_id.id != vals['stage_id'])
         res = super().write(vals)
+        if gate_candidates:
+            gate_candidates._lgd_validate_stage_gate()
         # A caller that sets shipping values explicitly is left alone.
         if set(vals) & set(self._SHIPPING_ADDRESS_FIELDS):
             return res
@@ -226,4 +288,3 @@ class ResPartner(models.Model):
         remaining = self - bad
         if remaining:
             super(ResPartner, remaining)._compute_l10n_in_gst_state_warning()
-                

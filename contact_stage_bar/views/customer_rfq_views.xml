@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-
     <!-- LIST VIEW -->
     <record id="view_customer_rfq_list" model="ir.ui.view">
         <field name="name">customer.rfq.list</field>
@@ -9,7 +8,7 @@
             <list string="Customer RFQ">
                 <field name="name"/>
                 <field name="partner_id"
-                       string="Company Name"
+                       string="Buyer Name"
                        groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"/>
                 <field name="customer_phone" invisible="1"/>
                 <field name="customer_email"
@@ -87,7 +86,7 @@
                     <group>
                         <group>
                             <field name="partner_domain" invisible="1"/>
-                            <field name="partner_id" string="Company Name"
+                            <field name="partner_id" string="Buyer Name"
                                    domain="partner_domain or [('partner_kind', '=', 'buyer')]"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
                                    readonly="state != 'draft'"/>
@@ -132,6 +131,11 @@
                                    readonly="state != 'draft'"/>
 
                             <field name="size"
+                                   invisible="stone_certification_type != 'non_certified' or stone_type == 'lab_grown'"
+                                   required="stone_certification_type == 'non_certified' and stone_type != 'lab_grown'"
+                                   readonly="state != 'draft'"/>
+
+                            <field name="total_carat" string="Total Carat"
                                    invisible="stone_certification_type != 'non_certified' or stone_type == 'lab_grown'"
                                    required="stone_certification_type == 'non_certified' and stone_type != 'lab_grown'"
                                    readonly="state != 'draft'"/>
@@ -185,10 +189,20 @@
                                    options="{'currency_field': 'currency_id'}"
                                    invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales')"
                                    groups="!contact_stage_bar.group_lgd_procurement"/>
+                            <!-- Sales Price/Stone is meaningless when the quote
+                                 is driven by Carats-mode size lines: that path
+                                 records a total carat weight and never a
+                                 carat-per-stone, so the "stone" it would divide
+                                 by is just the carat quantity rounded. The
+                                 figure then merely restates Sales Price/carat.
+                                 Shown only where a real stone exists — the
+                                 legacy Carat/Stone path and Pieces mode.
+                                 Hidden on the melee path too: there the figure
+                                 is the whole parcel, not one stone. -->
                             <field name="sale_price_per_stone" string="Sales Price/Stone"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
-                                   invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales')"
+                                   invisible="not is_price_visible_for_user or (stone_certification_type == 'non_certified' and different_prices and state == 'sent_back_to_sales') or (unit_type == 'carats' and size_line_ids) or (stone_certification_type == 'non_certified' and stone_type != 'lab_grown')"
                                    groups="!contact_stage_bar.group_lgd_procurement"/>
                             <field name="order_total" string="Order Total"
                                    widget="monetary"
@@ -270,6 +284,9 @@
                                        readonly="not parent.different_prices"
                                        groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                                 <field name="quantity" string="Quantity (pcs)"/>
+
+                                <field name="carat_per_piece"
+                                       string="Carat/Piece" required="1"/>
                                 <field name="description"/>
                             </list>
                         </field>
@@ -293,6 +310,8 @@
                                        readonly="not parent.different_prices"
                                        groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                                 <field name="quantity" string="Quantity (pcs)" readonly="1"/>
+                                <field name="carat_per_piece"
+                                       string="Carat/Piece" readonly="1"/>
                                 <field name="description" readonly="1"/>
                             </list>
                         </field>
