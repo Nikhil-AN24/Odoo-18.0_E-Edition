@@ -68,7 +68,7 @@
                         <field name="stone_type" required="1"/>
                         <field name="lab"/>
                         <field name="shape_id" options="{'no_create': True}"/>
-                        <field name="weight_carat" required="1"/>
+                        <field name="weight_carat"/>
                         <field name="color"/>
                         <field name="clarity"/>
                         <field name="cut"/>

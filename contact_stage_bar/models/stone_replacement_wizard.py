@@ -249,12 +249,7 @@ class StoneReplacement(models.TransientModel):
             problems.append(_("Select the vendor."))
         if not self.stone_type:
             problems.append(_("Select the replacement stone type."))
-        if not self.weight_carat:
-            problems.append(_("Enter the carat weight."))
-        elif self.carat_value <= 0.0:
-            # A stone cannot weigh nothing or less, whichever source filled the
-            # field in. Checked here rather than on the Char so the IGI and
-            # manual paths are held to the same rule.
+        if self.weight_carat and self.carat_value <= 0.0:
             problems.append(_(
                 "Carat weight must be greater than zero (got %s).",
                 self.weight_carat))
