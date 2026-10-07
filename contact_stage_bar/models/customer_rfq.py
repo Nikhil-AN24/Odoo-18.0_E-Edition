@@ -122,14 +122,9 @@ class CustomerRfq(models.Model):
     )
 
     partner_id = fields.Many2one(
-        'res.partner', string='Company Name', tracking=True, required=True,
+        'res.partner', string='Buyer Name', tracking=True, required=True,
     )
 
-    # Domain for the "Company Name" dropdown. It must only offer Accounts
-    # (partner_kind = 'buyer'), never the untagged contacts or vendors. A plain
-    # LGD Sales rep sees only the Accounts assigned to them (user_id); managers,
-    # regional heads, superadmin and system admins see every Account. This
-    # mirrors the Sales > Leads > Accounts menu visibility.
     partner_domain = fields.Char(compute='_compute_partner_domain')
 
     @api.depends('owner_id')
