@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
@@ -10,7 +11,6 @@ GROUP_SHIPMENT = 'contact_stage_bar.group_lgd_shipment'
 
 #: Statuses that mean a stone will never go out on this order.
 LGD_DEAD_STATUSES = ('cancelled', 'replaced', 'not_available', 'qc_fail')
-
 
 class LgdDispatch(models.Model):
     _name = 'lgd.dispatch'
@@ -225,6 +225,22 @@ class LgdDispatch(models.Model):
         self.activity_ids.filtered(
             lambda a: a.summary == _("Confirm delivery — %s") % self.name
         ).unlink()
+
+        body = _(
+            "Delivery confirmed by %(user)s. Handed over %(out)s, "
+            "confirmed %(in)s%(chases)s."
+        ) % {
+            'user': self.env.user.name,
+            'out': self.handed_over_at or _("(not recorded)"),
+            'in': self.delivery_confirmed_at,
+            'chases': (_(" after %s follow-up(s)") % self.follow_up_count
+                       if self.follow_up_count else ''),
+        }
+        if self.dispatch_type == 'memo':
+            body += _(" This closes memo %s.") % self.name
+        if self.delivery_note:
+            body += Markup("<br/>") + _("Note: %s") % self.delivery_note
+        self.sudo().message_post(body=body)
         return True
 
     # ── The parcel came back ──────────────────────────────────────

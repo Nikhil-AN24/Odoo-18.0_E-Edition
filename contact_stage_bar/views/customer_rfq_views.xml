@@ -94,9 +94,9 @@
                             <field name="customer_email"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
                                    invisible="1" readonly="state != 'draft'"/>
-                            <field name="customer_address" string="Company Address"
+                            <field name="customer_address"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_logistics,contact_stage_bar.group_lgd_shipment,contact_stage_bar.group_lgd_accounting,contact_stage_bar.group_lgd_hr,contact_stage_bar.group_lgd_marketing,base.group_system"
-                                   readonly="state != 'draft'"/>
+                                   invisible="1" readonly="state != 'draft'"/>
 
                             <field name="stone_type" widget="radio" options="{'horizontal': true}"
                                    required="1" readonly="state != 'draft'"/>
