@@ -18,7 +18,6 @@ class CustomerRfqShape(models.Model):
         ('name_unique', 'UNIQUE(name)', 'Shape name must be unique.'),
     ]
 
-
 class CustomerRfqGrade(models.Model):
     _name = 'customer.rfq.grade'
     _description = 'Customer RFQ Cut/Polish/Symmetry Grade'
@@ -40,7 +39,6 @@ class CustomerRfqGrade(models.Model):
          'Grade code must be unique per category.'),
     ]
 
-
 class CustomerRfqCancelReason(models.Model):
     _name = 'customer.rfq.cancel.reason'
     _description = 'Customer RFQ Cancellation Reason'
@@ -53,7 +51,6 @@ class CustomerRfqCancelReason(models.Model):
     _sql_constraints = [
         ('name_unique', 'UNIQUE(name)', 'Cancellation reason must be unique.'),
     ]
-
 
 class CustomerRfqSizeLine(models.Model):
     _name = 'customer.rfq.size.line'
@@ -136,10 +133,13 @@ class CustomerRfq(models.Model):
             or user.has_group('contact_stage_bar.group_lgd_superadmin')
             or user.has_group('base.group_system')
         )
+        dom = [('partner_kind', '=', 'buyer')]
         if user.has_group('contact_stage_bar.group_lgd_sales') and not sees_all:
-            dom = ['&', ('partner_kind', '=', 'buyer'), ('user_id', '=', user.id)]
-        else:
-            dom = [('partner_kind', '=', 'buyer')]
+            dom.append(('user_id', '=', user.id))
+
+        gated_stage_ids = self.env['res.partner']._lgd_gated_stage_ids()
+        if gated_stage_ids:
+            dom.append(('stage_id', 'in', gated_stage_ids))
         dom_str = json.dumps(dom)
         for rec in self:
             rec.partner_domain = dom_str

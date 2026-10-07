@@ -359,19 +359,31 @@ class SaleOrder(models.Model):
         fast SQL-only path and skips the line sync.
         """
 
+        # C1 (Order Completed) only skips lines that can never move again.
+        # Anything still in flight or still needing a decision MUST keep the
+        # invoice out of Order Completed — an invoice carrying a QC Fail line
+        # was reading as complete because qc_fail was skipped here.
+        # Blocking: not_available, in_qc_process, qc_fail, payment_pending,
+        # dispatched, re_dispatched, return_of_order (the last was already
+        # absent from this set, so it already blocked).
+        # 'cancelled' stays skipped: 'replaced' is normalised to it below, and
+        # a replaced line is the normal resolution of a QC Fail, so blocking it
+        # would mean no replaced order could ever complete.
         C1_IGNORE = frozenset([
-            'diamond_booked', 'confirmed', 'not_available', 'cancelled',
-            'in_qc_process', 'qc_fail', 'payment_pending', 'payment_completed',
-            'dispatched', 're_dispatched',
+            'diamond_booked', 'confirmed', 'cancelled', 'payment_completed',
         ])
         # C3: ignore diamond_booked / confirmed / qc_fail / not_available / cancelled
         C3_IGNORE = frozenset([
             'diamond_booked', 'confirmed', 'qc_fail', 'not_available', 'cancelled',
         ])
         # C7: ignore cancelled / not_available / qc_fail / diamond_booked / confirmed
+        # 'delivered' and 'order_completed' are ignored here too: now that C1 no
+        # longer swallows payment_pending, a part-delivered part-unpaid invoice
+        # reaches C7, and without them it fell through to the Order Received
+        # fallback instead of reading Payment Pending.
         C7_IGNORE = frozenset([
             'cancelled', 'not_available', 'qc_fail', 'diamond_booked', 'confirmed',
-            'payment_completed',
+            'payment_completed', 'delivered', 'order_completed',
         ])
         # C9: ignore everything except confirmed (and diamond_booked)
         C9_IGNORE = frozenset([
