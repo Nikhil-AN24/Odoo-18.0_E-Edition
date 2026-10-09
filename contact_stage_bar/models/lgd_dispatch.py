@@ -281,7 +281,20 @@ class LgdDispatch(models.Model):
             if vals.get('name', '/') == '/':
                 vals['name'] = self.env['ir.sequence'].next_by_code(
                     'lgd.dispatch') or '/'
-        return super().create(vals_list)
+        parcels = super().create(vals_list)
+        parcels.filtered('upload_slip')._lgd_sync_slip_attachment()
+        return parcels
+
+    _LGD_SLIP_FIELDS = ('upload_slip', 'upload_slip_filename', 'order_id')
+
+    def write(self, vals):
+        res = super().write(vals)
+        # Keep the order-side copy in step with the parcel's own slip -
+        # including order_id, so a parcel moved to another order takes its
+        # slip with it instead of leaving it on the old one.
+        if any(f in vals for f in self._LGD_SLIP_FIELDS):
+            self._lgd_sync_slip_attachment()
+        return res
 
     # ── Hand over to the courier ───────────────────────────────────
     def action_lgd_hand_over(self):
@@ -982,26 +995,74 @@ class LgdDispatch(models.Model):
                 ) % {'name': self.name, 'count': after},
                 head)
 
+    # ── The slip, mirrored onto the order (one per parcel) ────────────
+    _LGD_SLIP_MARKER = 'lgd_dispatch_slip'
+
+    def _lgd_sync_slip_attachment(self):
+        Attachment = self.env['ir.attachment'].sudo()
+        for parcel in self:
+            if not parcel.order_id:
+                continue
+            marker = '%s:%s' % (parcel._LGD_SLIP_MARKER, parcel.id)
+            existing = Attachment.search([
+                ('res_model', '=', 'sale.order'),
+                ('res_id', '=', parcel.order_id.id),
+                ('description', '=', marker),
+            ])
+            if not parcel.upload_slip:
+                existing.unlink()
+                continue
+            vals = {
+                'name': '%s - %s' % (
+                    parcel.name,
+                    parcel.upload_slip_filename or _('slip')),
+                'datas': parcel.upload_slip,
+                'res_model': 'sale.order',
+                'res_id': parcel.order_id.id,
+                'description': marker,
+            }
+            if existing:
+                existing[0].write(vals)
+                existing[1:].unlink()
+            else:
+                Attachment.create(vals)
+
+    @api.model
+    def _lgd_backfill_slip_attachments(self):
+        """One-time (idempotent) mirror of every slip already uploaded, so
+        parcels that pre-date this mirroring also show on their order."""
+        parcels = self.sudo().search([('upload_slip', '!=', False)])
+        parcels._lgd_sync_slip_attachment()
+        _logger.info("Slip attachments backfilled for %d parcel(s).",
+                     len(parcels))
+        return len(parcels)
+
+
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+    lgd_dispatch_slip_ids = fields.Many2many(
+        'ir.attachment', string="Uploading Slip",
+        compute='_compute_lgd_dispatch_slip_ids',
+        help="The courier slips uploaded by Dispatch against this order's "
+             "parcels - one per parcel, named after it. Upload them in the "
+             "Dispatch app; these are download-only copies.")
 
-    # The courier slip Dispatch uploads on the parcel, surfaced on the order
-    # so Sales and Procurement can download the proof of handover without
-    # being given access to the Dispatch app.
-    #
-    # Read-only by design: the file belongs to a parcel, and it is uploaded
-    # there. That also satisfies the requirement that LGD Sales, LGD Sales
-    # Manager, LGD Regional Sales Head and LGD Procurement get download-only
-    # access - none of them can upload here, because nobody can.
     lgd_dispatch_slip = fields.Binary(
-        string="Uploading Slip", readonly=True,
-        compute='_compute_lgd_dispatch_slip',
-        help="The courier slip uploaded by Dispatch against this order's "
-             "parcel. Upload it in the Dispatch app; this is a download-only "
-             "copy.")
+        string="Uploading Slip (single)", readonly=True,
+        compute='_compute_lgd_dispatch_slip')
     lgd_dispatch_slip_filename = fields.Char(
         compute='_compute_lgd_dispatch_slip')
 
+    def _compute_lgd_dispatch_slip_ids(self):
+        Attachment = self.env['ir.attachment'].sudo()
+        Dispatch = self.env['lgd.dispatch']
+        for order in self:
+            order.lgd_dispatch_slip_ids = Attachment.search([
+                ('res_model', '=', 'sale.order'),
+                ('res_id', '=', order.id),
+                ('description', '=like',
+                 '%s:%%' % Dispatch._LGD_SLIP_MARKER),
+            ])
 
     lgd_can_edit_logistics_fields = fields.Boolean(
         compute='_compute_lgd_can_edit_logistics_fields')

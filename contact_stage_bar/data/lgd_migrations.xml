@@ -14,5 +14,10 @@
         <function model="sale.order"
                   name="_lgd_backfill_order_source"/>
 
+        <!-- Mirror slips already uploaded on parcels onto their orders, so
+             orders that pre-date the mirroring show them too. -->
+        <function model="lgd.dispatch"
+                  name="_lgd_backfill_slip_attachments"/>
+
     </data>
 </odoo>
