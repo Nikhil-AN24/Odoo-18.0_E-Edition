@@ -179,10 +179,10 @@ class SaleOrder(models.Model):
 
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
-        Augmont Tax Invoice PDF, in one click.
+        Order Confirmation Slip PDF, in one click.
 
         Replaces the standard "Create Invoice" button, which is hidden on this
-        view: the business wants a single "Print an Invoice" action rather
+        view: the business wants a single "Print an Order Slip" action rather
         than the advance-payment wizard's regular/down-payment choice.
         """
         self.ensure_one()
@@ -1369,8 +1369,8 @@ class SaleOrder(models.Model):
     @api.depends('payment_ids.state', 'payment_ids.amount', 'amount_total')
     def _compute_is_fully_paid(self):
         for order in self:
-            # Filter only 'done' state payments
-            paid_payments = order.payment_ids.filtered(lambda p: p.state == 'in_process') 
+            paid_payments = order.payment_ids.sudo().filtered(
+                lambda p: p.state == 'in_process') 
             total_paid = sum(paid_payments.mapped('amount'))
             order.is_fully_paid = total_paid >= order.amount_total and bool(paid_payments)
             print(order.is_fully_paid,"order.is_fully_paid")
@@ -1715,9 +1715,10 @@ class SaleOrder(models.Model):
                 status = 'Return of Order'
             elif delivery == 'full':
                 status = 'Delivered'
-            elif order.payment_ids and any(payment.state == 'paid' for payment in order.payment_ids):
+
+            elif order.payment_ids and any(payment.state == 'paid' for payment in order.payment_ids.sudo()):
                 status = 'Payment Completed'
-            elif order.payment_ids and any(payment.state in ['draft', 'in_process'] for payment in order.payment_ids):
+            elif order.payment_ids and any(payment.state in ['draft', 'in_process'] for payment in order.payment_ids.sudo()):
                 status = 'Payment Pending'
             elif delivery == 'started':
                 status = 'In QC process'
@@ -2345,7 +2346,12 @@ class SaleOrder(models.Model):
     # 'procurement_line_ids' is the restricted one2many the Procurement form
     # saves availability edits through; the individual line writes still pass the
     # line-level guard (_LGD_PROC_SOL_WRITE_ALLOWLIST), so allowing it here is safe.
-    _LGD_PROC_SO_WRITE_ALLOWLIST = {'order_line', 'procurement_line_ids', 'sdk_augmont_status'}
+    # lgd_usd_rate is here because the field is shown to Procurement on the
+    # order form and is meant to be typed into: without it the guard below
+    # refused the save with "Blocked fields: lgd_usd_rate".
+    _LGD_PROC_SO_WRITE_ALLOWLIST = {
+        'order_line', 'procurement_line_ids', 'sdk_augmont_status',
+        'lgd_usd_rate'}
 
     def write(self, vals):
 
@@ -2508,10 +2514,11 @@ class SaleOrder(models.Model):
 
         # ── POST-WRITE: Invoice payment memo ──────────────────────────────────
         for order in self:
-            if order.invoice_ids:
-                for invoice in order.invoice_ids:
-                    for payment in invoice.payment_ids:
-                        payment.memo = f"Payment for Invoice {invoice.name}"
+            for invoice in order.sudo().invoice_ids:
+                memo = f"Payment for Invoice {invoice.name}"
+                for payment in invoice.payment_ids:
+                    if payment.memo != memo:
+                        payment.memo = memo
 
         # ── POST-WRITE: Mark activities done when state=done ──────────────────
         if 'state' in vals and vals['state'] == 'done':

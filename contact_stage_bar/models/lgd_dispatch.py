@@ -1016,25 +1016,45 @@ class SaleOrder(models.Model):
             order.lgd_can_edit_logistics_fields = allowed
 
     # ── Current USD rate, shown on the order ──────────────────────────
+    # SEEDED from Accounting's currency rates but EDITABLE, and tracked.
+    # store=True + readonly=False is the same arrangement as
+    # procurement_price_per_carat: the compute fills it in, then anyone may
+    # type over it - a deal is often struck at an agreed rate rather than the day's published one. 
     lgd_usd_rate = fields.Float(
-        string="Current $ Rate", digits=(12, 4), readonly=True,
-        compute='_compute_lgd_usd_rate',
-        help="Today's rate for 1 USD in this order's company currency, read "
-             "from Accounting's currency rates. It is not stored on the "
-             "order: it always shows the rate as of now, not the rate when "
-             "the order was raised.")
+        string="Current $ Rate", digits=(12, 4),
+        compute='_compute_lgd_usd_rate', store=True, readonly=False,
+        tracking=True,
+        help="Rate for 1 USD in this order's company currency. Seeded from "
+             "Accounting's currency rates and then editable - override it "
+             "with the rate actually agreed. Every change is recorded in "
+             "the chatter. Zero means no rate is configured for this "
+             "company yet: type the rate in.")
+    lgd_show_usd_rate = fields.Boolean(compute='_compute_lgd_show_usd_rate')
 
-    @api.depends_context('company')
-    @api.depends('company_id')
+    @api.depends('company_id', 'currency_id')
+    def _compute_lgd_show_usd_rate(self):
+        usd = self.env.ref('base.USD', raise_if_not_found=False)
+        for order in self:
+            target = (order.company_id or self.env.company).currency_id
+            # A "$ rate" only means something on an order actually priced in
+            # dollars. An order in rupees has no dollar figure to convert, so
+            # the field is hidden rather than shown with a number nobody
+            # asked for. The second half is the mirror of the same rule: if
+            # the company itself reports in USD there is nothing to convert
+            # TO, and the rate could only ever read 1.0000.
+            order.lgd_show_usd_rate = bool(
+                usd and target and order.currency_id == usd and target != usd)
+
+    @api.depends('company_id', 'currency_id')
     def _compute_lgd_usd_rate(self):
         usd = self.env.ref('base.USD', raise_if_not_found=False)
         today = fields.Date.context_today(self)
         for order in self:
             company = order.company_id or self.env.company
             target = company.currency_id
-            if not usd or not target or usd == target:
-                # A USD company: one dollar is one dollar.
-                order.lgd_usd_rate = 1.0
+            if not (usd and target and order.currency_id == usd
+                    and target != usd):
+                order.lgd_usd_rate = 0.0
                 continue
 
             has_rate = self.env['res.currency.rate'].sudo().search_count([

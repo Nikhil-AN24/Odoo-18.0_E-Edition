@@ -22,7 +22,7 @@
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">contact_stage_bar.report_augmont_tax_invoice_document</field>
         <field name="report_file">contact_stage_bar.report_augmont_tax_invoice_document</field>
-        <field name="print_report_name">'Tax Invoice - %s' % (object.sdk_augmont_number or object.name)</field>
+        <field name="print_report_name">'Order Confirmation Slip - %s' % (object.sdk_augmont_number or object.name)</field>
         <!-- Bound so it also appears in the Print menu wherever that menu is
              available. Note the Sales Orders server action sets
              hide_cog_menu=True in its context, so on THAT action the cog (and
@@ -210,7 +210,7 @@
                                         </div>
                                     </td>
                                     <td style="width:42%;" class="r">
-                                        <div class="lbl-gold">Tax Invoice</div>
+                                        <div class="lbl-gold">Order Confirmation Slip</div>
                                         <div class="num-lg" style="margin-top:4pt;">
                                             <span t-esc="doc.sdk_augmont_number or doc.name"/>
                                         </div>
@@ -321,7 +321,7 @@
                                         <th style="width:18.40%; text-align:center;">HSN/SAC</th>
                                         <th style="width:7.10%;  text-align:right;">QTY</th>
                                         <th style="width:8.42%;  text-align:right;">CTS</th>
-                                        <th style="width:8.43%;  text-align:right;">RATE</th>
+                                        <th style="width:8.43%;  text-align:right;">PER. CT RATE</th>
                                         <th style="width:16.85%; text-align:right;">AMOUNT</th>
                                     </tr>
                                 </thead>
@@ -337,7 +337,18 @@
                                         <td class="c" style="color:#5F5E5E;"><span t-esc="line.product_id.l10n_in_hsn_code or ''"/></td>
                                         <td class="r"><span t-esc="'%.2f' % line.product_uom_qty"/></td>
                                         <td class="r" style="font-weight:500;"><span t-esc="line.carat_weight or ''"/></td>
-                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.0f}'.format(line.price_unit)"/></td>
+                                        <!-- Sales Price/carat, not price_unit. price_unit is the
+                                             price per STONE, so the table contradicted itself:
+                                             RATE x CTS did not equal AMOUNT (306 x 3 != 306).
+                                             Per-carat makes the row read correctly
+                                             (102 x 3 = 306).
+                                             Falls back to price_unit when there is no
+                                             per-carat figure - sales_price_per_carat comes
+                                             from the Customer RFQ, so a website order has
+                                             none and would otherwise print 0.
+                                             Two decimals, because a per-carat rate is
+                                             commonly not a whole number. -->
+                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.sales_price_per_carat or line.price_unit)"/></td>
                                         <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.price_subtotal)"/></td>
                                     </tr>
                                 </tbody>

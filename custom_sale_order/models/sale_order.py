@@ -76,9 +76,34 @@ class SaleOrderLine(models.Model):
     sales_price_per_carat = fields.Monetary(
         string='Sales Price/carat', readonly=True,
         currency_field='rfq_currency_id', compute='_compute_rfq_pricing')
+
     sales_price_per_stone = fields.Monetary(
         string='Sales Price/Stone', readonly=True,
-        currency_field='rfq_currency_id', compute='_compute_rfq_pricing')
+        currency_field='lgd_price_display_currency_id',
+        compute='_compute_rfq_pricing')
+    lgd_price_display_currency_id = fields.Many2one(
+        'res.currency', compute='_compute_lgd_price_display_currency',
+        readonly=True)
+
+
+    lgd_sales_price_per_stone_conv = fields.Monetary(
+        string='Sales Price/Stone (Converted)', readonly=True,
+        currency_field='lgd_price_display_currency_id',
+        compute='_compute_lgd_sales_price_converted')
+
+    @api.depends('sales_price_per_stone')
+    def _compute_lgd_sales_price_converted(self):
+        for line in self:
+            line.lgd_sales_price_per_stone_conv = line.sales_price_per_stone
+
+    @api.depends('rfq_currency_id', 'order_id.company_id.currency_id',
+                 'order_id.lgd_show_usd_rate')
+    def _compute_lgd_price_display_currency(self):
+        for line in self:
+            line.lgd_price_display_currency_id = (
+                line.order_id.company_id.currency_id
+                if line.order_id.lgd_show_usd_rate
+                else line.rfq_currency_id)
     # Whole-quote value from the RFQ, surfaced on the order-line info popup.
     order_total = fields.Monetary(
         string='Order Total', readonly=True, currency_field='rfq_currency_id',
@@ -166,12 +191,17 @@ class SaleOrderLine(models.Model):
 
     @api.depends(
         'order_id.custom_sale_order_id.customer_rfq_id.sale_rate_per_carat',
-        'order_id.custom_sale_order_id.customer_rfq_id.sale_price_per_stone')
+        'order_id.custom_sale_order_id.customer_rfq_id.sale_price_per_stone',
+        'order_id.lgd_usd_rate', 'order_id.lgd_show_usd_rate')
     def _compute_rfq_pricing(self):
         for line in self:
             rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
             line.sales_price_per_carat = rfq.sale_rate_per_carat if rfq else 0.0
-            line.sales_price_per_stone = rfq.sale_price_per_stone if rfq else 0.0
+            per_stone = rfq.sale_price_per_stone if rfq else 0.0
+
+            if line.order_id.lgd_show_usd_rate and line.order_id.lgd_usd_rate:
+                per_stone *= line.order_id.lgd_usd_rate
+            line.sales_price_per_stone = per_stone
 
     @api.depends('order_id.custom_sale_order_id.customer_rfq_id.stone_type',
                  'order_id.custom_sale_order_id.customer_rfq_id.stone_certification_type')

@@ -264,8 +264,13 @@
                        filename="lgd_dispatch_slip_filename" readonly="1"/>
                 <!-- Today's USD rate in this order's company currency, read
                      live from Accounting's currency rates. Not stored on the
-                     order - it is "current", not the rate at order time. -->
-                <field name="lgd_usd_rate" readonly="1"/>
+                     order - it is "current", not the rate at order time.
+                     Shown only on an order priced in dollars: on a rupee
+                     order there is no dollar figure to convert and the field
+                     would be noise. -->
+                <field name="lgd_show_usd_rate" invisible="1"/>
+                <field name="lgd_usd_rate"
+                       invisible="not lgd_show_usd_rate"/>
                 <!-- Shipping Charges hidden for everyone (not required for now). -->
                 <field name="shipping_charges" invisible="1" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
 
@@ -669,19 +674,19 @@
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this
-                 business wants a single "Print an Invoice" action instead of
+                 business wants a single "Print an Order Slip" action instead of
                  the advance-payment wizard's regular/down-payment choice. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="attributes">
                 <attribute name="invisible">1</attribute>
             </xpath>
 
-            <!-- PRINT AN INVOICE BUTTON
+            <!-- PRINT AN ORDER SLIP BUTTON
                  Calls SaleOrder.action_print_the_invoice() in models/sale_order.py:
-                 creates the invoice (if needed) and downloads the Augmont Tax Invoice PDF in one click. -->
+                 creates the invoice (if needed) and downloads the Order Confirmation Slip PDF in one click. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="after">
                 <button
                     name="action_print_the_invoice"
-                    string="Print an Invoice"
+                    string="Print an Order Slip"
                     type="object"
                     class="btn-primary"
                     invisible="state != 'sale'"
