@@ -169,10 +169,24 @@
                 </div>
                 
                 <field name="location" readonly="state != 'draft'" required="state == 'confirm'" groups="!contact_stage_bar.group_lgd_procurement"/>
-                <field name="utr_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
-                <field name="courier_partner_name" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
-                <field name="tracking_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
-                <field name="tracking_url" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+
+                <field name="utr_number"
+                       groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
+                       invisible="state == 'draft'"/>
+                <!-- Courier Partner Name stays VISIBLE to Sales - they are
+                     routinely asked which carrier has a parcel - but not
+                     editable by them. -->
+                <field name="lgd_can_edit_logistics_fields" invisible="1"/>
+                <field name="courier_partner_name"
+                       groups="!contact_stage_bar.group_lgd_procurement"
+                       readonly="not lgd_can_edit_logistics_fields"
+                       invisible="state == 'draft'"/>
+                <field name="tracking_number"
+                       groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
+                       invisible="state == 'draft'"/>
+                <field name="tracking_url"
+                       groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
+                       invisible="state == 'draft'"/>
 
                 <!-- The order's own delivery destination. Only this
                      customer's own addresses (self + its delivery children)
@@ -248,6 +262,10 @@
                 <field name="lgd_dispatch_slip_filename" invisible="1"/>
                 <field name="lgd_dispatch_slip" widget="binary"
                        filename="lgd_dispatch_slip_filename" readonly="1"/>
+                <!-- Today's USD rate in this order's company currency, read
+                     live from Accounting's currency rates. Not stored on the
+                     order - it is "current", not the rate at order time. -->
+                <field name="lgd_usd_rate" readonly="1"/>
                 <!-- Shipping Charges hidden for everyone (not required for now). -->
                 <field name="shipping_charges" invisible="1" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
 

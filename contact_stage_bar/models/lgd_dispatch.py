@@ -1002,6 +1002,49 @@ class SaleOrder(models.Model):
     lgd_dispatch_slip_filename = fields.Char(
         compute='_compute_lgd_dispatch_slip')
 
+
+    lgd_can_edit_logistics_fields = fields.Boolean(
+        compute='_compute_lgd_can_edit_logistics_fields')
+
+    @api.depends_context('uid')
+    def _compute_lgd_can_edit_logistics_fields(self):
+        user = self.env.user
+        # group_lgd_sales alone covers the family: Sales Manager implies it,
+        # and Regional Sales Head implies the Manager.
+        allowed = not user.has_group('contact_stage_bar.group_lgd_sales')
+        for order in self:
+            order.lgd_can_edit_logistics_fields = allowed
+
+    # ── Current USD rate, shown on the order ──────────────────────────
+    lgd_usd_rate = fields.Float(
+        string="Current $ Rate", digits=(12, 4), readonly=True,
+        compute='_compute_lgd_usd_rate',
+        help="Today's rate for 1 USD in this order's company currency, read "
+             "from Accounting's currency rates. It is not stored on the "
+             "order: it always shows the rate as of now, not the rate when "
+             "the order was raised.")
+
+    @api.depends_context('company')
+    @api.depends('company_id')
+    def _compute_lgd_usd_rate(self):
+        usd = self.env.ref('base.USD', raise_if_not_found=False)
+        today = fields.Date.context_today(self)
+        for order in self:
+            company = order.company_id or self.env.company
+            target = company.currency_id
+            if not usd or not target or usd == target:
+                # A USD company: one dollar is one dollar.
+                order.lgd_usd_rate = 1.0
+                continue
+
+            has_rate = self.env['res.currency.rate'].sudo().search_count([
+                ('currency_id', '=', target.id),
+                ('company_id', 'in', [False, company.id]),
+                ('name', '<=', today),
+            ])
+            order.lgd_usd_rate = usd.sudo()._convert(
+                1.0, target, company, today, round=False) if has_rate else 0.0
+
     def _compute_lgd_dispatch_slip(self):
         Dispatch = self.env['lgd.dispatch'].sudo()
         for order in self:
