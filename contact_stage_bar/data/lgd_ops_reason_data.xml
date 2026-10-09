@@ -57,16 +57,16 @@
             <field name="name">Order requirement not met</field>
             <field name="sequence">60</field>
         </record>
+
+        <record id="lgd_fail_reason_cust_memo_return" model="lgd.qc.fail.reason">
+            <field name="name">Returned from customer memo</field>
+            <field name="sequence">70</field>
+        </record>
+
         <record id="lgd_fail_reason_other" model="lgd.qc.fail.reason">
             <field name="name">Other</field>
             <field name="sequence">99</field>
         </record>
-
-        <function model="purchase.order.line"
-                  name="_lgd_migrate_collector_column"/>
-
-        <function model="purchase.order.line"
-                  name="_lgd_backfill_sale_line_links"/>
 
     </data>
 </odoo>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Split a draft parcel. dest_option_id points at an
+             lgd.dispatch.destination.option, never at a res.partner (R3):
+             Dispatch has no res.partner access, and a many2one widget
+             would resolve its display name and raise AccessError. -->
+        <record id="view_lgd_dispatch_split_wizard_form" model="ir.ui.view">
+            <field name="name">lgd.dispatch.split.wizard.form</field>
+            <field name="model">lgd.dispatch.split.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Split Parcel">
+                    <group>
+                        <field name="dispatch_id" invisible="1"/>
+                        <field name="line_ids" widget="many2many_tags"
+                               options="{'no_create': True}"/>
+                        <field name="dest_option_id" string="Send to"
+                               options="{'no_create': True, 'no_open': True}"/>
+                    </group>
+                    <footer>
+                        <button name="action_split" type="object"
+                                string="Split" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary"
+                                special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- Task 12: record a memo return. `return_to` is a FACT,
+             computed from the stone's own purchase record, so it is shown
+             read-only and is never offered as a choice (R5). -->
+        <record id="view_lgd_memo_return_wizard_form" model="ir.ui.view">
+            <field name="name">lgd.memo.return.wizard.form</field>
+            <field name="model">lgd.memo.return.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Record Memo Return">
+                    <group>
+                        <field name="dispatch_id" invisible="1"/>
+                        <field name="received_on"/>
+                        <field name="note" placeholder="Anything to record about this return"/>
+                    </group>
+                    <field name="line_ids">
+                        <list string="Stones" create="0" editable="bottom">
+                            <field name="sale_line_id" column_invisible="1"/>
+                            <field name="certificate" readonly="1"/>
+                            <field name="carat" readonly="1"/>
+                            <field name="outcome" required="1"/>
+                            <field name="return_to" readonly="1"/>
+                        </list>
+                    </field>
+                    <p class="text-muted">
+                        Remove the rows you are not deciding yet — they stay
+                        on the memo and come back next time.
+                    </p>
+                    <footer>
+                        <button name="action_record" type="object"
+                                string="Record return" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary"
+                                special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+    </data>
+</odoo>

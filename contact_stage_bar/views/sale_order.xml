@@ -169,10 +169,38 @@
                 </div>
                 
                 <field name="location" readonly="state != 'draft'" required="state == 'confirm'" groups="!contact_stage_bar.group_lgd_procurement"/>
-                <field name="utr_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
-                <field name="courier_partner_name" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
-                <field name="tracking_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
-                <field name="tracking_url" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+
+                <field name="utr_number"
+                       groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
+                       invisible="state == 'draft'"/>
+                <!-- Courier Partner Name stays VISIBLE to Sales - they are
+                     routinely asked which carrier has a parcel - but not
+                     editable by them. -->
+                <field name="lgd_can_edit_logistics_fields" invisible="1"/>
+                <field name="courier_partner_name"
+                       groups="!contact_stage_bar.group_lgd_procurement"
+                       readonly="not lgd_can_edit_logistics_fields"
+                       invisible="state == 'draft'"/>
+                <field name="tracking_number"
+                       groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
+                       invisible="state == 'draft'"/>
+                <field name="tracking_url"
+                       groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_sales"
+                       invisible="state == 'draft'"/>
+
+                <!-- The order's own delivery destination. Only this
+                     customer's own addresses (self + its delivery children)
+                     are offered. -->
+                <field name="partner_shipping_id"
+                       domain="[('id', 'child_of', partner_id)]"
+                       readonly="state not in ('draft', 'sent')"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="lgd_is_multi_dest" invisible="1"/>
+                <field name="lgd_destination_count"
+                       string="Destinations"
+                       widget="badge"
+                       invisible="not lgd_is_multi_dest"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
             </xpath>
             
             <xpath expr="//field[@name='name']" position="before">
@@ -230,6 +258,18 @@
                 
                 <field name="shipping_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
                 <field name="billing_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
+
+                <field name="lgd_dispatch_slip_ids" widget="many2many_binary"
+                       readonly="1"/>
+                <!-- Today's USD rate in this order's company currency, read
+                     live from Accounting's currency rates. Not stored on the
+                     order - it is "current", not the rate at order time.
+                     Shown only on an order priced in dollars: on a rupee
+                     order there is no dollar figure to convert and the field
+                     would be noise. -->
+                <field name="lgd_show_usd_rate" invisible="1"/>
+                <field name="lgd_usd_rate"
+                       invisible="not lgd_show_usd_rate"/>
                 <!-- Shipping Charges hidden for everyone (not required for now). -->
                 <field name="shipping_charges" invisible="1" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
 
@@ -297,7 +337,6 @@
                     th[data-name="lgd_stock_number"],
                     th[data-name="shapes"],
                     th[data-name="color"],
-                    th[data-name="availability_status"],
                     th[data-name="clarity"],
                     th[data-name="final_price"],
                     th[data-name="price_unit"],
@@ -316,10 +355,28 @@
                         width: 200px !important;
                         max-width: 300px !important;
                     }
-                    /* Highlight the Availability column so users see it is an editable dropdown */
+                    /* Highlight the Availability column so users see it is an
+                       editable dropdown.
+                       It is deliberately NOT in the 100px group above: at
+                       100px the longest labels ("Confirmation Pending",
+                       "Returned from memo", "Payment Completed") wrapped or
+                       were clipped.
+                       The width MUST be an explicit value, never `auto`: an
+                       Odoo list table is `table-layout: fixed`, where an auto
+                       column is only given whatever space is left over after
+                       the fixed ones - and every neighbouring column above
+                       sets an explicit `width: ... !important` that already
+                       fills the table. With nothing left over the column
+                       collapsed to zero width and vanished entirely, and
+                       `min-width` does not rescue it because fixed layout
+                       ignores min-width on cells. */
                     th[data-name="availability_status"],
                     td[name="availability_status"] {
                         background-color: #fff3cd !important;
+                        width: 180px !important;
+                        min-width: 180px !important;
+                        max-width: 180px !important;
+                        white-space: nowrap !important;
                     }
                     .black-box .form-check-input {
                         width: 20px;
@@ -368,6 +425,9 @@
                                 invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
+                        <field name="lgd_ship_address_id" string="Deliver to"
+                               optional="hide"
+                               domain="[('id', 'child_of', parent.partner_id)]"/>
                         <field name="can_edit_vendor" column_invisible="True"/>
                         <field name="lgd_line_closed" column_invisible="True"/>
                         <field name="vendor_id" widget="vendor_company"
@@ -375,8 +435,11 @@
                         <field name="stock_number" readonly="1" string="Vendor SKU"/>
                         <field name="vendor_city" readonly="1" optional="show"/>
                         <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                        <field name="stone_type" optional="show" readonly="lgd_line_closed"/>
-                        <field name="stone_certification_type" optional="show" readonly="lgd_line_closed"/>
+                        <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
+                        <field name="stone_type" optional="show"
+                               readonly="not lgd_can_edit_stone_classification"/>
+                        <field name="stone_certification_type" optional="show"
+                               readonly="not lgd_can_edit_stone_classification"/>
                         <field name="treatments" readonly="1"/>
                     </list>
                 </field>
@@ -423,6 +486,9 @@
                         invisible="not replacement_pending_sales"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
+                <field name="lgd_ship_address_id" string="Deliver to"
+                       optional="hide"
+                       domain="[('id', 'child_of', parent.partner_id)]"/>
                 <field name="can_edit_vendor" column_invisible="True"/>
                 <field name="lgd_line_closed" column_invisible="True"/>
                 <!-- One "Vendor Company" column: editable vendor picker on active
@@ -435,8 +501,11 @@
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                <field name="stone_type" optional="show" readonly="lgd_line_closed"/>
-                <field name="stone_certification_type" optional="show" readonly="lgd_line_closed"/>
+                <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
+                <field name="stone_type" optional="show"
+                       readonly="not lgd_can_edit_stone_classification"/>
+                <field name="stone_certification_type" optional="show"
+                       readonly="not lgd_can_edit_stone_classification"/>
                 <field name="treatments"/>
             
                 <field name="shapes" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>
@@ -604,19 +673,19 @@
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this
-                 business wants a single "Print an Invoice" action instead of
+                 business wants a single "Print an Order Slip" action instead of
                  the advance-payment wizard's regular/down-payment choice. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="attributes">
                 <attribute name="invisible">1</attribute>
             </xpath>
 
-            <!-- PRINT AN INVOICE BUTTON
+            <!-- PRINT AN ORDER SLIP BUTTON
                  Calls SaleOrder.action_print_the_invoice() in models/sale_order.py:
-                 creates the invoice (if needed) and downloads the Augmont Tax Invoice PDF in one click. -->
+                 creates the invoice (if needed) and downloads the Order Confirmation Slip PDF in one click. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="after">
                 <button
                     name="action_print_the_invoice"
-                    string="Print an Invoice"
+                    string="Print an Order Slip"
                     type="object"
                     class="btn-primary"
                     invisible="state != 'sale'"

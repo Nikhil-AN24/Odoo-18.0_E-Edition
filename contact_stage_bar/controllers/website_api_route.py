@@ -4,7 +4,6 @@ from markupsafe import Markup
 
 import logging, json
 from datetime import datetime
-
 from odoo import models, fields, api
 
 _logger = logging.getLogger(__name__)
@@ -48,7 +47,6 @@ class PartnerSyncController(http.Controller):
     
     @http.route('/api/contact/login', type='json', auth='public', methods=['POST'], csrf=False)
     def contact_login_or_create(self):
-        
         
         data = json.loads(request.httprequest.data)
         _logger.info(f"Received data: {data}")
@@ -318,6 +316,11 @@ class PartnerSyncController(http.Controller):
                     'vat': gst_number,
                     'ein_number': ein_number,
                 })
+
+                if shipping_address:
+                    ship_addr = request.env['res.partner']._lgd_match_or_create_address(
+                        partner, shipping_address, order=sale_order)
+                    sale_order.sudo().write({'partner_shipping_id': ship_addr.id})
 
             # Process each order item
             for order in orders:
@@ -716,14 +719,6 @@ class PartnerSyncController(http.Controller):
                     'fluorescence_color': product_details.get('fluorescenceColor'),
                     'fluorescence_intensity': product_details.get('fluorescenceIntensity'),
                     'warehouse_id': warehouse.id,
-                    # 'seller_ids': [(0, 0, {
-                    #     'partner_id': vendor.id,
-                    #     'min_qty': quantity,
-                    #     'price': product_details.get('finalPriceMargin'),
-                    #     'vendor_final_price': product_details.get('finalPriceMargin'),
-                    #     'vendor_per_carat_price': product_details.get('pricePerCaratMargin'),
-                    # })],
-                    # custom field
                     'sdk_is_code_enabled': True,
                 }
 
@@ -1243,4 +1238,3 @@ class PartnerSyncController(http.Controller):
                 content_type='application/json',
                 status=200 if failed == 0 else (207 if processed > 0 else 400)
             )
-

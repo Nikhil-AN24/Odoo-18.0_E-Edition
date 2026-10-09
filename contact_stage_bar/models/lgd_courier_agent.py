@@ -3,13 +3,13 @@ from odoo import api, fields, models
 
 class LgdCourierAgent(models.Model):
     _name = 'lgd.courier.agent'
-    _description = 'Courier or Angadia'
-    _order = 'agent_type, name'
+    _description = 'Courier'
+    _order = 'name'
 
     name = fields.Char(string="Contact Name", required=True)  # "Sequel Logistics"
     agent_type = fields.Selection(
-        [('courier', 'Courier company'), ('angadia', 'Angadia')],
-        required=True, default='courier')
+        [('courier', 'Courier company')],
+        required=True, default='courier', readonly=True)
     firm_name = fields.Char(string="Firm Name", help="The firm this contact works for.")
     phone = fields.Char(help="The number Dispatch rings.")
     city = fields.Char()

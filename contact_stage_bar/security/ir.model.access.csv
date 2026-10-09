@@ -16,7 +16,6 @@ access_customer_rfq_admin,customer.rfq.admin,model_customer_rfq,base.group_syste
 access_res_partner_lgd_sales,res.partner.lgd.sales,model_res_partner,contact_stage_bar.group_lgd_sales,1,1,1,0
 access_res_partner_lgd_procurement,res.partner.lgd.procurement,model_res_partner,contact_stage_bar.group_lgd_procurement,1,1,1,0
 access_res_partner_lgd_logistics,res.partner.lgd.logistics,model_res_partner,contact_stage_bar.group_lgd_logistics,1,1,1,0
-access_res_partner_lgd_shipment,res.partner.lgd.shipment,model_res_partner,contact_stage_bar.group_lgd_shipment,1,1,1,0
 access_res_partner_lgd_accounting,res.partner.lgd.accounting,model_res_partner,contact_stage_bar.group_lgd_accounting,1,1,1,0
 access_res_partner_lgd_hr,res.partner.lgd.hr,model_res_partner,contact_stage_bar.group_lgd_hr,1,1,1,0
 access_res_partner_lgd_marketing,res.partner.lgd.marketing,model_res_partner,contact_stage_bar.group_lgd_marketing,1,1,1,0
@@ -74,3 +73,15 @@ access_lgd_dispatch_system,lgd.dispatch.system,model_lgd_dispatch,base.group_sys
 access_lgd_courier_agent_user,lgd.courier.agent.user,model_lgd_courier_agent,base.group_user,1,0,0,0
 access_lgd_courier_agent_shipment,lgd.courier.agent.shipment,model_lgd_courier_agent,contact_stage_bar.group_lgd_shipment,1,1,1,1
 access_lgd_courier_agent_system,lgd.courier.agent.system,model_lgd_courier_agent,base.group_system,1,1,1,1
+access_lgd_dispatch_split_wizard_shipment,lgd.dispatch.split.wizard.shipment,model_lgd_dispatch_split_wizard,contact_stage_bar.group_lgd_shipment,1,1,1,1
+access_lgd_dispatch_split_wizard_system,lgd.dispatch.split.wizard.system,model_lgd_dispatch_split_wizard,base.group_system,1,1,1,1
+access_lgd_memo_return_wizard_shipment,lgd.memo.return.wizard.shipment,model_lgd_memo_return_wizard,contact_stage_bar.group_lgd_shipment,1,1,1,1
+access_lgd_memo_return_wizard_system,lgd.memo.return.wizard.system,model_lgd_memo_return_wizard,base.group_system,1,1,1,1
+access_lgd_memo_return_line_shipment,lgd.memo.return.line.shipment,model_lgd_memo_return_line,contact_stage_bar.group_lgd_shipment,1,1,1,1
+access_lgd_memo_return_line_system,lgd.memo.return.line.system,model_lgd_memo_return_line,base.group_system,1,1,1,1
+access_res_partner_lgd_superadmin_unlink,res.partner.lgd.superadmin.unlink,model_res_partner,contact_stage_bar.group_lgd_superadmin,1,1,1,1
+access_res_partner_lgd_regional_sales_head_unlink,res.partner.lgd.regional.sales.head.unlink,model_res_partner,contact_stage_bar.group_lgd_regional_sales_head,1,1,1,1
+access_res_partner_lgd_sales_manager_unlink,res.partner.lgd.sales.manager.unlink,model_res_partner,contact_stage_bar.group_lgd_sales_manager,1,1,1,1
+access_res_partner_lgd_procurement_manager_unlink,res.partner.lgd.procurement.manager.unlink,model_res_partner,contact_stage_bar.group_lgd_procurement_manager,1,1,1,1
+access_lgd_dispatch_destination_option_shipment,lgd.dispatch.destination.option.shipment,model_lgd_dispatch_destination_option,contact_stage_bar.group_lgd_shipment,1,0,0,0
+access_lgd_dispatch_destination_option_system,lgd.dispatch.destination.option.system,model_lgd_dispatch_destination_option,base.group_system,1,1,1,1

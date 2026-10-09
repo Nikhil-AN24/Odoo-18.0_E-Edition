@@ -12,8 +12,11 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
+from .lgd_inventory_sale_line import LGD_DEAD_STATUSES
+
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
-_LGD_DEAD_LINE_STATUSES = ('cancelled', 'not_available', 'replaced')
+_LGD_DEAD_LINE_STATUSES = (
+    'cancelled', 'not_available', 'replaced', 'memo_returned')
 
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Diamond Booked": ["Confirmed", "Not available"],
@@ -176,10 +179,10 @@ class SaleOrder(models.Model):
 
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
-        Augmont Tax Invoice PDF, in one click.
+        Order Confirmation Slip PDF, in one click.
 
         Replaces the standard "Create Invoice" button, which is hidden on this
-        view: the business wants a single "Print an Invoice" action rather
+        view: the business wants a single "Print an Order Slip" action rather
         than the advance-payment wizard's regular/down-payment choice.
         """
         self.ensure_one()
@@ -419,8 +422,20 @@ class SaleOrder(models.Model):
             # A 'replaced' line is inactive exactly like a 'cancelled' one, so
             # normalise it to 'cancelled' here — every rule below already keys on
             # 'cancelled', so no rule needs to know about 'replaced'.
+            #
+            # 'memo_returned' is normalised the same way, and for the same
+            # reason: it is a terminal status (it is in _LGD_DEAD_LINE_STATUSES
+            # alongside 'cancelled' and 'replaced'), the stone has gone back to
+            # the vault and that line can never move again. Without this, an
+            # order whose other lines were all Order Completed fell through
+            # every rule — 'memo_returned' is in none of the C*_IGNORE sets, so
+            # C1's active set was {order_completed, memo_returned}, which is not
+            # a subset of {delivered, order_completed} — and landed on the
+            # 'Order Received' fallback, which also meant no green ribbon.
+            _LGD_INACTIVE_AS_CANCELLED = ('replaced', 'memo_returned')
+
             def _norm(s):
-                return 'cancelled' if s == 'replaced' else s
+                return 'cancelled' if s in _LGD_INACTIVE_AS_CANCELLED else s
             all_statuses = {_norm(s) for s in lines.mapped('availability_status')}
             all_statuses.discard(False)
 
@@ -764,7 +779,28 @@ class SaleOrder(models.Model):
             self.env.cr.commit()
         return True
 
+    def _lgd_check_destinations(self):
+        """Refuse to confirm when a live stone's effective
+        delivery destination has neither a street nor a city. Every failing
+        stone is collected first (R6): the error lists them all, one pass,
+        rather than stopping at the first."""
+        problems = []
+        for order in self:
+            live_lines = order.order_line.filtered(
+                lambda l: l.product_id
+                and l.availability_status not in LGD_DEAD_STATUSES)
+            for line in live_lines:
+                dest = line.lgd_ship_address_eff
+                if not (dest.street or dest.city):
+                    problems.append(line._lgd_label())
+        if problems:
+            raise UserError(_(
+                "These stones have no delivery address: %s. Pick an "
+                "address on the order, or on each stone."
+            ) % ', '.join(problems))
+
     def action_confirm(self):
+        self._lgd_check_destinations()
         import time
         import datetime as _dt
         start_time = time.time()
@@ -1333,8 +1369,8 @@ class SaleOrder(models.Model):
     @api.depends('payment_ids.state', 'payment_ids.amount', 'amount_total')
     def _compute_is_fully_paid(self):
         for order in self:
-            # Filter only 'done' state payments
-            paid_payments = order.payment_ids.filtered(lambda p: p.state == 'in_process') 
+            paid_payments = order.payment_ids.sudo().filtered(
+                lambda p: p.state == 'in_process') 
             total_paid = sum(paid_payments.mapped('amount'))
             order.is_fully_paid = total_paid >= order.amount_total and bool(paid_payments)
             print(order.is_fully_paid,"order.is_fully_paid")
@@ -1679,9 +1715,10 @@ class SaleOrder(models.Model):
                 status = 'Return of Order'
             elif delivery == 'full':
                 status = 'Delivered'
-            elif order.payment_ids and any(payment.state == 'paid' for payment in order.payment_ids):
+
+            elif order.payment_ids and any(payment.state == 'paid' for payment in order.payment_ids.sudo()):
                 status = 'Payment Completed'
-            elif order.payment_ids and any(payment.state in ['draft', 'in_process'] for payment in order.payment_ids):
+            elif order.payment_ids and any(payment.state in ['draft', 'in_process'] for payment in order.payment_ids.sudo()):
                 status = 'Payment Pending'
             elif delivery == 'started':
                 status = 'In QC process'
@@ -2309,7 +2346,12 @@ class SaleOrder(models.Model):
     # 'procurement_line_ids' is the restricted one2many the Procurement form
     # saves availability edits through; the individual line writes still pass the
     # line-level guard (_LGD_PROC_SOL_WRITE_ALLOWLIST), so allowing it here is safe.
-    _LGD_PROC_SO_WRITE_ALLOWLIST = {'order_line', 'procurement_line_ids', 'sdk_augmont_status'}
+    # lgd_usd_rate is here because the field is shown to Procurement on the
+    # order form and is meant to be typed into: without it the guard below
+    # refused the save with "Blocked fields: lgd_usd_rate".
+    _LGD_PROC_SO_WRITE_ALLOWLIST = {
+        'order_line', 'procurement_line_ids', 'sdk_augmont_status',
+        'lgd_usd_rate'}
 
     def write(self, vals):
 
@@ -2472,10 +2514,11 @@ class SaleOrder(models.Model):
 
         # ── POST-WRITE: Invoice payment memo ──────────────────────────────────
         for order in self:
-            if order.invoice_ids:
-                for invoice in order.invoice_ids:
-                    for payment in invoice.payment_ids:
-                        payment.memo = f"Payment for Invoice {invoice.name}"
+            for invoice in order.sudo().invoice_ids:
+                memo = f"Payment for Invoice {invoice.name}"
+                for payment in invoice.payment_ids:
+                    if payment.memo != memo:
+                        payment.memo = memo
 
         # ── POST-WRITE: Mark activities done when state=done ──────────────────
         if 'state' in vals and vals['state'] == 'done':
@@ -3142,9 +3185,9 @@ class SaleOrderLine(models.Model):
     vendor_id = fields.Many2one(
         'res.partner', string="Vendor Company",
         domain="[('partner_kind', '=', 'supplier')]")
-    # Vendor Company is editable by Procurement roles (+ Admin / SuperAdmin);
-    # everyone else sees it read-only.
     can_edit_vendor = fields.Boolean(compute='_compute_can_edit_vendor')
+    lgd_can_edit_stone_classification = fields.Boolean(
+        compute='_compute_lgd_can_edit_stone_classification')
 
     _LGD_CLOSED_LINE_STATUSES = ('not_available', 'cancelled', 'qc_fail')
 
@@ -3172,6 +3215,20 @@ class SaleOrderLine(models.Model):
             # Availability itself is NOT gated here: a QC Fail line still has
             # to be movable to Cancelled, which is can_edit_availability's job.
             line.can_edit_vendor = allowed and not line.lgd_line_closed
+
+    @api.depends_context('uid')
+    @api.depends('lgd_line_closed')
+    def _compute_lgd_can_edit_stone_classification(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+        )
+
+        for line in self:
+            line.lgd_can_edit_stone_classification = (
+                allowed and not line.lgd_line_closed)
 
     # Who may change the Availability selection on the Sale Order: Admin /
     # LGD SuperAdmin / LGD Procurement / LGD Procurement Manager (the last two
@@ -3411,8 +3468,8 @@ class SaleOrderLine(models.Model):
         ('return_of_order', 'Return of Order'),
         ('re_dispatched', 'Re - Dispatched'),
         ('delivered', 'Delivered'),
+        ('memo_returned', 'Returned from memo'),
         ('order_completed', 'Order Completed'),
-    # ], string='Availability', copy=False, required=True, default='diamond_booked', tracking=True)
     ], string='Availability', copy=False, required=False, tracking=True)
 
 
@@ -3420,8 +3477,6 @@ class SaleOrderLine(models.Model):
     def onchange_product_template_id(self):
         if self.product_template_id:
             self.vendor_id = self.product_template_id.seller_ids[0].partner_id if self.product_template_id.seller_ids else False
-        # if self.final_price:
-        #     self.price_subtotal = self.final_price
 
     def action_open_product_popup(self):
         self.ensure_one()

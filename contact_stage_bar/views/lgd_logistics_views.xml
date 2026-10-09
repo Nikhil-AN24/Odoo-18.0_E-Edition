@@ -23,7 +23,7 @@
                                 string="Reject selected" class="btn-danger"/>
                     </header>
                     <!-- Needed by decoration-warning only; never displayed,
-                         so the list still shows no order link (§10.6). -->
+                         so the list still shows no order link. -->
                     <field name="sale_line_id" column_invisible="1"/>
                     <field name="lgd_is_overdue" column_invisible="1"/>
                     <field name="lgd_is_certified" column_invisible="1"/>
@@ -164,7 +164,7 @@
                     <field name="lgd_rejected_at" string="Decided On"
                            invisible="lgd_stage != 'rejected'"/>
                     <field name="lgd_fail_reason_id"
-                           invisible="lgd_stage != 'failed'"/>
+                           invisible="lgd_stage not in ('failed', 'cust_returned')"/>
                     <field name="lgd_qc_decided_at" string="Decided On"
                            invisible="lgd_stage != 'failed'"/>
                     <button name="action_lgd_open_return_wizard" type="object"
@@ -179,7 +179,10 @@
             <field name="view_mode">list</field>
             <field name="view_id" ref="view_lgd_returns_vendor_list"/>
             <field name="search_view_id" ref="view_lgd_ops_line_search"/>
-            <field name="domain">[('lgd_stage', 'in', ('rejected', 'failed'))]</field>
+            <!-- 'cust_returned': a stone that went out on
+                 customer memo and came back, which was only ever held on
+                 vendor memo, is physically returned here too. -->
+            <field name="domain">[('lgd_stage', 'in', ('rejected', 'failed', 'cust_returned'))]</field>
             <field name="context">{'group_by': 'partner_id'}</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">Nothing to return.</p>
