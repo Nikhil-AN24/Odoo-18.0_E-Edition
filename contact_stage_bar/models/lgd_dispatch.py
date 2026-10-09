@@ -981,3 +981,34 @@ class LgdDispatch(models.Model):
                     "result."
                 ) % {'name': self.name, 'count': after},
                 head)
+
+class SaleOrder(models.Model):
+    _inherit = 'sale.order'
+
+    # The courier slip Dispatch uploads on the parcel, surfaced on the order
+    # so Sales and Procurement can download the proof of handover without
+    # being given access to the Dispatch app.
+    #
+    # Read-only by design: the file belongs to a parcel, and it is uploaded
+    # there. That also satisfies the requirement that LGD Sales, LGD Sales
+    # Manager, LGD Regional Sales Head and LGD Procurement get download-only
+    # access - none of them can upload here, because nobody can.
+    lgd_dispatch_slip = fields.Binary(
+        string="Uploading Slip", readonly=True,
+        compute='_compute_lgd_dispatch_slip',
+        help="The courier slip uploaded by Dispatch against this order's "
+             "parcel. Upload it in the Dispatch app; this is a download-only "
+             "copy.")
+    lgd_dispatch_slip_filename = fields.Char(
+        compute='_compute_lgd_dispatch_slip')
+
+    def _compute_lgd_dispatch_slip(self):
+        Dispatch = self.env['lgd.dispatch'].sudo()
+        for order in self:
+            parcel = Dispatch.search([
+                ('order_id', '=', order.id),
+                ('upload_slip', '!=', False),
+            ], order='id desc', limit=1)
+            order.lgd_dispatch_slip = parcel.upload_slip or False
+            order.lgd_dispatch_slip_filename = (
+                parcel.upload_slip_filename or False)

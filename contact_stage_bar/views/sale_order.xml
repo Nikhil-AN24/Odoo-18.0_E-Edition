@@ -244,6 +244,10 @@
                 
                 <field name="shipping_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
                 <field name="billing_address" readonly="state != 'draft'" style="white-space: pre-wrap; min-height: 80px; width: 100%;" groups="!contact_stage_bar.group_lgd_procurement"/>
+
+                <field name="lgd_dispatch_slip_filename" invisible="1"/>
+                <field name="lgd_dispatch_slip" widget="binary"
+                       filename="lgd_dispatch_slip_filename" readonly="1"/>
                 <!-- Shipping Charges hidden for everyone (not required for now). -->
                 <field name="shipping_charges" invisible="1" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
 
