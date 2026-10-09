@@ -173,6 +173,20 @@
                 <field name="courier_partner_name" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
                 <field name="tracking_number" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
                 <field name="tracking_url" groups="!contact_stage_bar.group_lgd_procurement" invisible="state == 'draft'"/>
+
+                <!-- The order's own delivery destination. Only this
+                     customer's own addresses (self + its delivery children)
+                     are offered. -->
+                <field name="partner_shipping_id"
+                       domain="[('id', 'child_of', partner_id)]"
+                       readonly="state not in ('draft', 'sent')"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
+                <field name="lgd_is_multi_dest" invisible="1"/>
+                <field name="lgd_destination_count"
+                       string="Destinations"
+                       widget="badge"
+                       invisible="not lgd_is_multi_dest"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
             </xpath>
             
             <xpath expr="//field[@name='name']" position="before">
@@ -297,7 +311,6 @@
                     th[data-name="lgd_stock_number"],
                     th[data-name="shapes"],
                     th[data-name="color"],
-                    th[data-name="availability_status"],
                     th[data-name="clarity"],
                     th[data-name="final_price"],
                     th[data-name="price_unit"],
@@ -316,10 +329,28 @@
                         width: 200px !important;
                         max-width: 300px !important;
                     }
-                    /* Highlight the Availability column so users see it is an editable dropdown */
+                    /* Highlight the Availability column so users see it is an
+                       editable dropdown.
+                       It is deliberately NOT in the 100px group above: at
+                       100px the longest labels ("Confirmation Pending",
+                       "Returned from memo", "Payment Completed") wrapped or
+                       were clipped.
+                       The width MUST be an explicit value, never `auto`: an
+                       Odoo list table is `table-layout: fixed`, where an auto
+                       column is only given whatever space is left over after
+                       the fixed ones - and every neighbouring column above
+                       sets an explicit `width: ... !important` that already
+                       fills the table. With nothing left over the column
+                       collapsed to zero width and vanished entirely, and
+                       `min-width` does not rescue it because fixed layout
+                       ignores min-width on cells. */
                     th[data-name="availability_status"],
                     td[name="availability_status"] {
                         background-color: #fff3cd !important;
+                        width: 180px !important;
+                        min-width: 180px !important;
+                        max-width: 180px !important;
+                        white-space: nowrap !important;
                     }
                     .black-box .form-check-input {
                         width: 20px;
@@ -368,6 +399,9 @@
                                 invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
+                        <field name="lgd_ship_address_id" string="Deliver to"
+                               optional="hide"
+                               domain="[('id', 'child_of', parent.partner_id)]"/>
                         <field name="can_edit_vendor" column_invisible="True"/>
                         <field name="lgd_line_closed" column_invisible="True"/>
                         <field name="vendor_id" widget="vendor_company"
@@ -423,6 +457,9 @@
                         invisible="not replacement_pending_sales"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
+                <field name="lgd_ship_address_id" string="Deliver to"
+                       optional="hide"
+                       domain="[('id', 'child_of', parent.partner_id)]"/>
                 <field name="can_edit_vendor" column_invisible="True"/>
                 <field name="lgd_line_closed" column_invisible="True"/>
                 <!-- One "Vendor Company" column: editable vendor picker on active

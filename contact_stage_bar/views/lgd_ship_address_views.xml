@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- The form the "New address" button opens in a dialog. Deliberately
+         small: a delivery address is a place, not an account, so it carries
+         no statusbar, no stage, no Accounting page, and none of the
+         person-identifying fields (email / mobile / job position / contact
+         person) that _lgd_scrub_delivery_vals force-blanks anyway. -->
+    <record id="view_lgd_delivery_address_form" model="ir.ui.view">
+        <field name="name">res.partner.form.lgd.delivery.address</field>
+        <field name="model">res.partner</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <form string="Delivery Address">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="parent_id" invisible="1"/>
+                            <field name="type" invisible="1"/>
+                            <field name="lgd_address_label" string="Label"
+                                   placeholder="e.g. Opera House - 3rd floor"/>
+                            <field name="lgd_is_primary"/>
+                        </group>
+                        <group>
+                            <field name="street" required="1"/>
+                            <field name="street2"/>
+                            <field name="city" required="1"/>
+                            <field name="state_id" options="{'no_open': True, 'no_create': True}"/>
+                            <field name="zip"/>
+                            <field name="country_id" options="{'no_open': True, 'no_create': True}"/>
+                        </group>
+                    </group>
+                    <group string="Where this came from"
+                           invisible="not lgd_from_website and not lgd_source_text">
+                        <field name="lgd_from_website"/>
+                        <field name="lgd_source_text"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- The delivery address book - a dedicated page on the
+         customer form for the child contacts of type == 'delivery'. -->
+    <record id="view_partner_form_inherit_lgd_ship_address" model="ir.ui.view">
+        <field name="name">res.partner.form.lgd.ship.address</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <!-- Inserted before the FIRST page in the notebook so Delivery
+                 Addresses is the tab that opens by default. contact_addresses
+                 is core's first page; it is hidden further down, but it is
+                 still the right anchor - an invisible page keeps its place in
+                 the arch, so inserting before it puts this page at the very
+                 front of the notebook. -->
+            <xpath expr="//page[@name='contact_addresses']" position="before">
+                <page name="lgd_delivery_addresses" string="Delivery Addresses">
+                    <field name="lgd_can_manage_delivery_addresses" invisible="1"/>
+                    <button name="action_lgd_new_delivery_address" type="object"
+                            string="New address" class="btn-primary mb-2"
+                            groups="contact_stage_bar.group_lgd_sales,base.group_system"
+                            invisible="not id"/>
+                    <!-- The native trash icon is the only delete control.
+                         It is shown only to the five manager groups
+                         (lgd_can_manage_delivery_addresses), and unlink()
+                         re-checks that server-side and explains which orders
+                         block an address that is still in use. -->
+                    <field name="child_ids" create="0"
+                           delete="lgd_can_manage_delivery_addresses"
+                           context="{'default_parent_id': id, 'default_type': 'delivery', 'default_country_id': country_id}"
+                           domain="[('type', '=', 'delivery')]">
+                        <list editable="bottom" create="0">
+                            <field name="lgd_address_label" string="Label"/>
+                            <field name="street"/>
+                            <field name="city"/>
+                            <field name="state_id"/>
+                            <field name="zip"/>
+                            <field name="lgd_is_primary"/>
+                            <!-- optional="show": users who never work with
+                                 website orders can hide this column from the
+                                 list's own column picker. -->
+                            <field name="lgd_from_website" optional="show"/>
+                            <field name="type" column_invisible="1"/>
+                            <field name="lgd_can_manage_delivery_addresses" column_invisible="1"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+
+            <!-- Delivery addresses are removed from core's "Contacts &amp;
+                 Addresses" page so there is exactly ONE place a shipping
+                 destination is created and edited: the Delivery Addresses
+                 page next to it. Having both was not just redundant - the
+                 two pages disagreed. Core's page offers the full contact
+                 popup, which lets a delivery address be given an email, a
+                 mobile and a job position that our own create()/write()
+                 then silently blank, and it creates addresses without a
+                 label or a primary flag. It is also how the same address
+                 could be added twice over without anything noticing.
+                 Contacts (people), invoice addresses and the rest are
+                 untouched and still live on core's page. -->
+            <xpath expr="//field[@name='child_ids'][not(ancestor::page[@name='lgd_delivery_addresses'])]"
+                   position="attributes">
+                <attribute name="domain">[('type', '!=', 'delivery')]</attribute>
+            </xpath>
+
+            <!-- Core's "Contacts &amp; Addresses" page is hidden: Delivery
+                 Addresses next to it is now the single place a shipping
+                 destination is created, and having both on screen was what
+                 let the same address be entered twice under two different
+                 rule sets.
+                 invisible="1" HIDES the page rather than deleting it - the
+                 page and every child contact on it are untouched in the
+                 database, and deleting this one xpath brings it straight
+                 back. Child contacts also remain reachable as ordinary
+                 records in the Contacts app.
+                 NOT groups="base.group_no_one": that is only hidden while
+                 developer mode is OFF, so an admin with developer mode on
+                 still saw the page. invisible="1" hides it for everyone,
+                 debug mode included.
+                 The domain above is kept deliberately: it still applies if
+                 the page is ever shown again. -->
+            <xpath expr="//page[@name='contact_addresses']" position="attributes">
+                <attribute name="invisible">1</attribute>
+                <attribute name="autofocus"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_partner_filter_lgd_needs_checking" model="ir.ui.view">
+        <field name="name">res.partner.search.lgd.needs.checking</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <filter name="lgd_needs_checking" string="Needs checking"
+                        domain="[('lgd_from_website', '=', True)]"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

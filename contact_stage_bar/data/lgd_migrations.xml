@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <function model="purchase.order.line"
+                  name="_lgd_migrate_collector_column"/>
+
+        <function model="purchase.order.line"
+                  name="_lgd_backfill_sale_line_links"/>
+
+        <function model="res.partner"
+                  name="_lgd_convert_text_addresses"/>
+
+        <function model="sale.order"
+                  name="_lgd_backfill_order_source"/>
+
+    </data>
+</odoo>

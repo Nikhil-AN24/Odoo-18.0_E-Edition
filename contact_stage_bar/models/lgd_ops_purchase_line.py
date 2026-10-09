@@ -62,6 +62,7 @@ class PurchaseOrderLine(models.Model):
         ('rejected', 'Rejected at inward'),
         ('failed', 'Failed QC'),
         ('returned', 'Returned to vendor'),
+        ('cust_returned', 'Returned from customer memo'),
         ('split', 'Split to another RFQ'),
         ('historical', 'Historical (pre go-live)'),
     ], string='Stage', index=True, copy=False,
@@ -345,8 +346,8 @@ class PurchaseOrderLine(models.Model):
     def _lgd_notify(self, record, summary, note, user):
         return lgd_notify(self.env, record, summary, note, user)
 
-    # ── Split copy defaults (U2) ───────────────────────────────────────
-    #: Carried onto the new RFQ line when ready stones are split off (§5.4).
+    # ── Split copy defaults ───────────────────────────────────────
+    #: Carried onto the new RFQ line when ready stones are split off.
     #: Every one of these is copy=False on the field definition, which is
     #: correct for a duplicated RFQ but wrong for a split: a split line is the
     #: same physical stone, already inward-checked and QC-passed.
@@ -472,7 +473,7 @@ class PurchaseOrderLine(models.Model):
                 # sudo(): Logistics, QC and Inventory hold at most read+write
                 # on sale.order.line through the ACL rows, and the status
                 # transition is a system action driven by data the user has
-                # already committed (§4.6.2). Never a user edit.
+                # already committed. Never a user edit.
                 sale_line.sudo().with_context(
                     skip_auto_procurement=True).write(
                         {'availability_status': status})
@@ -827,7 +828,11 @@ class PurchaseOrderLine(models.Model):
             if line.lgd_returned_at:
                 yield _("already marked returned.")
 
-        self._lgd_guard(('rejected', 'failed'), problems)
+        # 'cust_returned' joins the two stages that could
+        # already be marked returned: the Returns to Vendor screen is the
+        # screen Logistics "already has", so its Mark returned button must
+        # accept a stone that came back from a customer memo too.
+        self._lgd_guard(('rejected', 'failed', 'cust_returned'), problems)
         now = fields.Datetime.now()
         for line in self:
             if line.lgd_return_move_id:

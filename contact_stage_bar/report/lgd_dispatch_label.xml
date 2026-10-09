@@ -58,11 +58,15 @@
                         <div style="background-color:#F4F6FB;padding:4mm;">
                             <div style="color:#CD942B;font-size:6pt;font-weight:bold;
                                         letter-spacing:1.1pt;">SHIP TO / CONSIGNEE</div>
+
                             <div style="color:#1B2A4A;font-size:15pt;font-weight:bold;
                                         margin-top:2mm;">
-                                <span t-esc="(doc.ship_name or '').upper()"/>
+                                <span t-esc="(doc.lgd_buyer_name or doc.ship_name or '').upper()"/>
                             </div>
                             <div style="font-size:9pt;line-height:1.5;margin-top:2.5mm;">
+
+                                <div t-if="doc.ship_name and doc.ship_name != doc.lgd_buyer_name"
+                                     t-esc="doc.ship_name"/>
                                 <div t-if="doc.ship_street" t-esc="doc.ship_street"/>
                                 <div t-if="doc.ship_street2" t-esc="doc.ship_street2"/>
                                 <div>
@@ -72,11 +76,37 @@
                                 </div>
                                 <div t-if="doc.ship_country" t-esc="doc.ship_country"/>
                             </div>
-                            <t t-if="doc.ship_phone">
-                                <div style="color:#CD942B;font-size:6pt;font-weight:bold;
-                                            letter-spacing:1.1pt;margin-top:3mm;">CONTACT PH:</div>
-                                <div style="color:#1B2A4A;font-size:11pt;font-weight:bold;
-                                            margin-top:0.8mm;" t-esc="doc.ship_phone"/>
+                            <!-- Captions carry the gold accent so they read
+                                 as labels at a glance; their values stay
+                                 plain, matching the address block above
+                                 (9pt, inherited colour, normal weight).
+                                 Colour alone separates label from value -
+                                 no bold, no letter-spacing - so the buyer
+                                 line stays the only emphasis on the box. -->
+                            <t t-if="doc.ship_label">
+                                <div style="color:#CD942B;font-size:9pt;line-height:1.5;
+                                            margin-top:3mm;">DESTINATION:</div>
+                                <div style="font-size:9pt;line-height:1.5;"
+                                     t-esc="doc.ship_label"/>
+                            </t>
+                            <!-- Both numbers, because they are different
+                                 people: ship_phone is whatever the delivery
+                                 ADDRESS carries, and a child delivery address
+                                 usually has none (a delivery address may not
+                                 hold person details), while lgd_buyer_phone
+                                 is the customer account's own. Printing only
+                                 the first left many boxes with no number at
+                                 all. The second is skipped when it would
+                                 merely repeat the first. -->
+                            <t t-if="doc.ship_phone or doc.lgd_buyer_phone">
+                                <div style="color:#CD942B;font-size:9pt;line-height:1.5;
+                                            margin-top:3mm;">CONTACT PH:</div>
+                                <div t-if="doc.ship_phone"
+                                     style="font-size:9pt;line-height:1.5;"
+                                     t-esc="doc.ship_phone"/>
+                                <div t-if="doc.lgd_buyer_phone and doc.lgd_buyer_phone != doc.ship_phone"
+                                     style="font-size:9pt;line-height:1.5;"
+                                     t-esc="doc.lgd_buyer_phone"/>
                             </t>
                         </div>
 
@@ -97,6 +127,9 @@
                                                 letter-spacing:1.1pt;">PARCEL</div>
                                     <div style="color:#1B2A4A;font-size:11pt;font-weight:bold;
                                                 margin-top:1mm;" t-esc="doc.name"/>
+                                    <div style="color:#1B2A4A;font-size:8pt;font-weight:bold;
+                                                margin-top:0.8mm;"
+                                         t-esc="'Parcel %s of %s' % (doc.lgd_parcel_index, doc.lgd_parcel_total)"/>
                                 </td>
                             </tr>
                         </table>

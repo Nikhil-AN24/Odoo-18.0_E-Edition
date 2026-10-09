@@ -12,8 +12,11 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
+from .lgd_inventory_sale_line import LGD_DEAD_STATUSES
+
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
-_LGD_DEAD_LINE_STATUSES = ('cancelled', 'not_available', 'replaced')
+_LGD_DEAD_LINE_STATUSES = (
+    'cancelled', 'not_available', 'replaced', 'memo_returned')
 
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Diamond Booked": ["Confirmed", "Not available"],
@@ -419,8 +422,20 @@ class SaleOrder(models.Model):
             # A 'replaced' line is inactive exactly like a 'cancelled' one, so
             # normalise it to 'cancelled' here — every rule below already keys on
             # 'cancelled', so no rule needs to know about 'replaced'.
+            #
+            # 'memo_returned' is normalised the same way, and for the same
+            # reason: it is a terminal status (it is in _LGD_DEAD_LINE_STATUSES
+            # alongside 'cancelled' and 'replaced'), the stone has gone back to
+            # the vault and that line can never move again. Without this, an
+            # order whose other lines were all Order Completed fell through
+            # every rule — 'memo_returned' is in none of the C*_IGNORE sets, so
+            # C1's active set was {order_completed, memo_returned}, which is not
+            # a subset of {delivered, order_completed} — and landed on the
+            # 'Order Received' fallback, which also meant no green ribbon.
+            _LGD_INACTIVE_AS_CANCELLED = ('replaced', 'memo_returned')
+
             def _norm(s):
-                return 'cancelled' if s == 'replaced' else s
+                return 'cancelled' if s in _LGD_INACTIVE_AS_CANCELLED else s
             all_statuses = {_norm(s) for s in lines.mapped('availability_status')}
             all_statuses.discard(False)
 
@@ -764,7 +779,28 @@ class SaleOrder(models.Model):
             self.env.cr.commit()
         return True
 
+    def _lgd_check_destinations(self):
+        """Refuse to confirm when a live stone's effective
+        delivery destination has neither a street nor a city. Every failing
+        stone is collected first (R6): the error lists them all, one pass,
+        rather than stopping at the first."""
+        problems = []
+        for order in self:
+            live_lines = order.order_line.filtered(
+                lambda l: l.product_id
+                and l.availability_status not in LGD_DEAD_STATUSES)
+            for line in live_lines:
+                dest = line.lgd_ship_address_eff
+                if not (dest.street or dest.city):
+                    problems.append(line._lgd_label())
+        if problems:
+            raise UserError(_(
+                "These stones have no delivery address: %s. Pick an "
+                "address on the order, or on each stone."
+            ) % ', '.join(problems))
+
     def action_confirm(self):
+        self._lgd_check_destinations()
         import time
         import datetime as _dt
         start_time = time.time()
@@ -3411,8 +3447,8 @@ class SaleOrderLine(models.Model):
         ('return_of_order', 'Return of Order'),
         ('re_dispatched', 'Re - Dispatched'),
         ('delivered', 'Delivered'),
+        ('memo_returned', 'Returned from memo'),
         ('order_completed', 'Order Completed'),
-    # ], string='Availability', copy=False, required=True, default='diamond_booked', tracking=True)
     ], string='Availability', copy=False, required=False, tracking=True)
 
 
@@ -3420,8 +3456,6 @@ class SaleOrderLine(models.Model):
     def onchange_product_template_id(self):
         if self.product_template_id:
             self.vendor_id = self.product_template_id.seller_ids[0].partner_id if self.product_template_id.seller_ids else False
-        # if self.final_price:
-        #     self.price_subtotal = self.final_price
 
     def action_open_product_popup(self):
         self.ensure_one()

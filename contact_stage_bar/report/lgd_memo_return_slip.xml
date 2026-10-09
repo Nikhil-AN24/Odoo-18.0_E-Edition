@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <record id="paperformat_lgd_memo_return_slip" model="report.paperformat">
+            <field name="name">LGD Memo Return Slip A4</field>
+            <field name="default" eval="False"/>
+            <field name="format">A4</field>
+            <field name="orientation">Portrait</field>
+            <field name="margin_top">14</field>
+            <field name="margin_bottom">12</field>
+            <field name="margin_left">12</field>
+            <field name="margin_right">12</field>
+            <field name="header_line" eval="False"/>
+            <field name="header_spacing">0</field>
+            <field name="dpi">96</field>
+        </record>
+
+        <record id="action_lgd_memo_return_slip" model="ir.actions.report">
+            <field name="name">Memo Return Slip</field>
+            <field name="model">lgd.dispatch</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">contact_stage_bar.report_lgd_memo_return_slip</field>
+            <field name="report_file">contact_stage_bar.report_lgd_memo_return_slip</field>
+            <field name="print_report_name">'Memo Return Slip-%s' % (object.name or '')</field>
+            <field name="paperformat_id" ref="contact_stage_bar.paperformat_lgd_memo_return_slip"/>
+            <field name="binding_model_id" eval="False"/>
+        </record>
+
+        <template id="report_lgd_memo_return_slip">
+            <t t-call="web.basic_layout">
+                <t t-foreach="docs" t-as="doc">
+                    <t t-set="co" t-value="doc.order_id.company_id"/>
+                    <t t-set="cur" t-value="doc.order_id.currency_id"/>
+                    <!-- A memo return is repeatable: the client can
+                         keep 30 today and return 70 next week, and
+                         ``action_record`` stamps one fresh
+                         ``lgd_memo_decided_at`` per round. asks for
+                         THE date of receipt, singular, and 
+                         prints this slip once per round — so the slip
+                         always describes the single MOST RECENT round,
+                         never the union of every round ever recorded.
+                         That is true both when it prints straight out of
+                         ``action_record`` (the round just stamped is
+                         necessarily the latest one) and when it is
+                         reprinted later from the parcel form (it then
+                         shows whichever round is newest at reprint time;
+                         an earlier round already had its own slip signed
+                         at the time). All rows in one round share the
+                         exact same timestamp — ``action_record`` computes
+                         ``now`` once and writes it to every row in that
+                         call — so grouping on equality is exact, not a
+                         day-level approximation. -->
+                    <t t-set="all_returned_lines"
+                       t-value="doc.line_ids.filtered(lambda l: l.lgd_memo_outcome == 'returned' and l.lgd_memo_decided_at)"/>
+                    <t t-set="latest_decided_at"
+                       t-value="max(all_returned_lines.mapped('lgd_memo_decided_at')) if all_returned_lines else False"/>
+                    <t t-set="returned_lines"
+                       t-value="all_returned_lines.filtered(lambda l: l.lgd_memo_decided_at == latest_decided_at)"/>
+                    <!-- print-color-adjust: without it wkhtmltopdf drops every
+                         brand colour and the slip comes out black and white. -->
+                    <style>
+                        .lgd-memo-return table { border-collapse:collapse; border:0; }
+                        .lgd-memo-return td, .lgd-memo-return th { border:0; padding:0;
+                                                                   vertical-align:top; }
+                    </style>
+                    <div class="page lgd-memo-return"
+                         style="font-family:Helvetica,Arial,sans-serif;
+                                color:#5F5E5E;
+                                -webkit-print-color-adjust:exact;
+                                print-color-adjust:exact;">
+
+                        <!-- ══ Header ═════════════════════════════════ -->
+                        <table style="width:100%;margin-bottom:6mm;">
+                            <tr>
+                                <td style="width:52%;vertical-align:top;">
+                                    <div style="color:#5F5E5E;font-size:11pt;font-weight:bold;
+                                                letter-spacing:1.4pt;">
+                                        <span t-esc="(co.name or '').upper()"/>
+                                    </div>
+                                </td>
+                                <td style="vertical-align:top;text-align:right;">
+                                    <div style="color:#0F2440;font-size:26pt;font-weight:bold;
+                                                letter-spacing:1.6pt;line-height:1;">MEMO RETURN</div>
+                                    <div style="font-size:9.5pt;margin-top:3mm;">
+                                        Memo Reference:
+                                        <span style="color:#0F2440;font-weight:bold;"
+                                              t-esc="doc.name"/>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="border-top:1pt solid #D9DDE3;margin:4mm 0 6mm 0;"/>
+
+                        <!-- ══ From / Received from ═══════════════════ -->
+                        <table style="width:100%;">
+                            <tr>
+                                <td style="width:48%;vertical-align:top;padding-right:6mm;">
+                                    <div style="color:#8A8A8A;font-size:8pt;font-weight:bold;
+                                                letter-spacing:1.2pt;padding-bottom:2mm;
+                                                border-bottom:1pt solid #D9DDE3;">RECEIVED BY</div>
+                                    <div style="color:#0F2440;font-size:11.5pt;font-weight:bold;
+                                                margin-top:4mm;"
+                                         t-esc="(co.name or '').upper()"/>
+                                    <div style="font-size:10pt;line-height:1.7;margin-top:2.5mm;">
+                                        <div t-if="co.street" t-esc="co.street"/>
+                                        <div t-if="co.street2" t-esc="co.street2"/>
+                                        <div>
+                                            <span t-if="co.city" t-esc="co.city"/><!--
+                                         --><span t-if="co.zip"> - <span t-esc="co.zip"/></span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style="width:4%;"/>
+                                <td style="vertical-align:top;">
+                                    <div style="color:#8A8A8A;font-size:8pt;font-weight:bold;
+                                                letter-spacing:1.2pt;padding-bottom:2mm;
+                                                border-bottom:1pt solid #D9DDE3;">RECEIVED FROM</div>
+
+                                    <div style="color:#0F2440;font-size:11.5pt;font-weight:bold;
+                                                margin-top:4mm;"
+                                         t-esc="doc.lgd_buyer_name or doc.ship_name"/>
+                                    <div style="font-size:10pt;line-height:1.7;margin-top:2.5mm;">
+
+                                        <div t-if="doc.ship_name and doc.ship_name != doc.lgd_buyer_name"
+                                             t-esc="doc.ship_name"/>
+                                        <div t-if="doc.ship_street" t-esc="doc.ship_street"/>
+                                        <div t-if="doc.ship_street2" t-esc="doc.ship_street2"/>
+                                        <div>
+                                            <span t-if="doc.ship_city" t-esc="doc.ship_city"/><!--
+                                         --><span t-if="doc.ship_state">, <span t-esc="doc.ship_state"/></span><!--
+                                         --><span t-if="doc.ship_zip"> - <span t-esc="doc.ship_zip"/></span>
+                                        </div>
+
+                                        <div t-if="doc.ship_phone">Ph: <span t-esc="doc.ship_phone"/></div>
+                                        <div t-if="doc.lgd_buyer_phone and doc.lgd_buyer_phone != doc.ship_phone">Ph: <span t-esc="doc.lgd_buyer_phone"/></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="border-top:1pt solid #D9DDE3;margin:9mm 0 0 0;"/>
+
+                        <!-- ══ Returned stones only, with price ═════════ -->
+                        <table style="width:100%;table-layout:fixed;
+                                      border-collapse:collapse;margin-top:5mm;">
+                            <thead>
+                                <tr style="color:#8A8A8A;font-size:8pt;font-weight:bold;
+                                           letter-spacing:1.2pt;">
+                                    <th style="width:17%;text-align:left;padding-bottom:3mm;">SHAPE</th>
+                                    <th style="width:25%;text-align:left;padding-bottom:3mm;">CERTIFICATE</th>
+                                    <th style="width:12%;text-align:center;padding-bottom:3mm;">CARAT</th>
+                                    <th style="width:12%;text-align:center;padding-bottom:3mm;">COLOUR</th>
+                                    <th style="width:13%;text-align:center;padding-bottom:3mm;">CLARITY</th>
+                                    <th style="width:21%;text-align:right;padding-bottom:3mm;">PRICE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="returned_lines" t-as="line" style="font-size:11pt;">
+                                    <td style="width:17%;text-align:left;padding:4mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.shapes"/>
+                                        <t t-if="not line.shapes">&#160;</t>
+                                    </td>
+                                    <td style="width:25%;text-align:left;color:#0F2440;font-weight:bold;padding:4mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.certificate"/>
+                                        <t t-if="not line.certificate">&#160;</t>
+                                    </td>
+                                    <td style="width:12%;text-align:center;color:#0F2440;font-weight:bold;padding:4mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.carat_weight"/>
+                                        <t t-if="not line.carat_weight">&#160;</t>
+                                    </td>
+                                    <td style="width:12%;text-align:center;color:#0F2440;font-weight:bold;padding:4mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.color"/>
+                                        <t t-if="not line.color">&#160;</t>
+                                    </td>
+                                    <td style="width:13%;text-align:center;color:#0F2440;font-weight:bold;padding:4mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.clarity"/>
+                                        <t t-if="not line.clarity">&#160;</t>
+                                    </td>
+                                    <td style="width:21%;text-align:right;color:#0F2440;font-weight:bold;padding:4mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.price_unit" t-options="{'widget': 'monetary', 'display_currency': cur}"/>
+                                        <t t-if="not line.price_unit">&#160;</t>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div style="border-top:1pt solid #D9DDE3;"/>
+
+                        <!-- ══ Total ══════════════════════════════════ -->
+                        <table style="width:100%;margin-top:4mm;">
+                            <tr>
+                                <td style="text-align:right;font-size:10.5pt;
+                                           vertical-align:bottom;padding-right:4mm;">
+                                    Total (<span t-esc="len(returned_lines)"/> stones)
+                                </td>
+                                <td style="text-align:right;color:#0F2440;font-size:20pt;
+                                           font-weight:bold;width:34%;"
+                                    t-esc="sum(returned_lines.mapped('price_unit'))"
+                                    t-options="{'widget': 'monetary', 'display_currency': cur}"/>
+                            </tr>
+                        </table>
+
+                        <!-- ══ Not a credit note — exact wording (§7.6) ═══ -->
+                        <div style="border-left:3pt solid #CD942B;padding:1mm 0 1mm 4mm;
+                                    margin-top:7mm;font-size:10.5pt;"
+                             t-if="returned_lines and latest_decided_at"
+                             t-esc="'Received back from you on %s. This is not a credit note.' % context_timestamp(latest_decided_at).strftime('%d %b %Y')"/>
+                        <div t-else=""
+                             style="border-left:3pt solid #CD942B;padding:1mm 0 1mm 4mm;
+                                    margin-top:7mm;font-size:10.5pt;">
+                            This is not a credit note.
+                        </div>
+
+                        <!-- ══ Signature ══════════════════════════════ -->
+                        <div style="margin-top:40mm;text-align:right;">
+                            <div style="color:#8A8A8A;font-size:8pt;font-weight:bold;
+                                        letter-spacing:1.2pt;">CLIENT SIGNATORY</div>
+                            <div style="font-size:10.5pt;margin-top:8mm;">
+                                Signature:
+                                <span style="display:inline-block;width:70mm;
+                                             border-bottom:1pt solid #D9DDE3;">&#160;</span>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

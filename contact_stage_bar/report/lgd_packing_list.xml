@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- The packing list travels inside the parcel. It carries no
+             prices (R3 is not the reason — this is a courier-facing
+             document and prices never belong on one) and reads only the
+             parcel's own line_ids and its copied ship_* text fields, the
+             same discipline the label and memo slip already follow. -->
+        <record id="paperformat_lgd_packing_list" model="report.paperformat">
+            <field name="name">LGD Packing List A5</field>
+            <field name="default" eval="False"/>
+            <field name="format">A5</field>
+            <field name="orientation">Portrait</field>
+            <field name="margin_top">10</field>
+            <field name="margin_bottom">8</field>
+            <field name="margin_left">8</field>
+            <field name="margin_right">8</field>
+            <field name="header_line" eval="False"/>
+            <field name="header_spacing">0</field>
+            <field name="dpi">96</field>
+        </record>
+
+        <record id="action_lgd_packing_list" model="ir.actions.report">
+            <field name="name">Packing List</field>
+            <field name="model">lgd.dispatch</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">contact_stage_bar.report_lgd_packing_list</field>
+            <field name="report_file">contact_stage_bar.report_lgd_packing_list</field>
+            <field name="print_report_name">'Packing List-%s' % (object.name or '')</field>
+            <field name="paperformat_id" ref="contact_stage_bar.paperformat_lgd_packing_list"/>
+            <field name="binding_model_id" eval="False"/>
+        </record>
+
+        <template id="report_lgd_packing_list">
+            <t t-call="web.basic_layout">
+                <t t-foreach="docs" t-as="doc">
+                    <style>
+                        .lgd-packing table { border-collapse:collapse; border:0; }
+                        .lgd-packing td, .lgd-packing th { border:0; padding:0;
+                                                           vertical-align:top; }
+                    </style>
+                    <div class="page lgd-packing"
+                         style="font-family:Helvetica,Arial,sans-serif;
+                                color:#5F5E5E;
+                                -webkit-print-color-adjust:exact;
+                                print-color-adjust:exact;">
+
+                        <!-- ══ Heading ═════════════════════════════════ -->
+                        <table style="width:100%;margin-bottom:5mm;">
+                            <tr>
+                                <td style="vertical-align:top;">
+                                    <div style="color:#5F5E5E;font-size:9pt;font-weight:bold;
+                                                letter-spacing:1.2pt;">
+                                        <span t-esc="(doc.order_id.company_id.name or '').upper()"/>
+                                    </div>
+                                </td>
+                                <td style="vertical-align:top;text-align:right;">
+                                    <div style="color:#0F2440;font-size:22pt;font-weight:bold;
+                                                letter-spacing:1.6pt;line-height:1;">PACKING LIST</div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="border-top:1pt solid #D9DDE3;margin:0 0 4mm 0;"/>
+
+                        <!-- ══ Parcel / destination / invoice ════════════ -->
+                        <table style="width:100%;">
+                            <tr>
+                                <td style="width:34%;vertical-align:top;">
+                                    <div style="color:#8A8A8A;font-size:7.5pt;font-weight:bold;
+                                                letter-spacing:1.1pt;">PARCEL</div>
+                                    <div style="color:#0F2440;font-size:11pt;font-weight:bold;
+                                                margin-top:1.5mm;" t-esc="doc.name"/>
+                                    <div style="font-size:9.5pt;margin-top:1mm;"
+                                         t-esc="'Parcel %s of %s' % (doc.lgd_parcel_index, doc.lgd_parcel_total)"/>
+                                </td>
+                                <td style="width:33%;vertical-align:top;">
+                                    <div style="color:#8A8A8A;font-size:7.5pt;font-weight:bold;
+                                                letter-spacing:1.1pt;">DESTINATION</div>
+                                    <div style="color:#0F2440;font-size:10.5pt;font-weight:bold;
+                                                margin-top:1.5mm;" t-esc="doc.ship_label"/>
+                                    <div style="font-size:9.5pt;margin-top:1mm;" t-esc="doc.ship_city"/>
+                                </td>
+                                <td style="width:33%;vertical-align:top;">
+                                    <div style="color:#8A8A8A;font-size:7.5pt;font-weight:bold;
+                                                letter-spacing:1.1pt;">INVOICE NUMBER</div>
+                                    <div style="color:#0F2440;font-size:10.5pt;font-weight:bold;
+                                                margin-top:1.5mm;" t-esc="doc.invoice_number"/>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="border-top:1pt solid #D9DDE3;margin:5mm 0 0 0;"/>
+
+                        <!-- ══ Stones — no prices ═════════════════ -->
+                        <table style="width:100%;table-layout:fixed;
+                                      border-collapse:collapse;margin-top:4mm;">
+                            <thead>
+                                <tr style="color:#8A8A8A;font-size:7.5pt;font-weight:bold;
+                                           letter-spacing:1.1pt;">
+                                    <th style="width:28%;text-align:left;padding-bottom:2.5mm;">CERTIFICATE</th>
+                                    <th style="width:20%;text-align:left;padding-bottom:2.5mm;">SHAPE</th>
+                                    <th style="width:17%;text-align:center;padding-bottom:2.5mm;">CARAT</th>
+                                    <th style="width:17%;text-align:center;padding-bottom:2.5mm;">COLOUR</th>
+                                    <th style="width:18%;text-align:center;padding-bottom:2.5mm;">CLARITY</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="doc.line_ids" t-as="line" style="font-size:9.5pt;">
+                                    <td style="width:28%;text-align:left;color:#0F2440;font-weight:bold;
+                                               padding:2.5mm 0;border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.certificate"/>
+                                        <t t-if="not line.certificate">&#160;</t>
+                                    </td>
+                                    <td style="width:20%;text-align:left;padding:2.5mm 0;
+                                               border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.shapes"/>
+                                        <t t-if="not line.shapes">&#160;</t>
+                                    </td>
+                                    <td style="width:17%;text-align:center;padding:2.5mm 0;
+                                               border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.carat_weight"/>
+                                        <t t-if="not line.carat_weight">&#160;</t>
+                                    </td>
+                                    <td style="width:17%;text-align:center;padding:2.5mm 0;
+                                               border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.color"/>
+                                        <t t-if="not line.color">&#160;</t>
+                                    </td>
+                                    <td style="width:18%;text-align:center;padding:2.5mm 0;
+                                               border-top:1pt solid #D9DDE3;">
+                                        <span t-esc="line.clarity"/>
+                                        <t t-if="not line.clarity">&#160;</t>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div style="border-top:1pt solid #D9DDE3;"/>
+
+                        <!-- ══ Foot note — exact wording ══════════ -->
+                        <div style="border-left:3pt solid #CD942B;padding:1mm 0 1mm 4mm;
+                                    margin-top:6mm;font-size:9pt;"
+                             t-esc="'This is one of %s parcels for invoice %s. Prices appear on the tax invoice.' % (doc.lgd_parcel_total, doc.invoice_number or '')"/>
+                    </div>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

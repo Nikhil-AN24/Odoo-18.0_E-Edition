@@ -1,5 +1,6 @@
 from . import res_partner_stage
 from . import res_partner
+from . import lgd_ship_address
 from . import crm_lead
 from . import res_partner_category
 from . import sale_order
@@ -25,3 +26,4 @@ from . import lgd_ops_audit
 from . import lgd_inventory_sale_line
 from . import lgd_courier_agent
 from . import lgd_dispatch
+from . import lgd_customer_invoice

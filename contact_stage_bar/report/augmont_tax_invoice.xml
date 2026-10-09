@@ -229,8 +229,7 @@
 
                             <div class="rule" style="margin-top:23pt;"/>
 
-                            <!-- ══ FROM / BILL TO ══════════════════════════
-                                 design columns 336 | 48 gutter | 336 of 720 -->
+                            <!-- ══ FROM / BILL TO  -->
                             <table style="margin-top:23pt;">
                                 <tr>
                                     <td style="width:46.67%;">
@@ -247,6 +246,8 @@
                                     </td>
                                     <td style="width:6.66%;"/>
                                     <td style="width:46.67%;">
+
+                                        <t t-set="shipping" t-value="doc.partner_shipping_id or customer"/>
                                         <div class="lbl">Bill To</div>
                                         <div class="rule" style="margin-top:7pt;"/>
                                         <div class="party" style="margin-top:12pt;">
@@ -256,16 +257,38 @@
                                             <div t-if="customer.id != commercial.id">
                                                 <span class="lab">Contact: </span><span class="val" t-field="customer.name"/>
                                             </div>
-                                            <div class="addr" t-if="customer.street or customer.city or customer.zip">
-                                                <div t-if="customer.street"><span t-field="customer.street"/></div>
-                                                <div t-if="customer.street2"><span t-field="customer.street2"/></div>
-                                                <div t-if="customer.city or customer.zip">
-                                                    <span t-esc="customer.city or ''"/><t t-if="customer.city and customer.zip"> - </t><span t-esc="customer.zip or ''"/>
+
+                                            <div t-if="shipping.lgd_address_label or (shipping.id != commercial.id and shipping.name)">
+                                                <span class="val" t-esc="shipping.lgd_address_label or shipping.name"/>
+                                            </div>
+                                            <div class="addr" t-if="shipping.street or shipping.city or shipping.zip">
+                                                <div t-if="shipping.street"><span t-field="shipping.street"/></div>
+                                                <div t-if="shipping.street2"><span t-field="shipping.street2"/></div>
+                                                <div t-if="shipping.city or shipping.zip">
+                                                    <span t-esc="shipping.city or ''"/><t t-if="shipping.city and shipping.zip"> - </t><span t-esc="shipping.zip or ''"/>
                                                 </div>
                                             </div>
                                             <div><span class="lab">GSTIN: </span><span class="val" t-esc="customer.vat or ''"/></div>
                                             <div><span class="lab">PAN: </span><span class="val" t-esc="customer.l10n_in_pan or ''"/></div>
-                                            <div><span class="lab">State: </span><span class="val" t-esc="customer.state_id.name if customer.state_id else ''"/></div>
+                                            <!-- The destination's state: it
+                                                 is the place of supply, and it
+                                                 is what the IGST/CGST split
+                                                 on this invoice follows. -->
+                                            <div><span class="lab">State: </span><span class="val" t-esc="(shipping.state_id or customer.state_id).name if (shipping.state_id or customer.state_id) else ''"/></div>
+                                            <!-- Last, and set off by a blank
+                                                 line: the tax identifiers
+                                                 (GSTIN / PAN / State) read as
+                                                 one group, and the number to
+                                                 call is not one of them.
+                                                 A delivery address may not
+                                                 hold person details, so it
+                                                 usually has no number of its
+                                                 own - fall through to the
+                                                 account's. -->
+                                            <div t-if="shipping.phone or shipping.mobile or commercial.phone or commercial.mobile or customer.phone or customer.mobile"
+                                                 style="margin-top:13.2pt;">
+                                                <span class="lab">CONTACT PH: </span><span class="val" t-esc="shipping.phone or shipping.mobile or commercial.phone or commercial.mobile or customer.phone or customer.mobile"/>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -322,8 +345,7 @@
 
                             <div class="rule"/>
 
-                            <!-- ══ WORDS + TOTALS ══════════════════════════
-                                 Totals column is design x 760..1000 = right 33.33% -->
+                            <!-- ══ WORDS + TOTALS ══════════════════════════ -->
                             <table style="margin-top:30pt;">
                                 <tr>
                                     <td style="width:66.67%; padding-right:30pt;">

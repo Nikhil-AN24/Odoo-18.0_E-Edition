@@ -171,6 +171,9 @@ class ResPartner(models.Model):
 
     def _lgd_validate_stage_gate(self):
         for partner in self:
+
+            if partner.parent_id and partner.type != 'contact':
+                continue
             missing = [
                 label for fname, label in self._LGD_ACCOUNT_REQUIRED_FIELDS
                 if not partner[fname]
