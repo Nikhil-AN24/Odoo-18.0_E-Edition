@@ -409,8 +409,11 @@
                         <field name="stock_number" readonly="1" string="Vendor SKU"/>
                         <field name="vendor_city" readonly="1" optional="show"/>
                         <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                        <field name="stone_type" optional="show" readonly="lgd_line_closed"/>
-                        <field name="stone_certification_type" optional="show" readonly="lgd_line_closed"/>
+                        <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
+                        <field name="stone_type" optional="show"
+                               readonly="not lgd_can_edit_stone_classification"/>
+                        <field name="stone_certification_type" optional="show"
+                               readonly="not lgd_can_edit_stone_classification"/>
                         <field name="treatments" readonly="1"/>
                     </list>
                 </field>
@@ -472,8 +475,11 @@
                        groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="vendor_city" optional="show" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="lgd_stock_number" readonly="1" string="LGD SKU"/>
-                <field name="stone_type" optional="show" readonly="lgd_line_closed"/>
-                <field name="stone_certification_type" optional="show" readonly="lgd_line_closed"/>
+                <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
+                <field name="stone_type" optional="show"
+                       readonly="not lgd_can_edit_stone_classification"/>
+                <field name="stone_certification_type" optional="show"
+                       readonly="not lgd_can_edit_stone_classification"/>
                 <field name="treatments"/>
             
                 <field name="shapes" readonly="1" groups="!contact_stage_bar.group_lgd_procurement"/>

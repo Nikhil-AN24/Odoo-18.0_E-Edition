@@ -22,7 +22,8 @@ class SaleOrder(models.Model):
         keep the standard pricelist/company behaviour."""
         super()._compute_currency_id()
         for order in self:
-            rfq = order.custom_sale_order_id.customer_rfq_id
+
+            rfq = order.custom_sale_order_id.sudo().customer_rfq_id
             if order.order_source == 'offline' and rfq and rfq.currency_id:
                 order.currency_id = rfq.currency_id
 
@@ -160,7 +161,7 @@ class SaleOrderLine(models.Model):
     @api.depends('order_id.custom_sale_order_id.customer_rfq_id.price')
     def _compute_procurement_price_per_carat(self):
         for line in self:
-            rfq = line.order_id.custom_sale_order_id.customer_rfq_id
+            rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
             line.procurement_price_per_carat = rfq.price if rfq else 0.0
 
     @api.depends(
@@ -168,7 +169,7 @@ class SaleOrderLine(models.Model):
         'order_id.custom_sale_order_id.customer_rfq_id.sale_price_per_stone')
     def _compute_rfq_pricing(self):
         for line in self:
-            rfq = line.order_id.custom_sale_order_id.customer_rfq_id
+            rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
             line.sales_price_per_carat = rfq.sale_rate_per_carat if rfq else 0.0
             line.sales_price_per_stone = rfq.sale_price_per_stone if rfq else 0.0
 
@@ -180,7 +181,7 @@ class SaleOrderLine(models.Model):
         instead of the website's lab-grown default."""
         super()._compute_stone_classification()
         for line in self.filtered(lambda l: not l.display_type):
-            rfq = line.order_id.custom_sale_order_id.customer_rfq_id
+            rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
             if rfq:
                 line.stone_type = rfq.stone_type
                 line.stone_certification_type = rfq.stone_certification_type

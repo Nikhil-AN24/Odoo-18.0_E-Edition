@@ -3178,9 +3178,9 @@ class SaleOrderLine(models.Model):
     vendor_id = fields.Many2one(
         'res.partner', string="Vendor Company",
         domain="[('partner_kind', '=', 'supplier')]")
-    # Vendor Company is editable by Procurement roles (+ Admin / SuperAdmin);
-    # everyone else sees it read-only.
     can_edit_vendor = fields.Boolean(compute='_compute_can_edit_vendor')
+    lgd_can_edit_stone_classification = fields.Boolean(
+        compute='_compute_lgd_can_edit_stone_classification')
 
     _LGD_CLOSED_LINE_STATUSES = ('not_available', 'cancelled', 'qc_fail')
 
@@ -3208,6 +3208,20 @@ class SaleOrderLine(models.Model):
             # Availability itself is NOT gated here: a QC Fail line still has
             # to be movable to Cancelled, which is can_edit_availability's job.
             line.can_edit_vendor = allowed and not line.lgd_line_closed
+
+    @api.depends_context('uid')
+    @api.depends('lgd_line_closed')
+    def _compute_lgd_can_edit_stone_classification(self):
+        user = self.env.user
+        allowed = (
+            user.has_group('base.group_system')
+            or user.has_group('contact_stage_bar.group_lgd_superadmin')
+            or user.has_group('contact_stage_bar.group_lgd_procurement')
+        )
+
+        for line in self:
+            line.lgd_can_edit_stone_classification = (
+                allowed and not line.lgd_line_closed)
 
     # Who may change the Availability selection on the Sale Order: Admin /
     # LGD SuperAdmin / LGD Procurement / LGD Procurement Manager (the last two
