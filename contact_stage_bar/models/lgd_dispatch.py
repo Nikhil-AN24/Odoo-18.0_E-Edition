@@ -68,7 +68,8 @@ class LgdDispatch(models.Model):
 
     # ── Route and carrier ───────────────────────────────────────────────
     route = fields.Selection(
-        [('courier', 'Courier company')], tracking=True, default='courier')
+        [('courier', 'Courier company')], tracking=True, default='courier',
+        readonly=True)
     agent_id = fields.Many2one(
         'lgd.courier.agent', string="Handed to", tracking=True)
     agent_phone = fields.Char(related='agent_id.phone', store=True)
@@ -282,7 +283,7 @@ class LgdDispatch(models.Model):
                     'lgd.dispatch') or '/'
         return super().create(vals_list)
 
-    # ── Hand over to the courier or Angadia ────────────────────────
+    # ── Hand over to the courier ───────────────────────────────────
     def action_lgd_hand_over(self):
         self._lgd_check_group()
         return self._lgd_action_hand_over()
@@ -296,9 +297,9 @@ class LgdDispatch(models.Model):
             problems.append(_("This parcel has already been handed over."))
         if self.approval_state not in ('not_required', 'approved'):
             problems.append(_("This partial dispatch is waiting for approval."))
-        if not (self.route and self.agent_id
-                and self.agent_id.agent_type == self.route):
-            problems.append(_("Choose the route and who is carrying it."))
+
+        if not self.agent_id:
+            problems.append(_("Choose who is carrying it."))
 
         if self.dispatch_type == 'memo':
             if not self.memo_due_date:
@@ -375,7 +376,10 @@ class LgdDispatch(models.Model):
         self.sudo().message_post(body=_(
             "Handed to %(agent)s (%(route)s) by %(user)s."
         ) % {'agent': self.agent_id.name,
-             'route': dict(self._fields['route'].selection).get(self.route),
+             # `or self.route` so a legacy value that no longer has a
+             # label - parcels still holding 'angadia' - posts the raw code rather than the word "None".
+             'route': (dict(self._fields['route'].selection).get(self.route)
+                       or self.route or ''),
              'user': self.env.user.name})
         return True
 
@@ -402,8 +406,7 @@ class LgdDispatch(models.Model):
         ``_lgd_create_picking`` helper, direction-parametrised.
 
         Cross-module writes use sudo(): Dispatch holds no rights on
-        stock.picking / stock.move at all.
-        """
+        stock.picking / stock.move at all."""
         self.ensure_one()
         lines = self._lgd_stock_lines()
 

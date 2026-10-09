@@ -322,13 +322,12 @@
             </field>
         </record>
 
-        <!-- ═══════ COURIERS &amp; ANGADIAS ═══════ -->
+        <!-- ═══════ COURIERS ═══════ -->
         <record id="view_lgd_courier_agent_list" model="ir.ui.view">
             <field name="name">lgd.courier.agent.list</field>
             <field name="model">lgd.courier.agent</field>
             <field name="arch" type="xml">
-                <list string="Couriers &amp; Angadias" editable="bottom">
-                    <field name="agent_type"/>
+                <list string="Couriers" editable="bottom">
                     <field name="firm_name" string="Firm Name"/>
                     <field name="name" string="Contact Name"/>
                     <field name="phone"/>
@@ -355,7 +354,6 @@
                                 <field name="active" widget="boolean_toggle"/>
                             </group>
                             <group>
-                                <field name="agent_type"/>
                                 <field name="phone"/>
                             </group>
                         </group>
@@ -365,13 +363,12 @@
         </record>
 
         <record id="action_lgd_courier_agent" model="ir.actions.act_window">
-            <field name="name">Couriers &amp; Angadias</field>
+            <field name="name">Couriers</field>
             <field name="res_model">lgd.courier.agent</field>
             <field name="view_mode">list,form</field>
-            <field name="context">{'group_by': 'agent_type'}</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">No carriers yet.</p>
-                <p>Add the couriers and Angadias Dispatch hands parcels to.</p>
+                <p>Add the couriers Dispatch hands parcels to.</p>
             </field>
         </record>
     </data>

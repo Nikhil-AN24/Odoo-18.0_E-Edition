@@ -43,7 +43,7 @@
                   sequence="9"/>
 
         <menuitem id="menu_lgd_courier_agent"
-                  name="Couriers &amp; Angadias"
+                  name="Couriers"
                   parent="menu_lgd_dispatch_config"
                   action="action_lgd_courier_agent"
                   sequence="1"/>
