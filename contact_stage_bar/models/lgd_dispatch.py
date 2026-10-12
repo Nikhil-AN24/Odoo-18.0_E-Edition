@@ -754,6 +754,9 @@ class LgdDispatch(models.Model):
         self.sudo().write({'invoice_slip_printed': True})
         return self.env.ref(
             'contact_stage_bar.action_report_augmont_tax_invoice'
+        ).with_context(
+            lgd_parcel_line_ids=self.line_ids.ids,
+            lgd_parcel_address_id=self.sudo().ship_address_id.id or False,
         ).report_action(self.order_id)
 
     # ── Split a draft parcel ──────────────────────────────

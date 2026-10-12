@@ -341,8 +341,12 @@ class SaleOrder(models.Model):
         """
         Compute Invoice-level Order Status from order line availability_status values.
         PRIORITY (highest → lowest):
-          C1   Order Completed  – C1-active ⊆ {delivered, order_completed}
-          C2   Dispatched       – at least 1 in {dispatched, re_dispatched, return_of_order}
+          C1   Delivered / Order Completed – C1-active ⊆ {delivered,
+               order_completed}; 'Delivered' when any line is still merely
+               delivered, 'Order Completed' once none is.
+          C2   Return of Order / Re - Dispatched / Dispatched – at least 1 in
+               {dispatched, re_dispatched, return_of_order}, reported
+               most-exceptional first.
           C3   Payment Completed – C3-active == {payment_completed}
           C4   In QC process    – at least 1 in_qc_process
           C5   Availability Check – at least 1 not_available OR at least 1 qc_fail
@@ -467,17 +471,44 @@ class SaleOrder(models.Model):
                 _logger.info("❌ Odoo cancel state → Cancelled")
                 continue
 
-            # ── C1: Order Completed ───────────────────────────────────────
-            # All lines (ignoring non-terminal statuses) are delivered/order_completed
+            # ── C1: Delivered / Order Completed ───────────────────────────
+            # Every line that can still move has arrived. Which of the two
+            # end states it is depends on how far the last line got:
+            #   'delivered'       - the stones are with the customer.
+            #   'order_completed' - the order is closed out behind that.
+            # They used to collapse into a single 'Order Completed', so an
+            # order whose lines all read Delivered announced itself as
+            # completed. Delivered is now reported in its own right (and
+            # carries its own ribbon); Order Completed is kept for the case
+            # where nothing is merely delivered any more.
             if c1_active and c1_active <= {'delivered', 'order_completed'}:
-                order.sdk_augmont_status = 'Order Completed'
-                _logger.info("✅ C1: Order Completed")
+                if 'delivered' in c1_active:
+                    order.sdk_augmont_status = 'Delivered'
+                    _logger.info("✅ C1: Delivered")
+                else:
+                    order.sdk_augmont_status = 'Order Completed'
+                    _logger.info("✅ C1: Order Completed")
 
-            # ── C2: Dispatched ────────────────────────────────────────────
-            # At least one line is in a logistics status
+            # ── C2: logistics ─────────────────────────────────────────────
+            # At least one line is in a logistics status. These used to all
+            # report as plain 'Dispatched', which hid both a return and a
+            # re-dispatch behind the status of the first send.
+            # Order of the tests is deliberate - most-exceptional first:
+            #   return_of_order - stones have come BACK and are waiting on a
+            #       decision, so it outranks a sibling that has already gone
+            #       out again; it is the thing someone has to act on.
+            #   re_dispatched   - the second send is under way.
+            #   dispatched      - the ordinary first send.
             elif all_statuses & LOGISTICS:
-                order.sdk_augmont_status = 'Dispatched'
-                _logger.info("✅ C2: Dispatched (logistics=%s)", all_statuses & LOGISTICS)
+                if 'return_of_order' in all_statuses:
+                    order.sdk_augmont_status = 'Return of Order'
+                    _logger.info("✅ C2: Return of Order")
+                elif 're_dispatched' in all_statuses:
+                    order.sdk_augmont_status = 'Re - Dispatched'
+                    _logger.info("✅ C2: Re - Dispatched")
+                else:
+                    order.sdk_augmont_status = 'Dispatched'
+                    _logger.info("✅ C2: Dispatched")
 
             # ── C3: Payment Completed ─────────────────────────────────────
             # All payment-flow lines = payment_completed

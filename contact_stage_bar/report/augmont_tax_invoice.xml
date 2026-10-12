@@ -43,6 +43,20 @@
                 <t t-set="lines"
                    t-value="doc.order_line.filtered(lambda l: l.availability_status not in ('cancelled', 'not_available') and not l.display_type)"/>
 
+                <!-- Printing from a dispatch parcel ("Print invoice slip")
+                     narrows the slip to that parcel: a split order has one
+                     parcel per destination, and the full order's stones on
+                     every slip is both wrong and confusing to the receiver.
+                     Set by LgdDispatch.action_lgd_print_invoice_slip; empty
+                     for every other route (the Print menu, the order's own
+                     button), which still prints the whole order exactly as
+                     before.
+                     Intersected as recordsets rather than filtered by id, so
+                     an id that is not on this order simply drops out. -->
+                <t t-set="parcel_line_ids" t-value="doc.env.context.get('lgd_parcel_line_ids') or []"/>
+                <t t-set="lines"
+                   t-value="(lines &amp; doc.env['sale.order.line'].browse(parcel_line_ids)) if parcel_line_ids else lines"/>
+
                 <t t-set="company" t-value="doc.company_id"/>
                 <t t-set="customer" t-value="doc.partner_id"/>
                 <t t-set="commercial" t-value="customer.commercial_partner_id"/>
@@ -52,22 +66,31 @@
                      The halves are derived, not rounded independently: rounding
                      each half loses a paisa on odd tax amounts and the totals
                      column then fails to foot against TOTAL PAYABLE. -->
+                <!-- Totals. On a parcel slip the order's own amount_* would
+                     foot against stones the slip does not list, so they are
+                     summed from `lines` instead. The whole-order print keeps
+                     reading doc.amount_* unchanged - those carry the order's
+                     own rounding, which a re-sum would not reproduce. -->
+                <t t-set="amt_untaxed" t-value="sum(lines.mapped('price_subtotal')) if parcel_line_ids else doc.amount_untaxed"/>
+                <t t-set="amt_tax" t-value="sum(lines.mapped('price_tax')) if parcel_line_ids else doc.amount_tax"/>
+                <t t-set="amt_total" t-value="(amt_untaxed + amt_tax) if parcel_line_ids else doc.amount_total"/>
+
                 <t t-set="intra" t-value="doc.gst_treatment == 'within_maharashtra'"/>
-                <t t-set="cgst" t-value="round(doc.amount_tax / 2.0, 2) if intra else 0.0"/>
-                <t t-set="sgst" t-value="(doc.amount_tax - cgst) if intra else 0.0"/>
-                <t t-set="igst" t-value="0.0 if intra else doc.amount_tax"/>
+                <t t-set="cgst" t-value="round(amt_tax / 2.0, 2) if intra else 0.0"/>
+                <t t-set="sgst" t-value="(amt_tax - cgst) if intra else 0.0"/>
+                <t t-set="igst" t-value="0.0 if intra else amt_tax"/>
 
                 <t t-set="tax_pct"
-                   t-value="round(doc.amount_tax / doc.amount_untaxed * 100, 2) if doc.amount_untaxed else 0.0"/>
+                   t-value="round(amt_tax / amt_untaxed * 100, 2) if amt_untaxed else 0.0"/>
                 <t t-set="half_pct" t-value="round(tax_pct / 2.0, 2)"/>
 
                 <t t-set="round_off"
-                   t-value="doc.amount_total - doc.amount_untaxed - doc.amount_tax"/>
+                   t-value="amt_total - amt_untaxed - amt_tax"/>
 
                 <!-- Amount in words: whole units only, currency nouns and the
                      connective "and" stripped, matching the design's
                      "Fourteen Thousand Eight Hundred Only". -->
-                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(doc.amount_total)"/>
+                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(amt_total)"/>
                 <t t-set="words"
                    t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','rupee','rupees','paisa','paise','only','zero')]).title() + ' Only'"/>
 
@@ -247,7 +270,14 @@
                                     <td style="width:6.66%;"/>
                                     <td style="width:46.67%;">
 
-                                        <t t-set="shipping" t-value="doc.partner_shipping_id or customer"/>
+                                        <!-- A parcel slip bills to the address
+                                             THAT parcel is going to. The order
+                                             carries one partner_shipping_id, so
+                                             after a split both slips otherwise
+                                             printed the same destination. -->
+                                        <t t-set="parcel_address"
+                                           t-value="doc.env['res.partner'].browse(doc.env.context.get('lgd_parcel_address_id')) if doc.env.context.get('lgd_parcel_address_id') else doc.env['res.partner']"/>
+                                        <t t-set="shipping" t-value="parcel_address or doc.partner_shipping_id or customer"/>
                                         <div class="lbl">Bill To</div>
                                         <div class="rule" style="margin-top:7pt;"/>
                                         <div class="party" style="margin-top:12pt;">
@@ -367,7 +397,7 @@
                                         <table class="tot">
                                             <tr>
                                                 <td class="lab">Subtotal</td>
-                                                <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(doc.amount_untaxed)"/></td>
+                                                <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(amt_untaxed)"/></td>
                                             </tr>
                                             <t t-if="intra">
                                                 <tr>
@@ -395,7 +425,7 @@
                                             <tr>
                                                 <td class="lbl-gold" style="padding-top:16pt; vertical-align:middle;">Total Payable</td>
                                                 <td class="r num-lg" style="padding-top:12pt;">
-                                                    <span t-esc="sym"/><span t-esc="'{:,.2f}'.format(doc.amount_total)"/>
+                                                    <span t-esc="sym"/><span t-esc="'{:,.2f}'.format(amt_total)"/>
                                                 </td>
                                             </tr>
                                         </table>
