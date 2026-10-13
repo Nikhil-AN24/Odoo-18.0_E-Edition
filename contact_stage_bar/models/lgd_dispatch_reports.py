@@ -6,7 +6,7 @@ _logger = logging.getLogger(__name__)
 class IrActionsReport(models.Model):
     _inherit = 'ir.actions.report'
 
-   _LGD_DISPATCH_PREPARE = {
+    _LGD_DISPATCH_PREPARE = {
         'contact_stage_bar.report_lgd_memo_slip':
             '_lgd_prepare_memo_slip',
         'contact_stage_bar.report_lgd_memo_return_slip':

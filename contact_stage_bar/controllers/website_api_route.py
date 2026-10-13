@@ -258,6 +258,22 @@ class PartnerSyncController(http.Controller):
 
             # Get common data
             order_invoice_number = data.get('invoiceNumber')
+
+            # ── Channel ──────────────────────────────────────────────
+            # The aggregator's own traffic is always 'website', so that
+            # stays the default and nothing it sends changes behaviour.
+            # The key exists so an OFFLINE order can be created through
+            # the same endpoint - which is the only way to exercise the
+            # OF- numbering series, and the status push, from outside
+            # Odoo. An unknown value is refused rather than stored:
+            # order_source decides whether this order ever syncs to the
+            # website, and a typo silently becoming 'website' would send
+            # an unknown invoice number to the platform.
+            order_source = (data.get('orderSource') or 'website').strip().lower()
+            if order_source not in ('website', 'offline'):
+                return {'status': 'error',
+                        'message': "orderSource must be 'website' or 'offline'."}
+
             buyer = data.get('buyerKyc', {})
             email = buyer.get('email')
             customer_name = f"{buyer.get('firstName', '')} {buyer.get('lastName', '')}".strip()
@@ -310,8 +326,8 @@ class PartnerSyncController(http.Controller):
                     'shipping_address': shipping_address,
                     'location': 'mumbai',
                     'gst_treatment' : 'within_maharashtra',
-                    'is_website' : True,
-                    'order_source': 'website',
+                    'is_website': order_source == 'website',
+                    'order_source': order_source,
                     'company_id': company.id,
                     'vat': gst_number,
                     'ein_number': ein_number,
