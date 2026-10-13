@@ -78,6 +78,15 @@
                         <button name="action_lgd_print_memo_slip" type="object"
                                 string="Print memo slip" class="btn-secondary"
                                 invisible="not lgd_is_memo_doc"/>
+                        <!-- The inward challan. Shown only once a stone has
+                             actually come back: before that there is no Memo
+                             In, by design, and the slip would list nothing.
+                             The memo-return wizard prints it in the same
+                             press; this is the reprint, which until now had
+                             no way of being reached at all. -->
+                        <button name="action_lgd_print_memo_return_slip" type="object"
+                                string="Print memo return slip" class="btn-secondary"
+                                invisible="not lgd_has_returned_from_memo"/>
                         <button name="action_lgd_print_invoice_slip" type="object"
                                 string="Print invoice slip" class="btn-secondary"
                                 invisible="dispatch_type != 'sale'"/>
@@ -90,18 +99,19 @@
                         <button name="action_lgd_re_dispatch" type="object"
                                 string="Re - Dispatched" class="btn-secondary"
                                 invisible="not lgd_has_returned_lines"/>
+
                         <button name="action_lgd_complete_order" type="object"
                                 string="Complete order" class="btn-primary"
-                                invisible="state != 'delivered'"/>
+                                invisible="state not in ('delivered', 'memo_closed')"/>
                         <field name="lgd_has_returned_lines" invisible="1"/>
+                        <field name="lgd_has_returned_from_memo" invisible="1"/>
                         <button name="action_lgd_hand_over" type="object"
                                 string="Handed over" class="btn-primary"
                                 invisible="state != 'draft'"/>
                         <button name="action_lgd_open_split_wizard" type="object"
                                 string="Split" class="btn-secondary"
                                 invisible="state != 'draft'"/>
-                        <!-- Only a memo parcel that has actually
-                             left has a return to record. -->
+                        <!-- Only a memo parcel that has actually left has a return to record. -->
                         <button name="action_lgd_open_memo_return" type="object"
                                 string="Record memo return" class="btn-primary"
                                 invisible="dispatch_type != 'memo' or state not in ('handed_over', 'delivered')"/>
@@ -158,6 +168,13 @@
                                 <field name="memo_due_date"
                                        invisible="not lgd_is_memo_doc"
                                        required="dispatch_type == 'memo'"/>
+                                <!-- The challan numbers. Both appear only
+                                     once issued: a draft memo has neither,
+                                     and an all-kept memo never gets a Memo In. -->
+                                <field name="lgd_memo_out_number" readonly="1"
+                                       invisible="not lgd_memo_out_number"/>
+                                <field name="lgd_memo_in_number" readonly="1"
+                                       invisible="not lgd_memo_in_number"/>
                             </group>
                             <group string="Checks">
                                 <field name="label_printed" readonly="1"/>

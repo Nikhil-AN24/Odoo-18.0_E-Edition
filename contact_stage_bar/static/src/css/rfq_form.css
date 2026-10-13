@@ -36,3 +36,9 @@
 .o_form_view div[name="size_line_ids"] table.o_list_table td[name="description"] {
     padding-left: 0.5rem;
 }
+
+/* Order Status ribbon: Delivered. */
+.text-bg-lgd-orange {
+    background-color: #E8720C !important;
+    color: #FFFFFF !important;
+}

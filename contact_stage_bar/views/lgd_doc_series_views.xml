@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- The Series Master, laid out in the order of the source
+             spreadsheet so the two can be read side by side:
+             inputs first, then everything derived from them. -->
+        <record id="view_lgd_doc_series_list" model="ir.ui.view">
+            <field name="name">lgd.doc.series.list</field>
+            <field name="model">lgd.doc.series</field>
+            <field name="arch" type="xml">
+                <list string="Document Numbering" editable="bottom"
+                      decoration-danger="gst_check != 'OK'">
+                    <header>
+                        <button name="action_lgd_roll_financial_year"
+                                type="object" class="btn-primary"
+                                string="Roll to new financial year"
+                                confirm="Every series moves to the current financial year and its running number restarts at the Start No. Numbers already issued are untouched. Continue?"/>
+                    </header>
+                    <field name="doc_type"/>
+                    <field name="channel"/>
+                    <field name="prefix"/>
+                    <field name="fy_code"/>
+                    <field name="start_no"/>
+                    <field name="digits"/>
+                    <field name="first_number" readonly="1"/>
+                    <field name="last_number" readonly="1"/>
+                    <field name="length" readonly="1"/>
+                    <field name="gst_check" readonly="1"/>
+                    <field name="next_number" readonly="1"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="view_lgd_doc_series_form" model="ir.ui.view">
+            <field name="name">lgd.doc.series.form</field>
+            <field name="model">lgd.doc.series</field>
+            <field name="arch" type="xml">
+                <form string="Numbering Series">
+                    <sheet>
+                        <group>
+                            <group string="Document">
+                                <field name="doc_type"/>
+                                <field name="channel"/>
+                                <field name="active" widget="boolean_toggle"/>
+                            </group>
+                            <group string="Format">
+                                <field name="prefix"/>
+                                <field name="fy_code"/>
+                                <field name="start_no"/>
+                                <field name="digits"/>
+                            </group>
+                        </group>
+                        <group string="Derived">
+                            <group>
+                                <field name="first_number"/>
+                                <field name="last_number"/>
+                            </group>
+                            <group>
+                                <field name="length"/>
+                                <field name="gst_check"/>
+                                <field name="next_number"/>
+                            </group>
+                        </group>
+                        <div class="text-muted">
+                            GST Rule 46: at most 16 characters, and only
+                            A-Z, 0-9, '-' and '/'. Start No is read once,
+                            when a financial year's counter is created -
+                            changing it afterwards does not disturb
+                            numbers already issued.
+                        </div>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_lgd_doc_series" model="ir.actions.act_window">
+            <field name="name">Document Numbering</field>
+            <field name="res_model">lgd.doc.series</field>
+            <field name="view_mode">list,form</field>
+        </record>
+
+        <menuitem id="menu_lgd_doc_series"
+                  name="Document Numbering"
+                  parent="menu_lgd_dispatch_config"
+                  action="action_lgd_doc_series"
+                  groups="base.group_system,contact_stage_bar.group_lgd_superadmin"
+                  sequence="2"/>
+    </data>
+</odoo>

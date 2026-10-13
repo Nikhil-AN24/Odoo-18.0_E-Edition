@@ -85,3 +85,6 @@ access_res_partner_lgd_sales_manager_unlink,res.partner.lgd.sales.manager.unlink
 access_res_partner_lgd_procurement_manager_unlink,res.partner.lgd.procurement.manager.unlink,model_res_partner,contact_stage_bar.group_lgd_procurement_manager,1,1,1,1
 access_lgd_dispatch_destination_option_shipment,lgd.dispatch.destination.option.shipment,model_lgd_dispatch_destination_option,contact_stage_bar.group_lgd_shipment,1,0,0,0
 access_lgd_dispatch_destination_option_system,lgd.dispatch.destination.option.system,model_lgd_dispatch_destination_option,base.group_system,1,1,1,1
+access_lgd_doc_series_user,lgd.doc.series.user,model_lgd_doc_series,base.group_user,1,0,0,0
+access_lgd_doc_series_superadmin,lgd.doc.series.superadmin,model_lgd_doc_series,contact_stage_bar.group_lgd_superadmin,1,1,1,0
+access_lgd_doc_series_system,lgd.doc.series.system,model_lgd_doc_series,base.group_system,1,1,1,1

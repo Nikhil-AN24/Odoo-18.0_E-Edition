@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- ── Memo Out: the delivery challan a memo travels on ── -->
+        <record id="lgd_doc_series_on_mo" model="lgd.doc.series">
+            <field name="doc_type">memo_out</field>
+            <field name="channel">online</field>
+            <field name="prefix">ON-MO</field>
+        </record>
+        <record id="lgd_doc_series_of_mo" model="lgd.doc.series">
+            <field name="doc_type">memo_out</field>
+            <field name="channel">offline</field>
+            <field name="prefix">OF-MO</field>
+        </record>
+
+        <!-- ── Memo In: the inward challan for unsold returns ──── -->
+        <record id="lgd_doc_series_on_mi" model="lgd.doc.series">
+            <field name="doc_type">memo_in</field>
+            <field name="channel">online</field>
+            <field name="prefix">ON-MI</field>
+        </record>
+        <record id="lgd_doc_series_of_mi" model="lgd.doc.series">
+            <field name="doc_type">memo_in</field>
+            <field name="channel">offline</field>
+            <field name="prefix">OF-MI</field>
+        </record>
+
+        <!-- ── Order Confirmation: commercial, not a GST document ─ -->
+        <record id="lgd_doc_series_on_oc" model="lgd.doc.series">
+            <field name="doc_type">order_confirmation</field>
+            <field name="channel">online</field>
+            <field name="prefix">ON-OC</field>
+        </record>
+        <record id="lgd_doc_series_of_oc" model="lgd.doc.series">
+            <field name="doc_type">order_confirmation</field>
+            <field name="channel">offline</field>
+            <field name="prefix">OF-OC</field>
+        </record>
+
+        <!-- ── Tax Invoice: the sale ───────────────────────────── -->
+        <record id="lgd_doc_series_on_ti" model="lgd.doc.series">
+            <field name="doc_type">tax_invoice</field>
+            <field name="channel">online</field>
+            <field name="prefix">ON-TI</field>
+        </record>
+        <record id="lgd_doc_series_of_ti" model="lgd.doc.series">
+            <field name="doc_type">tax_invoice</field>
+            <field name="channel">offline</field>
+            <field name="prefix">OF-TI</field>
+        </record>
+
+    </data>
+</odoo>

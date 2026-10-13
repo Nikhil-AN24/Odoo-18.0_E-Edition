@@ -18,8 +18,9 @@ class AccountMove(models.Model):
     lgd_platform_number = fields.Char(
         string="Platform number", copy=False, index=True,
         help="The selling platform's own invoice number for the sale order "
-             "this invoice came from. It becomes the invoice number when no "
-             "other invoice in the company already carries it.")
+             "this invoice came from. Kept as a cross-reference: the "
+             "customer quoted it when they ordered, but it no longer "
+             "names the invoice.")
 
     def _lgd_sale_order(self):
         """The sale order this invoice was raised for.
@@ -71,40 +72,84 @@ class AccountMove(models.Model):
             platform = (move.lgd_platform_number
                         or order.sdk_augmont_number or '').strip()
 
-            taken = bool(platform) and bool(self.sudo().search_count([
+            number = self.env['lgd.doc.series']._lgd_next_number(
+                'tax_invoice', order.sudo())
+
+            taken = bool(self.sudo().search_count([
                 ('id', '!=', move.id),
-                ('move_type', '=', 'out_invoice'),
                 ('company_id', '=', move.company_id.id),
                 ('state', '!=', 'cancel'),
-                ('name', '=', platform),
+                ('name', '=', number),
             ]))
 
-            if platform and not taken:
-                move.sudo().write({'name': platform,
-                                   'lgd_platform_number': platform})
+            if not taken:
+                move.sudo().write({'name': number,
+                                   'lgd_platform_number': platform or False})
                 move.sudo().action_post()
+                if order:
+                    order.sudo().message_post(body=_(
+                        "Tax Invoice %(number)s issued.") % {'number': number})
                 continue
 
-            # Fall back to the JOURNAL's own sequence: clear the name so
-            # account.move's sequence mixin fills it in while posting, and
-            # pin the series it must continue so the number lands in
-            # INV/<year>/… and never inside the platform's AUG-… namespace
-            # (which is what the previous build did, where it could later
-            # collide with a genuine platform number).
             move.sudo().write({'name': False,
                                'lgd_platform_number': platform or False})
             move.sudo().with_context(
                 lgd_journal_series_prefix=move._lgd_journal_series_prefix(),
                 lgd_journal_series_move_ids=(move.id,),
             ).action_post()
-            if platform and order:
+            _logger.error(
+                "LGD numbering: Tax Invoice series offered %s, which is "
+                "already used; move %s was numbered %s from the accounting "
+                "sequence instead.", number, move.id, move.name)
+            if order:
                 order.sudo().write({'lgd_invoice_fallback_number': True})
                 order.sudo().message_post(body=_(
-                    "Invoice number %(platform)s is already used by another "
-                    "invoice, so this invoice was numbered %(name)s from the "
-                    "accounting sequence."
-                ) % {'platform': platform, 'name': move.name})
+                    "The Tax Invoice series offered %(number)s, but another "
+                    "invoice already carries it, so this invoice was "
+                    "numbered %(name)s from the accounting sequence. The "
+                    "numbering series needs checking."
+                ) % {'number': number, 'name': move.name})
         return True
+
+class AccountMoveSend(models.AbstractModel):
+    _inherit = 'account.move.send'
+
+    @api.model
+    def _get_default_pdf_report_id(self, move):
+        if move.move_type == 'out_invoice':
+            chosen = move.commercial_partner_id.with_company(
+                move.company_id).invoice_template_pdf_report_id
+            if not chosen:
+                report = self.env.ref(
+                    'contact_stage_bar.action_report_augmont_move_tax_invoice',
+                    raise_if_not_found=False)
+                if report:
+                    return report
+        return super()._get_default_pdf_report_id(move)
+
+class AccountMoveLine(models.Model):
+    _inherit = 'account.move.line'
+
+    lgd_certificate = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_shapes = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_color = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_clarity = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_carat_weight = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_stone_type = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_sales_price_per_carat = fields.Float(compute='_compute_lgd_stone_specs')
+
+    @api.depends('sale_line_ids')
+    def _compute_lgd_stone_specs(self):
+        for move_line in self:
+            sale_line = move_line.sale_line_ids[:1]
+            move_line.lgd_certificate = sale_line.certificate or False
+            move_line.lgd_shapes = sale_line.shapes or False
+            move_line.lgd_color = sale_line.color or False
+            move_line.lgd_clarity = sale_line.clarity or False
+            move_line.lgd_carat_weight = sale_line.carat_weight or False
+            move_line.lgd_stone_type = sale_line.stone_type or False
+            move_line.lgd_sales_price_per_carat = \
+                sale_line.sales_price_per_carat or 0.0
 
 
 class SaleOrder(models.Model):
@@ -235,6 +280,32 @@ class SaleOrder(models.Model):
                 order._lgd_auto_invoiceable_lines())
         return prepared
 
+    # ── A parcel is invoiced for what it carries ─────────────────
+    def _lgd_narrow_draft_to_parcel(self, parcel):
+
+        self.ensure_one()
+        draft = self._lgd_open_draft_invoice()
+        if not draft:
+            return draft
+        going = parcel.sudo().line_ids
+        surplus = draft.invoice_line_ids.filtered(
+            lambda aml: aml.sale_line_ids and not (aml.sale_line_ids & going))
+        if surplus:
+            kept = len(draft.invoice_line_ids) - len(surplus)
+            draft.sudo().write({
+                'invoice_line_ids': [Command.delete(aml.id) for aml in surplus],
+            })
+            self.sudo().message_post(body=_(
+                "Invoice narrowed to %(parcel)s: %(kept)s stone(s) billed, "
+                "%(held)s held back for a later parcel."
+            ) % {'parcel': parcel.name, 'kept': kept, 'held': len(surplus)})
+        if not draft.invoice_line_ids.filtered(
+                lambda aml: aml.display_type == 'product'):
+            # Nothing on this parcel was invoiceable after all.
+            draft.sudo().unlink()
+            return self.env['account.move'].sudo().browse()
+        return draft.sudo()
+
     # ── A memo is not a sale: take its stones off the draft ──────
     def _lgd_withdraw_memo_lines_from_draft(self):
         """Remove from the order's open draft invoice any stone that has
@@ -363,8 +434,10 @@ class SaleOrderLine(models.Model):
                 "These stones are already on a posted customer invoice, so "
                 "they cannot be moved onto a memo parcel:\n%s\n\n"
                 "A memo stone may come back, and nothing is ever invoiced "
-                "for a returned stone. Credit the invoice first, or send "
-                "these stones out as the sale they already are."
+                "for a returned stone. Reset that invoice to draft first (a "
+                "credit note will NOT clear this - it is a separate "
+                "document and leaves the invoice posted), or send these "
+                "stones out as the sale they already are."
             ) % "\n".join(found))
 
     def write(self, vals):
@@ -409,8 +482,10 @@ class LgdDispatch(models.Model):
                 "These stones are already on a posted customer invoice, so "
                 "this parcel cannot go out on memo:\n%s\n\n"
                 "A memo stone may come back, and nothing is ever invoiced "
-                "for a returned stone. Credit the invoice first, or hand "
-                "this parcel over as the sale it already is."
+                "for a returned stone. Reset that invoice to draft first (a "
+                "credit note will NOT clear this - it is a separate "
+                "document and leaves the invoice posted), or hand this "
+                "parcel over as the sale it already is."
             ) % "\n".join(found))
         return True
 

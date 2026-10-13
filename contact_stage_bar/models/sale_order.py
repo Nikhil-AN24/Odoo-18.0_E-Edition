@@ -177,6 +177,17 @@ class SaleOrder(models.Model):
         for order in self:
             order.can_edit_line_availability = allowed
 
+    def _lgd_check_usd_rate_before_print(self):
+        for order in self:
+            if order.lgd_show_usd_rate and not order.lgd_usd_rate:
+                raise UserError(_(
+                    "%(order)s is priced in dollars, so the Order Slip "
+                    "cannot be printed until Current $ Rate is filled in.\n\n"
+                    "The rate is normally seeded from Accounting's currency "
+                    "rates; it is blank here, so type the rate actually "
+                    "agreed into Current $ Rate and save, then print."
+                ) % {'order': order.lgd_oc_number or order.name})
+
     def action_print_the_invoice(self):
         """Create the invoice (if not already created) and hand back the
         Order Confirmation Slip PDF, in one click.
@@ -186,6 +197,7 @@ class SaleOrder(models.Model):
         than the advance-payment wizard's regular/down-payment choice.
         """
         self.ensure_one()
+        self._lgd_check_usd_rate_before_print()
         try:
             self._create_invoices()
         except Exception:
@@ -271,11 +283,17 @@ class SaleOrder(models.Model):
     ein_number = fields.Char(string="EIN Number")
     location = fields.Selection([('mumbai', 'India'), ('surat', 'USA')], string='Location')
     sdk_augmont_number = fields.Char(string="Invoice Number")
+    # ── Statutory numbering (see models/lgd_doc_series.py) ────────────
+    lgd_oc_number = fields.Char(
+        string="Order Confirmation No.", copy=False, readonly=True,
+        index=True, tracking=True,
+        help="ON-OC/2627/00001 style number, issued by Odoo when the order "
+             "is confirmed. Not a GST document - it is the commercial "
+             "document every later document on this order quotes.")
     shipping_address = fields.Text(string="Shipping Address")
     billing_address = fields.Text(string="Billing Address")
     default_qc_requirements = fields.Char(string="Default QC Requirements")
     item_notes = fields.Char(string="General Order Notes")
-
 
     is_website = fields.Boolean(string="Is Website Order", default=False)
     order_source = fields.Selection(
@@ -341,8 +359,12 @@ class SaleOrder(models.Model):
         """
         Compute Invoice-level Order Status from order line availability_status values.
         PRIORITY (highest → lowest):
-          C1   Order Completed  – C1-active ⊆ {delivered, order_completed}
-          C2   Dispatched       – at least 1 in {dispatched, re_dispatched, return_of_order}
+          C1   Delivered / Order Completed – C1-active ⊆ {delivered,
+               order_completed}; 'Delivered' when any line is still merely
+               delivered, 'Order Completed' once none is.
+          C2   Return of Order / Re - Dispatched / Dispatched – at least 1 in
+               {dispatched, re_dispatched, return_of_order}, reported
+               most-exceptional first.
           C3   Payment Completed – C3-active == {payment_completed}
           C4   In QC process    – at least 1 in_qc_process
           C5   Availability Check – at least 1 not_available OR at least 1 qc_fail
@@ -467,17 +489,44 @@ class SaleOrder(models.Model):
                 _logger.info("❌ Odoo cancel state → Cancelled")
                 continue
 
-            # ── C1: Order Completed ───────────────────────────────────────
-            # All lines (ignoring non-terminal statuses) are delivered/order_completed
+            # ── C1: Delivered / Order Completed ───────────────────────────
+            # Every line that can still move has arrived. Which of the two
+            # end states it is depends on how far the last line got:
+            #   'delivered'       - the stones are with the customer.
+            #   'order_completed' - the order is closed out behind that.
+            # They used to collapse into a single 'Order Completed', so an
+            # order whose lines all read Delivered announced itself as
+            # completed. Delivered is now reported in its own right (and
+            # carries its own ribbon); Order Completed is kept for the case
+            # where nothing is merely delivered any more.
             if c1_active and c1_active <= {'delivered', 'order_completed'}:
-                order.sdk_augmont_status = 'Order Completed'
-                _logger.info("✅ C1: Order Completed")
+                if 'delivered' in c1_active:
+                    order.sdk_augmont_status = 'Delivered'
+                    _logger.info("✅ C1: Delivered")
+                else:
+                    order.sdk_augmont_status = 'Order Completed'
+                    _logger.info("✅ C1: Order Completed")
 
-            # ── C2: Dispatched ────────────────────────────────────────────
-            # At least one line is in a logistics status
+            # ── C2: logistics ─────────────────────────────────────────────
+            # At least one line is in a logistics status. These used to all
+            # report as plain 'Dispatched', which hid both a return and a
+            # re-dispatch behind the status of the first send.
+            # Order of the tests is deliberate - most-exceptional first:
+            #   return_of_order - stones have come BACK and are waiting on a
+            #       decision, so it outranks a sibling that has already gone
+            #       out again; it is the thing someone has to act on.
+            #   re_dispatched   - the second send is under way.
+            #   dispatched      - the ordinary first send.
             elif all_statuses & LOGISTICS:
-                order.sdk_augmont_status = 'Dispatched'
-                _logger.info("✅ C2: Dispatched (logistics=%s)", all_statuses & LOGISTICS)
+                if 'return_of_order' in all_statuses:
+                    order.sdk_augmont_status = 'Return of Order'
+                    _logger.info("✅ C2: Return of Order")
+                elif 're_dispatched' in all_statuses:
+                    order.sdk_augmont_status = 'Re - Dispatched'
+                    _logger.info("✅ C2: Re - Dispatched")
+                else:
+                    order.sdk_augmont_status = 'Dispatched'
+                    _logger.info("✅ C2: Dispatched")
 
             # ── C3: Payment Completed ─────────────────────────────────────
             # All payment-flow lines = payment_completed
@@ -799,8 +848,22 @@ class SaleOrder(models.Model):
                 "address on the order, or on each stone."
             ) % ', '.join(problems))
 
+    def _lgd_assign_oc_number(self):
+        Series = self.env['lgd.doc.series']
+        for order in self:
+            if order.lgd_oc_number:
+                continue
+            order.sudo().lgd_oc_number = Series._lgd_next_number(
+                'order_confirmation', order)
+
     def action_confirm(self):
         self._lgd_check_destinations()
+        # The Order Confirmation number is issued here and nowhere else:
+        # confirmation is the moment the channel is fixed, and every
+        # later document on this order inherits that channel. Drawn
+        # inside the same transaction as the confirmation itself, so a
+        # confirmation that rolls back leaves no gap in the series.
+        self._lgd_assign_oc_number()
         import time
         import datetime as _dt
         start_time = time.time()
@@ -3299,26 +3362,36 @@ class SaleOrderLine(models.Model):
     is_block = fields.Boolean(string="Block", default=False,readonly=True)
     is_available = fields.Boolean(string="Pass Check",default=False,copy=False)
     is_not_available = fields.Boolean(string="Fail Check",default=False,copy=False)
-    fluorescence_color = fields.Char(string="Fluorescence Color",related='product_template_id.fluorescence_color')
-    fluorescence_intensity = fields.Char(string="Fluorescence Intensity",related='product_template_id.fluorescence_intensity')
-    treatments = fields.Char(string='Treatments',related='product_template_id.treatments')
-
+    fluorescence_color = fields.Char(string="Fluorescence Color",related='product_template_id.fluorescence_color', readonly=False)
+    fluorescence_intensity = fields.Char(string="Fluorescence Intensity",related='product_template_id.fluorescence_intensity', readonly=False)
+    treatments = fields.Char(string='Treatments',related='product_template_id.treatments', readonly=False)
     # Added for the Order Lines CSV export (Procurement > Orders)
     # These already existed on product.template but were not yet related onto the order line, so they're added here.
-    labs = fields.Char(string="Lab", related='product_template_id.labs')
-    measurements = fields.Char(string="Measurement", related='product_template_id.measurements')
-    luster = fields.Char(string="Luster", related='product_template_id.luster')
-    shade = fields.Char(string="Shade", related='product_template_id.shade')
-    # Product spec surfaced on the order-line info popup (the (i) button).
-    length = fields.Float(string="Length", related='product_template_id.length')
-    width = fields.Float(string="Width", related='product_template_id.width')
-    depth = fields.Float(string="Depth", related='product_template_id.depth')
-    eye_clean = fields.Char(string="Eye Clean", related='product_template_id.eye_clean')
-    order_specific = fields.Char(string="Order Specific Notes", related='product_template_id.order_specific')
-    customer_reference_note = fields.Char(string="Customer Reference Note", related='product_template_id.customer_reference_note')
-    popup_item_notes = fields.Char(string="General Order Notes", related='product_template_id.item_notes')
-    popup_default_qc_requirements = fields.Char(string="Default Qc Requirements", related='product_template_id.default_qc_requirements')
+    labs = fields.Char(string="Lab", related='product_template_id.labs', readonly=False)
+    measurements = fields.Char(string="Measurement", related='product_template_id.measurements', readonly=False)
+    luster = fields.Char(string="Luster", related='product_template_id.luster', readonly=False)
+    shade = fields.Char(string="Shade", related='product_template_id.shade', readonly=False)
+    lgd_can_edit_product_specs = fields.Boolean(
+        compute='_compute_lgd_can_edit_product_specs',
+        help="True while this stone is still Diamond Booked. It is what "
+             "unlocks the General Information page on the (i) popup, for "
+             "every role - no stone has been bought, inspected or shipped "
+             "at that point, so its specs are still being captured.")
 
+    @api.depends('availability_status')
+    def _compute_lgd_can_edit_product_specs(self):
+        for line in self:
+            line.lgd_can_edit_product_specs = (
+                line.availability_status == 'diamond_booked')
+
+    length = fields.Float(string="Length", related='product_template_id.length', readonly=False)
+    width = fields.Float(string="Width", related='product_template_id.width', readonly=False)
+    depth = fields.Float(string="Depth", related='product_template_id.depth', readonly=False)
+    eye_clean = fields.Char(string="Eye Clean", related='product_template_id.eye_clean', readonly=False)
+    order_specific = fields.Char(string="Order Specific Notes", related='product_template_id.order_specific', readonly=False)
+    customer_reference_note = fields.Char(string="Customer Reference Note", related='product_template_id.customer_reference_note', readonly=False)
+    popup_item_notes = fields.Char(string="General Order Notes", related='product_template_id.item_notes', readonly=False)
+    popup_default_qc_requirements = fields.Char(string="Default Qc Requirements", related='product_template_id.default_qc_requirements', readonly=False)
     # ── Added for the Order Lines CSV export column reorder ──
     vendor_sku = fields.Char(string="Vendor SKU", related='product_template_id.stock_number')
     vendor_per_carat_price = fields.Float(string="Vendor Per Carat Price", related='product_template_id.price_per_carat')

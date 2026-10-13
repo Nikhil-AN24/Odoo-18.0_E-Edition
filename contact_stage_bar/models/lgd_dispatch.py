@@ -55,6 +55,19 @@ class LgdDispatch(models.Model):
             parcel.lgd_is_memo_doc = (
                 parcel.dispatch_type == 'memo'
                 or parcel.state == 'memo_closed')
+
+    lgd_memo_out_number = fields.Char(
+        string="Memo Out No.", copy=False, readonly=True, index=True,
+        tracking=True,
+        help="ON-MO/2627/00001 style number for the delivery challan this "
+             "memo parcel travels on. Issued when the memo slip is first "
+             "printed, which is the moment the challan exists.")
+    lgd_memo_in_number = fields.Char(
+        string="Memo In No.", copy=False, readonly=True, index=True,
+        tracking=True,
+        help="ON-MI/2627/00001 style number for the inward challan raised "
+             "when unsold memo stones come back. Issued once, on the first "
+             "return, and quotes the Memo Out number it answers.")
     memo_slip_printed = fields.Boolean(readonly=True)
     memo_decided_at = fields.Datetime(readonly=True)
     memo_decided_by = fields.Many2one('res.users', readonly=True)
@@ -245,17 +258,6 @@ class LgdDispatch(models.Model):
 
     # ── The partial-send rule, corrected ──────────────────────────
     def _lgd_approval_state_for(self, order, destination, sending_lines):
-        """A parcel is partial only when a stone for THIS destination is
-        left behind — not when the order has stones waiting for some
-        other place entirely. Called once per destination group from
-        ``action_lgd_make_parcels``, and again after a split.
-
-        Replaces the old order-wide ``outstanding`` calculation that used
-        to live in ``_lgd_action_make_parcel``: under that rule every
-        multi-destination order stopped for an approval that carries no
-        information, because stones waiting for a different city always
-        looked like a partial send of this one.
-        """
         outstanding = order.order_line.filtered(
             lambda l: l not in sending_lines
             and not l.lgd_dispatch_id
@@ -351,16 +353,16 @@ class LgdDispatch(models.Model):
             # parcel left with a packing list and no invoice.
             # No-op when it is not ready, or when an invoice already exists.
             order._lgd_try_create_invoice()
-            draft = order._lgd_open_draft_invoice()
+            draft = order._lgd_narrow_draft_to_parcel(self)
             if draft:
-                # First parcel on a ready order: this posts it.
                 draft._lgd_post_with_platform_number()
                 invoice = draft
             else:
-                # Either the invoice is already posted (a later parcel on the
-                # same order — it still prints a copy) or the order is not
-                # ready yet and this parcel travels with a packing list only.
-                invoice = order.invoice_ids.filtered(
+                mine = order.invoice_ids.filtered(
+                    lambda move: move.move_type == 'out_invoice'
+                    and move.state == 'posted'
+                    and (move.invoice_line_ids.sale_line_ids & self.line_ids))
+                invoice = mine[:1] or order.invoice_ids.filtered(
                     lambda move: move.move_type == 'out_invoice'
                     and move.state == 'posted')[:1]
 
@@ -625,13 +627,14 @@ class LgdDispatch(models.Model):
         self._lgd_check_group()
         self.ensure_one()
         problems = []
-        if self.state != 'delivered':
+        if self.state not in ('delivered', 'memo_closed'):
             problems.append(_("Confirm delivery before completing the order."))
         order = self.order_id.sudo()
         if not order:
             problems.append(_("This parcel is not linked to an order."))
         else:
-            settled = ('delivered', 'cancelled', 'replaced', 'order_completed')
+            settled = ('delivered', 'cancelled', 'replaced',
+                       'order_completed', 'memo_returned')
             outstanding = order.order_line.filtered(
                 lambda l: l.availability_status not in settled)
             if outstanding:
@@ -723,23 +726,62 @@ class LgdDispatch(models.Model):
             "dispatch."))
 
     # ── Print the memo slip ────────────────────────────────────────
-    def action_lgd_print_memo_slip(self):
-        """A memo parcel travels with a slip instead of an invoice.
+    # ── Statutory numbers for the two memo challans ──────────────
+    def _lgd_assign_memo_out_number(self):
 
-        Printing creates no accounting record of any kind — the slip is simply
-        a document saying what went out on approval and by when it must come
-        back. Reprinting is always allowed.
-        """
+        self.ensure_one()
+        if self.lgd_memo_out_number:
+            return self.lgd_memo_out_number
+        number = self.env['lgd.doc.series']._lgd_next_number(
+            'memo_out', self.order_id.sudo())
+        self.sudo().lgd_memo_out_number = number
+        self.sudo().message_post(body=_("Memo Out number %s issued.") % number)
+        return number
+
+    lgd_has_returned_from_memo = fields.Boolean(
+        compute='_compute_lgd_has_returned_from_memo',
+        help="At least one stone on this parcel has been decided Returned. "
+             "It is what makes the memo return slip printable - an all-kept "
+             "memo has no return to document.")
+
+    @api.depends('line_ids.lgd_memo_outcome')
+    def _compute_lgd_has_returned_from_memo(self):
+        for parcel in self:
+            parcel.lgd_has_returned_from_memo = bool(parcel.line_ids.filtered(
+                lambda line: line.lgd_memo_outcome == 'returned'))
+
+    def _lgd_assign_memo_in_number(self):
+        self.ensure_one()
+        if self.lgd_memo_in_number:
+            return self.lgd_memo_in_number
+        number = self.env['lgd.doc.series']._lgd_next_number(
+            'memo_in', self.order_id.sudo())
+        self.sudo().lgd_memo_in_number = number
+        self.sudo().message_post(body=_(
+            "Memo In number %(mi)s issued against Memo Out %(mo)s."
+        ) % {'mi': number, 'mo': self.lgd_memo_out_number or _("(none)")})
+        return number
+
+    def action_lgd_print_memo_slip(self):
         self._lgd_check_group()
         self.ensure_one()
 
-        if not self.lgd_is_memo_doc:
-            raise UserError(_("Only a memo parcel has a memo slip."))
-        if not self.memo_due_date:
-            raise UserError(_("Set the return-by date before printing the slip."))
-        self.sudo().write({'memo_slip_printed': True})
+        self._lgd_prepare_memo_slip()
         return self.env.ref(
             'contact_stage_bar.action_lgd_memo_slip').report_action(self)
+
+    def _lgd_prepare_memo_slip(self):
+        for parcel in self:
+            if not parcel.lgd_is_memo_doc:
+                raise UserError(_("Only a memo parcel has a memo slip (%s).")
+                                % parcel.name)
+            if not parcel.memo_due_date:
+                raise UserError(_(
+                    "Set the return-by date on %s before printing the slip.")
+                    % parcel.name)
+
+            parcel._lgd_assign_memo_out_number()
+        self.sudo().write({'memo_slip_printed': True})
 
     def action_lgd_print_invoice_slip(self):
         self._lgd_check_group()
@@ -754,6 +796,9 @@ class LgdDispatch(models.Model):
         self.sudo().write({'invoice_slip_printed': True})
         return self.env.ref(
             'contact_stage_bar.action_report_augmont_tax_invoice'
+        ).with_context(
+            lgd_parcel_line_ids=self.line_ids.ids,
+            lgd_parcel_address_id=self.sudo().ship_address_id.id or False,
         ).report_action(self.order_id)
 
     # ── Split a draft parcel ──────────────────────────────
@@ -890,9 +935,19 @@ class LgdDispatch(models.Model):
         parcel; reprinting here is always allowed and keys on the same flag."""
         self._lgd_check_group()
         self.ensure_one()
-        self.sudo().write({'memo_return_slip_printed': True})
+        self._lgd_prepare_memo_return_slip()
         return self.env.ref(
             'contact_stage_bar.action_lgd_memo_return_slip').report_action(self)
+
+    def _lgd_prepare_memo_return_slip(self):
+        for parcel in self:
+            if not parcel.lgd_has_returned_from_memo:
+                raise UserError(_(
+                    "No stone on %s has been returned yet, so there is no "
+                    "memo return to document. Record the return first.")
+                    % parcel.name)
+            parcel._lgd_assign_memo_in_number()
+        self.sudo().write({'memo_return_slip_printed': True})
 
     # ── The daily follow-up ──────────────────────────────
     #: The exact summary carried by an overdue-memo chase activity.

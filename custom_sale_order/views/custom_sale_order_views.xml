@@ -359,41 +359,44 @@
             <form string="Product">
                 <sheet>
                     <field name="can_edit_vendor" invisible="1"/>
+                    <!-- Unlocks the product specs below while the stone is
+                         still Diamond Booked, for every role. -->
+                    <field name="lgd_can_edit_product_specs" invisible="1"/>
                     <field name="rfq_currency_id" invisible="1"/>
                     <notebook>
                         <page string="General Information" name="general_information">
                             <group>
                                 <group>
-                                    <field name="labs"/>
+                                    <field name="labs" readonly="not lgd_can_edit_product_specs"/>
                                     <field name="lgd_stock_number"/>
                                     <field name="shapes"/>
                                     <field name="carat_weight" string="Carat"/>
                                     <field name="clarity"/>
                                     <field name="color"/>
-                                    <field name="luster"/>
-                                    <field name="shade"/>
-                                    <field name="fluorescence_color"/>
-                                    <field name="fluorescence_intensity"/>
+                                    <field name="luster" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="shade" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="fluorescence_color" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="fluorescence_intensity" readonly="not lgd_can_edit_product_specs"/>
                                     <field name="certificate"/>
                                     <!-- Fetch from IGI — Procurement roles + Admin/SuperAdmin only. -->
                                     <button name="action_line_fetch_from_igi" type="object"
                                             string="Fetch from IGI" class="btn-secondary"
                                             groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
-                                    <field name="measurements"/>
+                                    <field name="measurements" readonly="not lgd_can_edit_product_specs"/>
                                 </group>
                                 <group>
-                                    <field name="length"/>
-                                    <field name="width"/>
-                                    <field name="depth"/>
-                                    <field name="eye_clean"/>
+                                    <field name="length" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="width" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="depth" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="eye_clean" readonly="not lgd_can_edit_product_specs"/>
                                     <field name="cut"/>
                                     <field name="polish"/>
                                     <field name="symmetry"/>
-                                    <field name="treatments"/>
-                                    <field name="order_specific"/>
-                                    <field name="popup_item_notes"/>
-                                    <field name="customer_reference_note"/>
-                                    <field name="popup_default_qc_requirements"/>
+                                    <field name="treatments" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="order_specific" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="popup_item_notes" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="customer_reference_note" readonly="not lgd_can_edit_product_specs"/>
+                                    <field name="popup_default_qc_requirements" readonly="not lgd_can_edit_product_specs"/>
                                 </group>
                             </group>
                         </page>

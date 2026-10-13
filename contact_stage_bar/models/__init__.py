@@ -24,6 +24,8 @@ from . import lgd_ops_purchase_line
 from . import lgd_ops_purchase_order
 from . import lgd_ops_audit
 from . import lgd_inventory_sale_line
+from . import lgd_doc_series
 from . import lgd_courier_agent
 from . import lgd_dispatch
+from . import lgd_dispatch_reports
 from . import lgd_customer_invoice

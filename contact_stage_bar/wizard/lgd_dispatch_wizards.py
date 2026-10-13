@@ -346,7 +346,16 @@ class LgdMemoReturnWizard(models.TransientModel):
         # ── 7. The memo return slip. The report itself is Task 13's; the
         # flag it keys on is written here either way, so a reprint is
         # always available and nothing depends on the report existing. ───
-        parcel_su.write({'memo_return_slip_printed': True})
+        # The inward challan's number is issued here, not at print time,
+        # because THIS is where the goods are recorded as received back.
+        # Only when something actually came back: an all-kept memo raises
+        # no Memo In at all, and must not burn a number in that series.
+        if returned:
+            parcel_su._lgd_assign_memo_in_number()
+            # The flag, like the number, belongs to a round in which
+            # something actually came back. Setting it on an all-kept memo
+            # claimed a return slip had been printed for a return that never happened.
+            parcel_su.write({'memo_return_slip_printed': True})
 
         # ── 8. Close the parcel only when nothing is left undecided, and
         # drop the chasing activities with it (§5.8 stops at memo_closed
@@ -398,8 +407,15 @@ class LgdMemoReturnWizard(models.TransientModel):
             body += Markup("<br/>") + _("Note: %s") % self.note
         parcel_su.message_post(body=body)
 
-        # The slip report is; return it when it exists, so the
-        # press prints in one motion then, and simply closes until then.
+        # Print the return slip in the same press - but ONLY when stones
+        # actually came back. A round where every stone was Kept is not a
+        # return: it is a sale, it raises an invoice (step 6) and no Memo
+        # In number at all. Printing the slip anyway produced a MEMO
+        # RETURN document listing no stones and a total of 0.00, which is
+        # worse than printing nothing - it is a nil return note against an
+        # invoice that was just raised for the same goods.
+        if not returned:
+            return {'type': 'ir.actions.act_window_close'}
         report = self.env.ref(
             'contact_stage_bar.action_lgd_memo_return_slip',
             raise_if_not_found=False)

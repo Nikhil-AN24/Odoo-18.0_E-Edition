@@ -140,10 +140,16 @@ class SaleOrderLine(models.Model):
                     'product_id': new_tmpl.product_variant_id.id,
                 })
 
+    _LGD_PRODUCT_WRITE_THROUGH_FIELDS = frozenset({
+        'certificate', 'labs', 'measurements', 'luster', 'shade',
+        'fluorescence_color', 'fluorescence_intensity', 'treatments',
+        'length', 'width', 'depth', 'eye_clean', 'order_specific',
+        'customer_reference_note', 'popup_item_notes',
+        'popup_default_qc_requirements',
+    })
+
     def write(self, vals):
-        # Setting the Certificate Number writes through to the product; isolate
-        # first so only this line's stone is affected, not its siblings.
-        if vals.get('certificate'):
+        if self._LGD_PRODUCT_WRITE_THROUGH_FIELDS & set(vals):
             self._ensure_isolated_product()
         return super().write(vals)
 

@@ -1,5 +1,5 @@
 import logging
-from odoo import _, fields, models
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
 _logger = logging.getLogger(__name__)
@@ -60,6 +60,91 @@ class PurchaseOrder(models.Model):
         return new_po
 
     # ── QC inspection by invoice ────────────────────────────────────────────
+
+    def _lgd_qc_invoice_domain(self):
+        """Every stone with QC that belongs to this order's invoice."""
+        self.ensure_one()
+        if self.order_number:
+            return [('lgd_stage', '=', 'in_qc'),
+                    ('order_id.order_number', '=', self.order_number)]
+        # No invoice number: the purchase order stands on its own rather
+        # than silently joining every other unnumbered one.
+        return [('lgd_stage', '=', 'in_qc'), ('order_id', '=', self.id)]
+
+    def _lgd_qc_invoice_lines(self):
+        self.ensure_one()
+        return self.env['purchase.order.line'].search(
+            self._lgd_qc_invoice_domain())
+
+    lgd_qc_stone_count = fields.Integer(
+        string="Stones", compute='_compute_lgd_qc_invoice_summary')
+    lgd_qc_po_names = fields.Char(
+        string="Purchase Orders", compute='_compute_lgd_qc_invoice_summary')
+    lgd_qc_vendor_names = fields.Char(
+        string="Vendors", compute='_compute_lgd_qc_invoice_summary')
+
+    @api.depends('order_number', 'order_line.lgd_stage')
+    def _compute_lgd_qc_invoice_summary(self):
+        """What the one invoice row says: how many stones are waiting, and
+        which purchase orders and vendors they are spread across."""
+        for order in self:
+            lines = order._lgd_qc_invoice_lines()
+            orders = lines.order_id
+            order.lgd_qc_stone_count = len(lines)
+            order.lgd_qc_po_names = ", ".join(sorted(orders.mapped('name'))) or False
+            order.lgd_qc_vendor_names = ", ".join(
+                sorted({n for n in orders.mapped('partner_id.name') if n})) or False
+
+    lgd_qc_invoice_primary = fields.Boolean(
+        string="Invoice row",
+        compute='_compute_lgd_qc_invoice_primary',
+        search='_search_lgd_qc_invoice_primary',
+        help="True on exactly one purchase order per invoice - the earliest "
+             "raised. It is what makes To Inspect show one row per invoice "
+             "instead of one per vendor.")
+
+    @api.model
+    def _lgd_qc_primary_ids(self):
+        """The earliest purchase order of each invoice that has QC work.
+
+        Computed in one pass rather than per record: deciding "am I the
+        first?" one order at a time is a query per row, and this list is
+        read for every row in To Inspect.
+        """
+        orders = self.sudo().search(
+            [('order_line.lgd_stage', '=', 'in_qc')], order='id')
+        seen, primary = set(), []
+        for order in orders:
+            key = order.order_number or 'po:%s' % order.id
+            if key not in seen:
+                seen.add(key)
+                primary.append(order.id)
+        return primary
+
+    @api.depends('order_number', 'order_line.lgd_stage')
+    def _compute_lgd_qc_invoice_primary(self):
+        primary = set(self._lgd_qc_primary_ids())
+        for order in self:
+            order.lgd_qc_invoice_primary = order.id in primary
+
+    def _search_lgd_qc_invoice_primary(self, operator, value):
+        if operator not in ('=', '!='):
+            raise UserError(_(
+                "The invoice row flag can only be searched with = or !=."))
+        ids = self._lgd_qc_primary_ids()
+        wanted = (operator == '=') == bool(value)
+        return [('id', 'in' if wanted else 'not in', ids)]
+
+    def action_lgd_qc_open_invoice(self):
+        """Open every stone with QC on this invoice, across its vendors."""
+        self.ensure_one()
+        action = self.env['ir.actions.act_window']._for_xml_id(
+            'contact_stage_bar.action_lgd_qc_inspect_invoice')
+        action['domain'] = self._lgd_qc_invoice_domain()
+        action['display_name'] = _("Inspect %s") % (
+            self.order_number or self.name)
+        return action
+
     def _lgd_qc_selected_lines(self):
         """The stones QC ticked in the Products grid, still with QC."""
         self.ensure_one()
