@@ -19,5 +19,10 @@
         <function model="lgd.dispatch"
                   name="_lgd_backfill_slip_attachments"/>
 
+        <!-- Merge numbering counters that ended up sharing a prefix, and
+             renumber any document issued a duplicate. -->
+        <function model="lgd.doc.series"
+                  name="_lgd_repair_numbering"/>
+
     </data>
 </odoo>

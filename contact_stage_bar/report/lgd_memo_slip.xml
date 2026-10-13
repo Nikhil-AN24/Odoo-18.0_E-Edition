@@ -22,14 +22,16 @@
         </record>
 
         <record id="action_lgd_memo_slip" model="ir.actions.report">
-            <field name="name">Memo Slip</field>
+            <field name="name">Memo Out</field>
             <field name="model">lgd.dispatch</field>
             <field name="report_type">qweb-pdf</field>
             <field name="report_name">contact_stage_bar.report_lgd_memo_slip</field>
             <field name="report_file">contact_stage_bar.report_lgd_memo_slip</field>
             <field name="print_report_name">'Memo Slip-%s' % (object.name or '')</field>
             <field name="paperformat_id" ref="contact_stage_bar.paperformat_lgd_memo_slip"/>
-            <field name="binding_model_id" eval="False"/>
+            <!-- In the cog's Print menu on a parcel -->
+            <field name="binding_model_id" ref="contact_stage_bar.model_lgd_dispatch"/>
+            <field name="binding_type">report</field>
         </record>
 
         <template id="report_lgd_memo_slip">
@@ -68,10 +70,30 @@
                                     <div style="font-size:9.5pt;margin-top:3mm;">
                                         Goods sent on approval. This is not a tax invoice.
                                     </div>
-                                    <div style="font-size:9.5pt;margin-top:2.5mm;">
+                                    <!-- The statutory number comes first:
+                                         this slip is the delivery challan,
+                                         and ON-MO/2627/00001 is the number
+                                         GST knows it by. doc.name (DSP/…)
+                                         stays below it as Dispatch's own
+                                         internal handle - the two are not
+                                         interchangeable and both are quoted
+                                         on returns. -->
+                                    <div style="font-size:9.5pt;margin-top:2.5mm;"
+                                         t-if="doc.lgd_memo_out_number">
+                                        Memo Out No.:
+                                        <span style="color:#0F2440;font-weight:bold;"
+                                              t-esc="doc.lgd_memo_out_number"/>
+                                    </div>
+                                    <div style="font-size:9.5pt;margin-top:1.2mm;">
                                         Memo Reference:
                                         <span style="color:#0F2440;font-weight:bold;"
                                               t-esc="doc.name"/>
+                                    </div>
+                                    <div style="font-size:9.5pt;margin-top:1.2mm;"
+                                         t-if="doc.order_id.lgd_oc_number">
+                                        Order Confirmation:
+                                        <span style="color:#0F2440;font-weight:bold;"
+                                              t-esc="doc.order_id.lgd_oc_number"/>
                                     </div>
                                     <div style="font-size:9.5pt;margin-top:1.2mm;">
                                         Date:

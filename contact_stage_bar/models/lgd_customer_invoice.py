@@ -18,8 +18,9 @@ class AccountMove(models.Model):
     lgd_platform_number = fields.Char(
         string="Platform number", copy=False, index=True,
         help="The selling platform's own invoice number for the sale order "
-             "this invoice came from. It becomes the invoice number when no "
-             "other invoice in the company already carries it.")
+             "this invoice came from. Kept as a cross-reference: the "
+             "customer quoted it when they ordered, but it no longer "
+             "names the invoice.")
 
     def _lgd_sale_order(self):
         """The sale order this invoice was raised for.
@@ -71,39 +72,43 @@ class AccountMove(models.Model):
             platform = (move.lgd_platform_number
                         or order.sdk_augmont_number or '').strip()
 
-            taken = bool(platform) and bool(self.sudo().search_count([
+            number = self.env['lgd.doc.series']._lgd_next_number(
+                'tax_invoice', order.sudo())
+
+            taken = bool(self.sudo().search_count([
                 ('id', '!=', move.id),
-                ('move_type', '=', 'out_invoice'),
                 ('company_id', '=', move.company_id.id),
                 ('state', '!=', 'cancel'),
-                ('name', '=', platform),
+                ('name', '=', number),
             ]))
 
-            if platform and not taken:
-                move.sudo().write({'name': platform,
-                                   'lgd_platform_number': platform})
+            if not taken:
+                move.sudo().write({'name': number,
+                                   'lgd_platform_number': platform or False})
                 move.sudo().action_post()
+                if order:
+                    order.sudo().message_post(body=_(
+                        "Tax Invoice %(number)s issued.") % {'number': number})
                 continue
 
-            # Fall back to the JOURNAL's own sequence: clear the name so
-            # account.move's sequence mixin fills it in while posting, and
-            # pin the series it must continue so the number lands in
-            # INV/<year>/… and never inside the platform's AUG-… namespace
-            # (which is what the previous build did, where it could later
-            # collide with a genuine platform number).
             move.sudo().write({'name': False,
                                'lgd_platform_number': platform or False})
             move.sudo().with_context(
                 lgd_journal_series_prefix=move._lgd_journal_series_prefix(),
                 lgd_journal_series_move_ids=(move.id,),
             ).action_post()
-            if platform and order:
+            _logger.error(
+                "LGD numbering: Tax Invoice series offered %s, which is "
+                "already used; move %s was numbered %s from the accounting "
+                "sequence instead.", number, move.id, move.name)
+            if order:
                 order.sudo().write({'lgd_invoice_fallback_number': True})
                 order.sudo().message_post(body=_(
-                    "Invoice number %(platform)s is already used by another "
-                    "invoice, so this invoice was numbered %(name)s from the "
-                    "accounting sequence."
-                ) % {'platform': platform, 'name': move.name})
+                    "The Tax Invoice series offered %(number)s, but another "
+                    "invoice already carries it, so this invoice was "
+                    "numbered %(name)s from the accounting sequence. The "
+                    "numbering series needs checking."
+                ) % {'number': number, 'name': move.name})
         return True
 
 

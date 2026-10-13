@@ -223,6 +223,8 @@
             </xpath>
             
             <xpath expr="//field[@name='name']" position="before">
+                <field name="lgd_oc_number" readonly="1"
+                       invisible="not lgd_oc_number"/>
                 <field name="sdk_augmont_number" readonly="1"/>
                 <field name="can_edit_line_availability" invisible="1"/>
             </xpath>

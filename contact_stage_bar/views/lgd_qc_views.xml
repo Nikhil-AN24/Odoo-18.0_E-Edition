@@ -48,10 +48,14 @@
             <field name="name">lgd.qc.to.inspect.list</field>
             <field name="model">purchase.order</field>
             <field name="arch" type="xml">
+                <!-- One row per INVOICE. -->
                 <list string="To Inspect" create="0" delete="0">
                     <field name="order_number" string="Invoice Number"/>
-                    <field name="name" string="Purchase Order Number"/>
-                    <field name="partner_id" string="Vendor"/>
+                    <field name="lgd_qc_stone_count" string="Stones"/>
+                    <field name="lgd_qc_vendor_names" string="Vendors"/>
+                    <field name="lgd_qc_po_names" string="Purchase Orders" optional="show"/>
+                    <button name="action_lgd_qc_open_invoice" type="object"
+                            string="Inspect" class="btn-primary"/>
                 </list>
             </field>
         </record>
@@ -121,6 +125,55 @@
             </field>
         </record>
 
+        <!-- Every stone with QC on one invoice, whichever purchase
+             order it sits on. Pass and Fail act on the rows ticked in the
+             list itself, so a decision can still cover several stones at
+             once - and the Fail wizard still collects one reason for the whole selection. -->
+        <record id="view_lgd_qc_inspect_invoice_list" model="ir.ui.view">
+            <field name="name">lgd.qc.inspect.invoice.list</field>
+            <field name="model">purchase.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Stones to Inspect" create="0" delete="0">
+                    <header>
+                        <button name="action_lgd_pass" type="object"
+                                string="Pass selected" class="btn-success"
+                                groups="contact_stage_bar.group_lgd_quality,base.group_system"/>
+                        <button name="action_lgd_open_fail_wizard" type="object"
+                                string="Fail selected" class="btn-danger"
+                                groups="contact_stage_bar.group_lgd_quality,base.group_system"/>
+                    </header>
+                    <field name="lgd_invoice_number" string="Invoice Number" optional="hide"/>
+                    <field name="order_id" string="Purchase Order" readonly="1"
+                           options="{'no_open': True}"/>
+                    <field name="partner_id" string="Vendor" readonly="1"
+                           options="{'no_open': True}"/>
+                    <field name="product_id" string="Product" readonly="1"
+                           options="{'no_open': True}"/>
+                    <button name="action_lgd_open_product_info"
+                            type="object" icon="fa-info-circle"
+                            title="General Information"
+                            invisible="not product_id"/>
+                    <field name="lgd_note_order_specific"
+                           string="Order Specific Notes" readonly="1" optional="show"/>
+                    <field name="lgd_note_order_item"
+                           string="General Order Notes" readonly="1" optional="hide"/>
+                    <field name="lgd_note_qc_requirements"
+                           string="Default QC Requirements" readonly="1" optional="show"/>
+                    <field name="lgd_stage" string="Stage" readonly="1"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="action_lgd_qc_inspect_invoice" model="ir.actions.act_window">
+            <field name="name">Stones to Inspect</field>
+            <field name="res_model">purchase.order.line</field>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_lgd_qc_inspect_invoice_list"/>
+            <!-- Replaced by action_lgd_qc_open_invoice with the invoice's
+                 own domain; this one is the safe fallback if the action is ever opened directly. -->
+            <field name="domain">[('lgd_stage', '=', 'in_qc')]</field>
+        </record>
+
         <record id="view_lgd_qc_order_search" model="ir.ui.view">
             <field name="name">lgd.qc.order.search</field>
             <field name="model">purchase.order</field>
@@ -142,8 +195,17 @@
         <record id="action_lgd_qc_to_inspect" model="ir.actions.act_window">
             <field name="name">To Inspect</field>
             <field name="res_model">purchase.order</field>
-            <field name="view_mode">list,form</field>
-            <field name="domain">[('order_line.lgd_stage', '=', 'in_qc')]</field>
+            <!-- List only. A row stands for an INVOICE, and the
+                 purchase-order form can only ever show one vendor's share
+                 of it - clicking through to it is how a stone on a sibling
+                 purchase order got missed. The Inspect button is the only
+                 way in, and it opens every stone on the invoice. -->
+            <field name="view_mode">list</field>
+            <!-- lgd_qc_invoice_primary keeps exactly one purchase order
+                 per invoice, so an invoice bought from three vendors is one
+                 row here rather than three. The Inspect button on the row
+                 opens every stone on the invoice, across all of them. -->
+            <field name="domain">[('order_line.lgd_stage', '=', 'in_qc'), ('lgd_qc_invoice_primary', '=', True)]</field>
             <!-- Set, never omitted: this action used to live on
                  purchase.order.line, and an ir.actions.act_window update keeps
                  whatever the XML leaves out. Omitting these two left a
@@ -151,11 +213,13 @@
                  lgd_invoice_number bound to a purchase.order action, which is
                  what raised "Unknown field lgd_certificate". -->
             <field name="search_view_id" ref="view_lgd_qc_order_search"/>
-            <!-- Grouped by invoice, not left flat: QC inspects an invoice at a
-                 time, and one invoice can carry more than one purchase order.
-                 Flat, those POs sat in separate rows with nothing tying them
-                 together. The filter stays removable from the search bar. -->
-            <field name="context">{'search_default_lgd_group_invoice': 1}</field>
+            <!-- No default grouping any more. Grouping by invoice was the
+                 earlier attempt at this problem: it put the several purchase
+                 orders of one invoice under a shared header, but they were
+                 still several rows. Now that the list IS one row per
+                 invoice, a group per row would just add an empty level. The
+                 filter stays available in the search bar. -->
+            <field name="context">{}</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">Nothing to inspect.</p>
                 <p>Confirm receipt of a stone and its invoice appears here.</p>
@@ -169,12 +233,10 @@
             <field name="act_window_id" ref="action_lgd_qc_to_inspect"/>
         </record>
 
-        <record id="action_lgd_qc_to_inspect_form_view" model="ir.actions.act_window.view">
-            <field name="sequence">2</field>
-            <field name="view_mode">form</field>
-            <field name="view_id" ref="view_lgd_qc_inspection_form"/>
-            <field name="act_window_id" ref="action_lgd_qc_to_inspect"/>
-        </record>
+        <!-- The purchase-order form binding is gone on purpose; see the
+             note on the action above. view_lgd_qc_inspection_form itself is
+             kept - it is still the QC form for a purchase order opened on
+             its own. -->
 
         <!-- Reason list, Configuration only. -->
         <record id="view_lgd_qc_fail_reason_list" model="ir.ui.view">
