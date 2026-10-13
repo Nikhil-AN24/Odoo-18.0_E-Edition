@@ -99,9 +99,10 @@
                         <button name="action_lgd_re_dispatch" type="object"
                                 string="Re - Dispatched" class="btn-secondary"
                                 invisible="not lgd_has_returned_lines"/>
+
                         <button name="action_lgd_complete_order" type="object"
                                 string="Complete order" class="btn-primary"
-                                invisible="state != 'delivered'"/>
+                                invisible="state not in ('delivered', 'memo_closed')"/>
                         <field name="lgd_has_returned_lines" invisible="1"/>
                         <field name="lgd_has_returned_from_memo" invisible="1"/>
                         <button name="action_lgd_hand_over" type="object"
@@ -110,8 +111,7 @@
                         <button name="action_lgd_open_split_wizard" type="object"
                                 string="Split" class="btn-secondary"
                                 invisible="state != 'draft'"/>
-                        <!-- Only a memo parcel that has actually
-                             left has a return to record. -->
+                        <!-- Only a memo parcel that has actually left has a return to record. -->
                         <button name="action_lgd_open_memo_return" type="object"
                                 string="Record memo return" class="btn-primary"
                                 invisible="dispatch_type != 'memo' or state not in ('handed_over', 'delivered')"/>

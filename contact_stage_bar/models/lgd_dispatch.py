@@ -353,16 +353,16 @@ class LgdDispatch(models.Model):
             # parcel left with a packing list and no invoice.
             # No-op when it is not ready, or when an invoice already exists.
             order._lgd_try_create_invoice()
-            draft = order._lgd_open_draft_invoice()
+            draft = order._lgd_narrow_draft_to_parcel(self)
             if draft:
-                # First parcel on a ready order: this posts it.
                 draft._lgd_post_with_platform_number()
                 invoice = draft
             else:
-                # Either the invoice is already posted (a later parcel on the
-                # same order — it still prints a copy) or the order is not
-                # ready yet and this parcel travels with a packing list only.
-                invoice = order.invoice_ids.filtered(
+                mine = order.invoice_ids.filtered(
+                    lambda move: move.move_type == 'out_invoice'
+                    and move.state == 'posted'
+                    and (move.invoice_line_ids.sale_line_ids & self.line_ids))
+                invoice = mine[:1] or order.invoice_ids.filtered(
                     lambda move: move.move_type == 'out_invoice'
                     and move.state == 'posted')[:1]
 
@@ -627,13 +627,14 @@ class LgdDispatch(models.Model):
         self._lgd_check_group()
         self.ensure_one()
         problems = []
-        if self.state != 'delivered':
+        if self.state not in ('delivered', 'memo_closed'):
             problems.append(_("Confirm delivery before completing the order."))
         order = self.order_id.sudo()
         if not order:
             problems.append(_("This parcel is not linked to an order."))
         else:
-            settled = ('delivered', 'cancelled', 'replaced', 'order_completed')
+            settled = ('delivered', 'cancelled', 'replaced',
+                       'order_completed', 'memo_returned')
             outstanding = order.order_line.filtered(
                 lambda l: l.availability_status not in settled)
             if outstanding:

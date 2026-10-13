@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="action_report_augmont_move_tax_invoice" model="ir.actions.report">
+        <field name="name">Tax Invoice</field>
+        <field name="model">account.move</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">contact_stage_bar.report_augmont_move_tax_invoice</field>
+        <field name="report_file">contact_stage_bar.report_augmont_move_tax_invoice</field>
+        <field name="print_report_name">'Tax Invoice - ' + (object.name or '').replace('/', '_')</field>
+        <field name="binding_model_id" ref="account.model_account_move"/>
+        <field name="binding_type">report</field>
+        <field name="paperformat_id" ref="contact_stage_bar.paperformat_augmont_tax_invoice"/>
+    </record>
+
+    <template id="report_augmont_move_tax_invoice">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+
+                <!-- Only the product lines. An invoice also carries its tax
+                     lines, its receivable line and any section or note; none
+                     of those is a stone. -->
+                <t t-set="lines"
+                   t-value="doc.invoice_line_ids.filtered(lambda l: l.display_type == 'product')"/>
+
+                <t t-set="stone_kinds" t-value="set(lines.mapped('lgd_stone_type'))"/>
+                <t t-set="stone_caption"
+                   t-value="' / '.join([('LAB GROWN CUT &amp; POLISHED DIAMOND' if k == 'lab_grown' else 'NATURAL DIAMOND') for k in ['lab_grown', 'natural'] if k in stone_kinds]) or 'DIAMOND'"/>
+                <t t-set="hsn_by_kind"
+                   t-value="{'natural': '71023910', 'lab_grown': '71049120'}"/>
+                <t t-set="origin_declarations"
+                   t-value="[('We hereby declare that the diamonds herein invoiced are Laboratory Grown Diamonds / Man-Made Diamonds.' if k == 'lab_grown' else 'We hereby declare that the diamonds herein invoiced are exclusively of natural origin based on personal knowledge.') for k in ['natural', 'lab_grown'] if k in stone_kinds]"/>
+
+                <t t-set="company" t-value="doc.company_id"/>
+                <t t-set="customer" t-value="doc.partner_id"/>
+                <t t-set="commercial" t-value="customer.commercial_partner_id"/>
+                <t t-set="sym" t-value="doc.currency_id.symbol or ''"/>
+
+                <!-- Totals come straight off the move: they are the posted
+                     figures, so they foot by construction. -->
+                <t t-set="amt_untaxed" t-value="doc.amount_untaxed"/>
+                <t t-set="amt_tax" t-value="doc.amount_tax"/>
+                <t t-set="amt_total" t-value="doc.amount_total"/>
+
+                <!-- The GST split is READ from the move's own tax lines
+                     rather than inferred from a treatment flag. The move
+                     knows which taxes it actually applied; guessing from
+                     the customer's state would print a split the ledger
+                     does not agree with - and on an inter-state invoice
+                     that is exactly what someone needs to see. -->
+                <t t-set="tax_lines" t-value="doc.line_ids.filtered(lambda l: l.tax_line_id)"/>
+                <t t-set="cgst" t-value="-sum(tax_lines.filtered(lambda l: 'CGST' in (l.tax_line_id.name or '').upper()).mapped('balance'))"/>
+                <t t-set="sgst" t-value="-sum(tax_lines.filtered(lambda l: 'SGST' in (l.tax_line_id.name or '').upper()).mapped('balance'))"/>
+                <t t-set="igst" t-value="-sum(tax_lines.filtered(lambda l: 'IGST' in (l.tax_line_id.name or '').upper()).mapped('balance'))"/>
+                <t t-set="intra" t-value="bool(cgst or sgst)"/>
+                <t t-set="tax_pct"
+                   t-value="round(amt_tax / amt_untaxed * 100, 2) if amt_untaxed else 0.0"/>
+                <t t-set="half_pct" t-value="round(tax_pct / 2.0, 2)"/>
+                <t t-set="round_off" t-value="amt_total - amt_untaxed - amt_tax"/>
+
+                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(amt_total)"/>
+                <t t-set="words"
+                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','rupee','rupees','paisa','paise','only','zero')]).title() + ' Only'"/>
+
+                <!-- The running bands, shared with the slip. -->
+                <t t-set="aug_doc_label">Tax Invoice</t>
+                <t t-set="aug_doc_number" t-value="doc.name"/>
+                <t t-set="aug_sale_order" t-value="lines.sale_line_ids.order_id[:1]"/>
+                <t t-set="aug_doc_ref" t-value="aug_sale_order.lgd_oc_number or aug_sale_order.sdk_augmont_number or False"/>
+                <t t-set="aug_doc_date" t-value="doc.invoice_date or doc.date"/>
+                <t t-set="aug_payment_terms" t-value="doc.invoice_payment_term_id.name"/>
+                <t t-call="contact_stage_bar.report_augmont_band_header"/>
+                <t t-call="contact_stage_bar.report_augmont_band_footer"/>
+
+<div class="article aug-sheet" t-att-data-oe-model="doc._name" t-att-data-oe-id="doc.id">
+                    <t t-call="contact_stage_bar.report_augmont_styles"/>
+                    <t t-call="contact_stage_bar.report_augmont_styles_page"/>
+
+                    <div class="aug">
+                        <div class="aug-top">
+                            <!-- ══ FROM / BILL TO  -->
+                            <table style="margin-top:23pt;">
+                                <tr>
+                                    <td style="width:46.67%;">
+                                        <div class="lbl">From</div>
+                                        <div class="rule" style="margin-top:7pt;"/>
+                                        <div style="margin-top:12pt; padding-bottom:6pt;">
+                                            <div style="color:#191C1E; font-size:11.7pt; font-weight:700; text-transform:uppercase; line-height:17.6pt;">ANIRATH OVERSEAS LIMITED</div>
+                                        </div>
+                                        <div>
+                                            <div><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">GSTIN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">27AADCA8955F1Z2</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">PAN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">AADCA8955F</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">State: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">Maharashtra</span></div>
+                                        </div>
+                                    </td>
+                                    <td style="width:6.66%;"/>
+                                    <td style="width:46.67%;">
+
+                                        <!-- A Tax Invoice bills to its own shipping address. -->
+                                        
+                                        <t t-set="shipping" t-value="doc.partner_shipping_id or customer"/>
+                                        <div class="lbl">Bill To</div>
+                                        <div class="rule" style="margin-top:7pt;"/>
+                                        <div class="party" style="margin-top:12pt;">
+                                            <span t-field="commercial.name"/>
+                                        </div>
+                                        <div style="margin-top:8pt;">
+                                            <div t-if="customer.id != commercial.id">
+                                                <span class="lab">Contact: </span><span class="val" t-field="customer.name"/>
+                                            </div>
+
+                                            <div t-if="shipping.lgd_address_label or (shipping.id != commercial.id and shipping.name)">
+                                                <span class="val" t-esc="shipping.lgd_address_label or shipping.name"/>
+                                            </div>
+                                            <div class="addr" t-if="shipping.street or shipping.city or shipping.zip">
+                                                <div t-if="shipping.street"><span t-field="shipping.street"/></div>
+                                                <div t-if="shipping.street2"><span t-field="shipping.street2"/></div>
+                                                <div t-if="shipping.city or shipping.zip">
+                                                    <span t-esc="shipping.city or ''"/><t t-if="shipping.city and shipping.zip"> - </t><span t-esc="shipping.zip or ''"/>
+                                                </div>
+                                            </div>
+                                            <div><span class="lab">GSTIN: </span><span class="val" t-esc="customer.vat or ''"/></div>
+                                            <div><span class="lab">PAN: </span><span class="val" t-esc="customer.l10n_in_pan or ''"/></div>
+                                            <!-- The destination's state: it
+                                                 is the place of supply, and it
+                                                 is what the IGST/CGST split
+                                                 on this invoice follows. -->
+                                            <div><span class="lab">State: </span><span class="val" t-esc="(shipping.state_id or customer.state_id).name if (shipping.state_id or customer.state_id) else ''"/></div>
+                                            <!-- Last, and set off by a blank
+                                                 line: the tax identifiers
+                                                 (GSTIN / PAN / State) read as
+                                                 one group, and the number to
+                                                 call is not one of them.
+                                                 A delivery address may not
+                                                 hold person details, so it
+                                                 usually has no number of its
+                                                 own - fall through to the
+                                                 account's. -->
+                                            <div t-if="shipping.phone or shipping.mobile or commercial.phone or commercial.mobile or customer.phone or customer.mobile"
+                                                 style="margin-top:13.2pt;">
+                                                <span class="lab">CONTACT PH: </span><span class="val" t-esc="shipping.phone or shipping.mobile or commercial.phone or commercial.mobile or customer.phone or customer.mobile"/>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- ══ LINE ITEMS ══════════════════════════════ -->
+                            <table style="margin-top:40pt;">
+                                <tr>
+                                    <!-- The caption names what is actually
+                                         on this slip, read from the lines
+                                         being printed rather than from the
+                                         order - so a parcel holding only
+                                         natural stones says so, even on an
+                                         order that also carries lab grown.
+                                         A mixed slip names both rather than
+                                         picking one and being wrong.
+                                         Driven by stone_type, which is the
+                                         same field "Stone Lists" is built
+                                         from, so the two can never
+                                         disagree. Melee follows its own
+                                         stone type: it is still a natural
+                                         or a lab grown diamond. -->
+                                    <td class="sect" style="vertical-align:bottom;"><span t-esc="stone_caption"/></td>
+                                    <td style="width:30%; vertical-align:bottom;">
+                                        <div class="lbl r">Diamond Details</div>
+                                        <div class="rule" style="margin-top:6pt;"/>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div class="rule" style="margin-top:14pt;"/>
+
+                            <!-- Column widths put each anchor on its design x:
+                                 Cert L 0%, SHAPE L 16.85%, COL C 28.94%,
+                                 CLA C 37.36%, HSN C 50%, QTY R 66.30%,
+                                 CTS R 74.72%, RATE R 83.15%, AMOUNT R 100%. -->
+                            <table class="items" style="margin-top:15pt;">
+                                <thead>
+                                    <tr>
+                                        <th style="width:16.85%; text-align:left; letter-spacing:0.15pt; text-transform:none;">Certificate No.</th>
+                                        <th style="width:7.15%;  text-align:left;">SHAPE</th>
+                                        <th style="width:9.90%;  text-align:center;">COL</th>
+                                        <th style="width:6.90%;  text-align:center;">CLA</th>
+                                        <th style="width:18.40%; text-align:center;">HSN/SAC</th>
+                                        <th style="width:7.10%;  text-align:right;">QTY</th>
+                                        <th style="width:8.42%;  text-align:right;">CTS</th>
+                                        <th style="width:8.43%;  text-align:right;">PER. CT RATE</th>
+                                        <th style="width:16.85%; text-align:right;">AMOUNT</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Per the design CSS: certificate, CTS and
+                                         AMOUNT are w500; shape/col/cla/qty/rate are
+                                         w400; HSN is w400 AND muted #5F5E5E. -->
+                                    <tr t-foreach="lines" t-as="line">
+                                        <td style="font-weight:500;"><span t-esc="line.lgd_certificate or ''"/></td>
+                                        <td><span t-esc="(line.lgd_shapes or '').upper()"/></td>
+                                        <td class="c"><span t-esc="line.lgd_color or ''"/></td>
+                                        <td class="c"><span t-esc="line.lgd_clarity or ''"/></td>
+                                        <td class="c" style="color:#5F5E5E;"><span t-esc="hsn_by_kind.get(line.lgd_stone_type) or line.product_id.l10n_in_hsn_code or ''"/></td>
+                                        <td class="r"><span t-esc="'%.2f' % line.quantity"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="line.lgd_carat_weight or ''"/></td>
+                                        <!-- Sales Price/carat, not price_unit. price_unit is the
+                                             price per STONE, so the table contradicted itself:
+                                             RATE x CTS did not equal AMOUNT (306 x 3 != 306).
+                                             Per-carat makes the row read correctly
+                                             (102 x 3 = 306).
+                                             Falls back to price_unit when there is no
+                                             per-carat figure - sales_price_per_carat comes
+                                             from the Customer RFQ, so a website order has
+                                             none and would otherwise print 0.
+                                             Two decimals, because a per-carat rate is
+                                             commonly not a whole number. -->
+                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.lgd_sales_price_per_carat or line.price_unit)"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.price_subtotal)"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <div class="rule"/>
+
+                            <!-- ══ WORDS + TOTALS ══════════════════════════ -->
+                            <table style="margin-top:30pt;">
+                                <tr>
+                                    <td style="width:66.67%; padding-right:30pt;">
+                                        <div class="lbl">Amount in Words</div>
+                                        <div class="words" style="margin-top:11pt;"><span t-esc="words"/></div>
+                                    </td>
+                                    <td style="width:33.33%;">
+                                        <table class="tot">
+                                            <tr>
+                                                <td class="lab">Subtotal</td>
+                                                <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(amt_untaxed)"/></td>
+                                            </tr>
+                                            <t t-if="intra">
+                                                <tr>
+                                                    <td class="lab">CGST (<span t-esc="'%g' % half_pct"/>%)</td>
+                                                    <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(cgst)"/></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="lab">SGST (<span t-esc="'%g' % half_pct"/>%)</td>
+                                                    <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(sgst)"/></td>
+                                                </tr>
+                                            </t>
+                                            <tr t-else="">
+                                                <td class="lab">IGST (<span t-esc="'%g' % tax_pct"/>%)</td>
+                                                <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(igst)"/></td>
+                                            </tr>
+                                            <tr t-if="abs(round_off) &gt;= 0.005">
+                                                <td class="lab">Round Off</td>
+                                                <td class="r val">
+                                                    <t t-if="round_off &lt; 0">-</t><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(abs(round_off))"/>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="2" style="padding:0;"><div class="rule" style="margin-top:8pt;"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="lbl-gold" style="padding-top:16pt; vertical-align:middle;">Total Payable</td>
+                                                <td class="r num-lg" style="padding-top:12pt;">
+                                                    <span t-esc="sym"/><span t-esc="'{:,.2f}'.format(amt_total)"/>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div class="aug-bottom">
+                            <div class="rule"/>
+
+                            <!-- ══ DECLARATION ═════════════════════════════ -->
+                            <!-- Full width, not a narrow right-hand column:
+                                 six paragraphs of statutory text in a 47%
+                                 column would have run to twice the page
+                                 depth and pushed the signatory off the
+                                 sheet.
+                                 The old "Diamond Authenticity & Compliance"
+                                 blurb that sat under Bank Details is gone -
+                                 it said these words in summary, and it said
+                                 "Laboratory Grown Diamond" as a hard-coded
+                                 string, so it was flatly wrong on a natural
+                                 invoice. The old four-line Declaration is
+                                 gone with it; Mumbai Jurisdiction is the
+                                 only part of it that survives, and it is
+                                 the last paragraph below. -->
+                            <div class="lbl-sec" style="margin-top:26pt;">Declaration</div>
+                            <div class="rule" style="margin-top:6pt; width:56pt;"/>
+                            <div class="prose" style="margin-top:10pt; text-align:justify;">
+                                <div>The diamonds herein invoiced have been purchased from legitimate sources not involved in funding conflict, in compliance with the United Nations resolutions and corresponding national laws. The seller hereby guarantees that these diamonds are conflict free and confirms adherence to the WDC SoW guidelines.</div>
+                                <div style="margin-top:7pt;">To the best of our knowledge and/or written assurances from our suppliers, we state that diamonds herein invoiced have not been obtained in violation of applicable National Laws and/or sanctions by the U.S. Department of Treasury's Office of Foreign Assets Control (OFAC) and have not originated from the Marange Resources of Zimbabwe.</div>
+                                <!-- The origin statement, which is the ONLY
+                                     paragraph that differs between natural
+                                     and lab grown. A slip carrying both
+                                     kinds prints both sentences: neither one
+                                     alone would be true of the whole
+                                     invoice, and statutory wording is not
+                                     ours to merge. -->
+                                <div t-foreach="origin_declarations" t-as="sentence"
+                                     style="margin-top:7pt;" t-esc="sentence"/>
+                                <div style="margin-top:7pt;">The acceptance of goods herein invoiced will be as per WFDB guidelines.</div>
+                                <div style="margin-top:7pt;">No E-Way Bill is required to be generated as the goods covered under this invoice are exempted as per Sr. No. 4/5 to the Annexure to Rule 138(14) of the CGST Rules, 2017.</div>
+                                <div style="margin-top:7pt;">Subject to Mumbai Jurisdiction.</div>
+                            </div>
+
+                            <!-- ══ BANK / SIGNATORY ════════════════════════ -->
+                            <table style="margin-top:22pt;">
+                                <tr>
+                                    <td style="width:46.67%;">
+                                        <div class="lbl-sec">Bank Details</div>
+                                        <div class="rule" style="margin-top:6pt; width:56pt;"/>
+                                        <div style="margin-top:1pt; padding-bottom:24pt; font-size:8pt; line-height:10.2pt;">
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">Bank: </span><span style="color:#191C1E; font-weight:500;">HDFC BANK LTD</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C: </span><span style="color:#191C1E; font-weight:500;">50200114382193</span></div>
+                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">IFSC: </span><span style="color:#191C1E; font-weight:500;">HDFC0000542</span></div>
+                                        </div>
+
+                                        <!-- The at-a-glance summary of the
+                                             declaration above. It is back,
+                                             but the first line is no longer
+                                             the hard-coded string
+                                             "Laboratory Grown Diamond" -
+                                             that printed on natural
+                                             invoices too, which is what it
+                                             was removed for. It now names
+                                             whatever the line items
+                                             actually are, from the same
+                                             stone_caption the table heading
+                                             uses, so the two can never
+                                             disagree. -->
+                                        <div class="lbl-sec" style="margin-top:22pt;">Diamond Authenticity &amp; Compliance</div>
+                                        <div class="rule" style="margin-top:6pt; width:162pt;"/>
+                                        <div class="prose" style="margin-top:8pt;">
+                                            <span t-esc="stone_caption.title()"/>. Conflict-Free Declaration.
+                                            Guarantees are based on personal knowledge and written
+                                            guarantees from suppliers. WDC SoW. WFDB Guidelines
+                                            compliant.
+                                        </div>
+                                    </td>
+                                    <td style="width:6.66%;"/>
+                                    <td style="width:46.67%;">
+                                        <div style="margin-top:34pt;">
+                                            <!-- The signing area. The rule is
+                                                 the line someone signs ON, so
+                                                 it needs clear space ABOVE it
+                                                 for a signature and a round
+                                                 stamp - roughly 25mm, which is
+                                                 what a standard company stamp
+                                                 needs. Before this the rule
+                                                 sat directly under the block
+                                                 above it and there was
+                                                 nowhere to sign. -->
+                                            <div style="height:72pt;"/>
+                                            <table>
+                                                <tr><td style="width:44%;"/><td><div class="rule"/></td></tr>
+                                            </table>
+                                            <!-- design: signatory and company are both
+                                                 #5F5E5E; the name is w600, not ink. -->
+                                            <div class="sm r" style="margin-top:8pt; color:#5F5E5E; font-weight:400; text-transform:uppercase;">Authorised Signatory</div>
+                                            <div class="sm r" style="color:#5F5E5E;">
+                                                <span style="font-weight:400;">For </span><span style="font-weight:600;">Anirath Overseas Limited</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+
+</odoo>

@@ -111,6 +111,46 @@ class AccountMove(models.Model):
                 ) % {'number': number, 'name': move.name})
         return True
 
+class AccountMoveSend(models.AbstractModel):
+    _inherit = 'account.move.send'
+
+    @api.model
+    def _get_default_pdf_report_id(self, move):
+        if move.move_type == 'out_invoice':
+            chosen = move.commercial_partner_id.with_company(
+                move.company_id).invoice_template_pdf_report_id
+            if not chosen:
+                report = self.env.ref(
+                    'contact_stage_bar.action_report_augmont_move_tax_invoice',
+                    raise_if_not_found=False)
+                if report:
+                    return report
+        return super()._get_default_pdf_report_id(move)
+
+class AccountMoveLine(models.Model):
+    _inherit = 'account.move.line'
+
+    lgd_certificate = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_shapes = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_color = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_clarity = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_carat_weight = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_stone_type = fields.Char(compute='_compute_lgd_stone_specs')
+    lgd_sales_price_per_carat = fields.Float(compute='_compute_lgd_stone_specs')
+
+    @api.depends('sale_line_ids')
+    def _compute_lgd_stone_specs(self):
+        for move_line in self:
+            sale_line = move_line.sale_line_ids[:1]
+            move_line.lgd_certificate = sale_line.certificate or False
+            move_line.lgd_shapes = sale_line.shapes or False
+            move_line.lgd_color = sale_line.color or False
+            move_line.lgd_clarity = sale_line.clarity or False
+            move_line.lgd_carat_weight = sale_line.carat_weight or False
+            move_line.lgd_stone_type = sale_line.stone_type or False
+            move_line.lgd_sales_price_per_carat = \
+                sale_line.sales_price_per_carat or 0.0
+
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
@@ -240,6 +280,32 @@ class SaleOrder(models.Model):
                 order._lgd_auto_invoiceable_lines())
         return prepared
 
+    # ── A parcel is invoiced for what it carries ─────────────────
+    def _lgd_narrow_draft_to_parcel(self, parcel):
+
+        self.ensure_one()
+        draft = self._lgd_open_draft_invoice()
+        if not draft:
+            return draft
+        going = parcel.sudo().line_ids
+        surplus = draft.invoice_line_ids.filtered(
+            lambda aml: aml.sale_line_ids and not (aml.sale_line_ids & going))
+        if surplus:
+            kept = len(draft.invoice_line_ids) - len(surplus)
+            draft.sudo().write({
+                'invoice_line_ids': [Command.delete(aml.id) for aml in surplus],
+            })
+            self.sudo().message_post(body=_(
+                "Invoice narrowed to %(parcel)s: %(kept)s stone(s) billed, "
+                "%(held)s held back for a later parcel."
+            ) % {'parcel': parcel.name, 'kept': kept, 'held': len(surplus)})
+        if not draft.invoice_line_ids.filtered(
+                lambda aml: aml.display_type == 'product'):
+            # Nothing on this parcel was invoiceable after all.
+            draft.sudo().unlink()
+            return self.env['account.move'].sudo().browse()
+        return draft.sudo()
+
     # ── A memo is not a sale: take its stones off the draft ──────
     def _lgd_withdraw_memo_lines_from_draft(self):
         """Remove from the order's open draft invoice any stone that has
@@ -368,8 +434,10 @@ class SaleOrderLine(models.Model):
                 "These stones are already on a posted customer invoice, so "
                 "they cannot be moved onto a memo parcel:\n%s\n\n"
                 "A memo stone may come back, and nothing is ever invoiced "
-                "for a returned stone. Credit the invoice first, or send "
-                "these stones out as the sale they already are."
+                "for a returned stone. Reset that invoice to draft first (a "
+                "credit note will NOT clear this - it is a separate "
+                "document and leaves the invoice posted), or send these "
+                "stones out as the sale they already are."
             ) % "\n".join(found))
 
     def write(self, vals):
@@ -414,8 +482,10 @@ class LgdDispatch(models.Model):
                 "These stones are already on a posted customer invoice, so "
                 "this parcel cannot go out on memo:\n%s\n\n"
                 "A memo stone may come back, and nothing is ever invoiced "
-                "for a returned stone. Credit the invoice first, or hand "
-                "this parcel over as the sale it already is."
+                "for a returned stone. Reset that invoice to draft first (a "
+                "credit note will NOT clear this - it is a separate "
+                "document and leaves the invoice posted), or hand this "
+                "parcel over as the sale it already is."
             ) % "\n".join(found))
         return True
 
