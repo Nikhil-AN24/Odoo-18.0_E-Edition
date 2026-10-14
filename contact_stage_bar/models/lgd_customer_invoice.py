@@ -22,6 +22,56 @@ class AccountMove(models.Model):
              "customer quoted it when they ordered, but it no longer "
              "names the invoice.")
 
+    # ── Number series, for grouping the Invoices list ───────────────
+    _LGD_UNSERIESED_LABEL = 'Platform number'
+
+    lgd_number_series = fields.Char(
+        string="Number Series", compute='_compute_lgd_number_series',
+        store=True, readonly=True, index='btree_not_null',
+        help="Everything in the invoice number before the running figure - "
+             "OF-TI/2627, INV/26-27 and so on. Group the Invoices list by "
+             "it to see each series on its own.")
+
+    @api.depends('name')
+    def _compute_lgd_number_series(self):
+        for move in self:
+            name = (move.name or '').strip()
+            if not name or name == '/':
+                move.lgd_number_series = False
+            elif '/' in name:
+                move.lgd_number_series = name.rsplit('/', 1)[0]
+            else:
+                move.lgd_number_series = self._LGD_UNSERIESED_LABEL
+
+    # ── Which order this invoice bills ──────────────────────────────
+    # Shown on the invoice form so an accountant looking at OF-TI/… can
+    # see at a glance which order it belongs to. The Sale Orders smart
+    # button already links there, but a button is something you have to
+    # press; these are readable from the form and, being stored, are
+    # searchable and groupable in the Invoices list.
+    lgd_sale_order_id = fields.Many2one(
+        'sale.order', string="Sale Order", copy=False, readonly=True,
+        compute='_compute_lgd_sale_order_id', store=True, index='btree_not_null')
+    lgd_oc_number = fields.Char(
+        string="Order Confirmation No.", readonly=True, store=True,
+        related='lgd_sale_order_id.lgd_oc_number')
+
+    lgd_order_invoice_number = fields.Char(
+        string="Order Ref", readonly=True, store=True,
+        related='lgd_sale_order_id.sdk_augmont_number',
+        help="The AUG-OFF-… number of the order this invoice bills. Taken "
+             "from the order rather than from lgd_platform_number: that "
+             "field is only written when an invoice is posted through "
+             "dispatch, so it is empty on drafts and on anything posted "
+             "from Accounting - which is most of the list.")
+
+    @api.depends('invoice_line_ids.sale_line_ids')
+    def _compute_lgd_sale_order_id(self):
+        for move in self:
+            # Same resolution as _lgd_sale_order(): through the lines, so
+            # it cannot go stale or disagree with order.invoice_ids.
+            move.lgd_sale_order_id = move._lgd_sale_order()
+
     def _lgd_sale_order(self):
         """The sale order this invoice was raised for.
         Resolved through ``sale_line_ids`` rather than a stored link, so it
@@ -110,6 +160,56 @@ class AccountMove(models.Model):
                     "numbering series needs checking."
                 ) % {'number': number, 'name': move.name})
         return True
+
+class ResCompany(models.Model):
+    _inherit = 'res.company'
+
+    def lgd_address_lines(self):
+        self.ensure_one()
+        locality = ", ".join(p for p in (
+            self.city, self.state_id.name, self.zip) if p)
+        return [p for p in (self.street, self.street2, locality,
+                            self.country_id.name) if p]
+
+    def lgd_address_one_line(self):
+        """The same address on one line, for the page footer."""
+        self.ensure_one()
+        return ", ".join(self.lgd_address_lines())
+
+    def lgd_bank_account(self):
+        self.ensure_one()
+        return self.partner_id.bank_ids[:1]
+
+class ResCurrency(models.Model):
+    _inherit = 'res.currency'
+
+    def lgd_amount_in_words(self, amount):
+        """Amount in words, in the house format."""
+        self.ensure_one()
+        try:
+            from num2words import num2words
+        except ImportError:  # pragma: no cover - num2words ships with Odoo
+            return self.amount_to_text(amount)
+
+        def spell(value):
+            # num2words gives "One Hundred And Thirty Thousand,
+            # Six Hundred And Fifty-Three"; the house format wants none
+            # of that punctuation and none of those interior "and"s.
+            raw = num2words(int(value), lang='en').replace('-', ' ').replace(',', ' ')
+            return ' '.join(w for w in raw.split() if w.lower() != 'and').title()
+
+        rounded = self.round(amount)
+        units = int(rounded)
+        # Rounded before scaling: 0.1 + 0.2 arithmetic would otherwise
+        # turn 80 cents into 79.
+        subunits = int(round((rounded - units) * 10 ** self.decimal_places))
+        unit_label = self.currency_unit_label or ''
+        subunit_label = self.currency_subunit_label or ''
+
+        words = '%s %s' % (unit_label, spell(units)) if unit_label else spell(units)
+        if subunits:
+            words = '%s And %s %s' % (words, spell(subunits), subunit_label)
+        return '%s Only' % words.strip()
 
 class AccountMoveSend(models.AbstractModel):
     _inherit = 'account.move.send'

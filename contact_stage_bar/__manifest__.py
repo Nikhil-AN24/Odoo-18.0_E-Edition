@@ -68,6 +68,7 @@
         "views/lgd_dispatch_menus.xml",
         "views/lgd_doc_series_views.xml",
         "report/sale_report_inherit.xml",
+        "views/account_move_views.xml",
         "report/augmont_tax_invoice.xml",
         "report/augmont_move_tax_invoice.xml",
         'data/augmont_retry_cron.xml',

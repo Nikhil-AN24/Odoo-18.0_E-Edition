@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Which order an invoice bills, on the invoice itself.
+
+         A Tax Invoice carries OF-TI/2627/00008 and nothing else that ties
+         it to the order behind it - the Sale Orders smart button links
+         there, but a button has to be pressed and tells you nothing until
+         you do. These three read straight off the form, and because they
+         are stored they can also be searched and grouped in the Invoices
+         list. -->
+    <record id="view_move_form_lgd_order_refs" model="ir.ui.view">
+        <field name="name">account.move.form.lgd.order.refs</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <!-- The right-hand header column, next to Invoice Date and
+                 Journal: this is document metadata, not customer data. -->
+            <xpath expr="//group[@id='header_right_group']" position="inside">
+                <field name="lgd_oc_number"
+                       string="Order Confirmation No."
+                       invisible="not lgd_oc_number"/>
+                <field name="lgd_order_invoice_number"
+                       string="Order Ref"
+                       invisible="not lgd_order_invoice_number"/>
+                <field name="lgd_sale_order_id"
+                       string="Sale Order"
+                       options="{'no_create': True, 'no_open': False}"
+                       invisible="not lgd_sale_order_id"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- The same three on the Invoices list, as optional columns: off by
+         default so nobody's list changes shape, one click to add. -->
+    <record id="view_out_invoice_tree_lgd_order_refs" model="ir.ui.view">
+        <field name="name">account.move.list.lgd.order.refs</field>
+        <field name="model">account.move</field>
+        <!-- Inherits the BASE invoice list, not the out_invoice variant:
+             view_out_invoice_tree carries no fields of its own (it only
+             re-styles the parent), and invoice_date is declared twice in
+             the parent, so the anchor has to be something that appears
+             exactly once. `ref` does. -->
+        <field name="inherit_id" ref="account.view_invoice_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='ref']" position="after">
+                <field name="lgd_oc_number" string="Order Confirmation No." optional="hide"/>
+                <field name="lgd_order_invoice_number" string="Order Ref" optional="show"/>
+                <field name="lgd_sale_order_id" string="Sale Order" optional="hide"/>
+                <field name="lgd_number_series" string="Number Series" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Group the Invoices list by number series.
+         The list mixes OF-TI/2627 (the LGD Tax Invoice series), INV/26-27
+         and INV/2026 (Odoo's own journal sequences), the old
+         platform-numbered invoices, and drafts with no number at all -
+         sorted by date, so they interleave. Grouping on the series puts
+         each one together without changing anyone's default view. -->
+    <record id="view_account_invoice_filter_lgd_series" model="ir.ui.view">
+        <field name="name">account.invoice.select.lgd.series</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_account_invoice_filter"/>
+        <field name="arch" type="xml">
+            <filter name="status" position="before">
+                <!-- The groupings that answer "which order is this
+                     invoice for". Order Ref (AUG-OFF-…) is the one people
+                     recognise; the OC number and the sale order are the
+                     same question asked two other ways. -->
+                <filter name="lgd_group_order_ref" string="Order Ref"
+                        context="{'group_by': 'lgd_order_invoice_number'}"/>
+                <filter name="lgd_group_oc_number" string="Order Confirmation No."
+                        context="{'group_by': 'lgd_oc_number'}"/>
+                <filter name="lgd_group_sale_order" string="Sale Order"
+                        context="{'group_by': 'lgd_sale_order_id'}"/>
+                <filter name="lgd_group_number_series" string="Number Series"
+                        context="{'group_by': 'lgd_number_series'}"/>
+            </filter>
+        </field>
+    </record>
+
+</odoo>
