@@ -24,5 +24,20 @@
         <function model="lgd.doc.series"
                   name="_lgd_repair_numbering"/>
 
+        <!-- Number offline stones created before the LGD-OFF- series existed. -->
+        <function model="product.template"
+                  name="_lgd_backfill_offline_stock_numbers"/>
+
+        <!-- Make lgd_stock_number unique among active stones and add the
+             partial unique index. Must run AFTER the backfill above. -->
+        <function model="product.template"
+                  name="_lgd_repair_duplicate_stock_numbers"/>
+
+        <!-- Stones raised from a Customer RFQ were created non-storable, so
+             their stock moves never wrote a quant and Dispatch saw 0 on hand.
+             Re-enables tracking only; it does not create stock. -->
+        <function model="product.template"
+                  name="_lgd_backfill_storable_stones"/>
+
     </data>
 </odoo>

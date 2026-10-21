@@ -65,8 +65,15 @@
                                     </div>
                                 </td>
                                 <td style="vertical-align:top;text-align:right;">
-                                    <div style="color:#0F2440;font-size:30pt;font-weight:bold;
-                                                letter-spacing:2pt;line-height:1;">MEMO</div>
+                                    <!-- "MEMO OUT", matching the series this
+                                         document is numbered in (OF-MO/...).
+                                         30pt was sized for the four letters of
+                                         "MEMO"; eight letters plus a space at
+                                         that size would crowd the number and
+                                         the dates underneath, so it drops to
+                                         24pt - still by far the largest thing on the slip. -->
+                                    <div style="color:#0F2440;font-size:24pt;font-weight:bold;
+                                                letter-spacing:1.6pt;line-height:1;">MEMO OUT</div>
                                     <div style="font-size:9.5pt;margin-top:3mm;">
                                         Goods sent on approval. This is not a tax invoice.
                                     </div>

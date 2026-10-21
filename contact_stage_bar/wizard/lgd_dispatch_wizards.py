@@ -15,6 +15,8 @@ from markupsafe import Markup
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
+import logging
+_logger = logging.getLogger(__name__)
 
 class LgdDispatchDestinationOption(models.TransientModel):
     """One pickable destination for a split, as a real record.
@@ -307,11 +309,38 @@ class LgdMemoReturnWizard(models.TransientModel):
         # ── 2. Kept stones are a completed sale. ─────────────────────────
         if kept:
             kept.sudo().write({'availability_status': 'delivered'})
-        # ── 3. Returned stones are finished on this order. 'memo_returned'
-        # is one of LGD_DEAD_STATUSES, which is what frees the stone to be
-        # sold to someone else and keeps it off every invoice. ───────────
+        # ── 3. EVERY returned stone is re-inspected, whoever owns it. It
+        # has been out of our hands - carried, handled, possibly swapped -
+        # so QC checks it before it is back with us. A stone held on a
+        # vendor's memo is included: we are accountable to the vendor for
+        # it, which is a reason to check it, not to skip it.
+        #
+        # The release happens at the END of the chain, when Inventory
+        # accepts the stone: that is the write that sets 'memo_returned',
+        # a dead status and therefore the one that frees the stone. Until
+        # then the line sits at 'in_qc_process', where it can be neither
+        # sold nor allowed to close the parcel.
+        to_qc = self.env['purchase.order.line']
         if returned:
-            returned.sudo().write({'availability_status': 'memo_returned'})
+            to_qc = returned.mapped('lgd_po_line_id').sudo().filtered(
+                lambda p: p.sale_line_id in returned)
+        queued_lines = to_qc._lgd_send_to_memo_return_qc().mapped(
+            'sale_line_id') if to_qc else self.env['sale.order.line']
+
+        # A stone with no purchase line has nothing to carry a QC stage, so
+        # it cannot enter the queue. Keep today's behaviour for those rather
+        # than stranding them, and say so in the log.
+        unqueued = returned - queued_lines
+        if unqueued:
+            unqueued.sudo().write({'availability_status': 'memo_returned'})
+            skipped = unqueued & to_stock
+            if skipped:
+                _logger.warning(
+                    "Memo return on %s: %s stone(s) went straight back to "
+                    "stock without re-inspection because they have no "
+                    "purchase line to hold a QC stage: %s",
+                    parcel_su.name, len(skipped),
+                    ", ".join(skipped.mapped('display_name')))
 
         # ── 4. One inward transfer for the stones that are ours. None is
         # created when nothing routes to stock (Review focus 3). ─────────
@@ -321,6 +350,9 @@ class LgdMemoReturnWizard(models.TransientModel):
         # ── 5. Vendor-memo stones go back to the vendor through the screen
         # Logistics already has. They never entered our stock, so there is
         # no quant to move — only the purchase stage and its reason. ─────
+        # Vendor-memo stones that could NOT enter QC still take the old
+        # route straight back to the vendor; the ones in QC get their purchase stage from the inspection instead.
+        to_vendor = to_vendor - queued_lines
         if to_vendor:
             reason = self.env.ref(
                 'contact_stage_bar.lgd_fail_reason_cust_memo_return',

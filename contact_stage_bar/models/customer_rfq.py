@@ -950,15 +950,42 @@ class CustomerRfq(models.Model):
             rec.state = 'sent_back_to_sales'
             rec.message_post(body=_("Sent back to Sales team."))
 
+    # RFQ lab_type -> the grading lab's trade name, as the website expects it.
+    _LGD_LAB_LABELS = {'igi': 'IGI', 'gia': 'GIA', 'hrd': 'HRD'}
+
+    def _lgd_lab_name(self):
+        """The grading lab for this RFQ, or '' when there is none.
+
+        Carried onto the stone so the offline push can send `product.lab`.
+        A Non-Certified RFQ has no lab by definition and returns ''.
+        """
+        self.ensure_one()
+        if self.stone_certification_type != 'certified':
+            return ''
+        if self.lab_type == 'other':
+            return (self.lab_type_other or '').strip()
+        return self._LGD_LAB_LABELS.get(self.lab_type, (self.lab_type or '').upper())
+
     def _create_requested_stone(self, unit_price):
         vals = {
             'sale_ok': True,
+            # Without this the product is a non-storable consumable: its
+            # receipt, QC and storage moves all complete, but no quant is
+            # ever written, so on-hand stays 0 for ever and Dispatch refuses
+            # to hand the parcel over - "only 0 in stock at WH/Stock".
+            # Nothing in the inbound chain complains, which is what made it
+            # look like a dispatch bug rather than a product one.
+            'is_storable': True,
             'shapes': ', '.join(self.shape_ids.mapped('name')),
             'color': self.color,
             'clarity': self.clarity,
             'weight_carat': str(self.carat) if self.carat else False,
             'list_price': unit_price,
             'name': self.name,
+            # The RFQ already knows which lab graded the stone; without
+            # copying it here the stone reached the website with an empty
+            # `lab` and the order was refused.
+            'labs': self._lgd_lab_name() or False,
         }
 
         product = self.env['product.template'].sudo().with_context(

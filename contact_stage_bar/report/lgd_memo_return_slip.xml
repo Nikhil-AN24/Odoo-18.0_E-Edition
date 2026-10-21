@@ -92,7 +92,7 @@
                                 </td>
                                 <td style="vertical-align:top;text-align:right;">
                                     <div style="color:#0F2440;font-size:26pt;font-weight:bold;
-                                                letter-spacing:1.6pt;line-height:1;">MEMO RETURN</div>
+                                                letter-spacing:1.6pt;line-height:1;">MEMO IN</div>
                                     <!-- "Memo In must reference the Memo Out
                                          number" - so both appear, the inward
                                          challan's own number first and the

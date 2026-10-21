@@ -176,8 +176,184 @@ class ProductTemplate(models.Model):
             record.name = combined_name
             record.sdk_is_code_enabled = True
 
+    # ── Offline LGD stock numbers ─────────────────────────────────────────
+    # A stone bought offline never passed through the LGD website, so it
+    # arrives with no lgd_stock_number and nothing to quote on a memo slip or
+    # label. Odoo mints one from the LGD-OFF- series; see
+    # data/lgd_offline_stock_sequence.xml for why Odoo owns this series and
+    # the website owns its own.
+    @api.model
+    def _lgd_next_offline_stock_number(self):
+        """Draw the next LGD-OFF-xxxxx, or False if the sequence is missing.
+
+        next_by_code() only sees sequences of the active company (or of no
+        company). The fallback search covers a sequence that someone later
+        pins to a company, which would otherwise hand back False and leave
+        stones unnumbered with no error.
+        """
+        Sequence = self.env['ir.sequence'].sudo()
+        number = Sequence.next_by_code('lgd.offline.stock')
+        if number:
+            return number
+        seq = Sequence.search(
+            [('code', '=', 'lgd.offline.stock')], order='company_id', limit=1)
+        return seq.next_by_id() if seq else False
+
+    @api.model
+    def _lgd_needs_offline_stock_number(self, vals):
+        if vals.get('lgd_stock_number'):
+            return False
+        if vals.get('website_product_id'):
+            return False
+        if vals.get('stone_type') == 'natural':
+            return False
+        return (vals.get('certificate_type') or '').strip().upper() != 'NATURAL'
+
+    @api.model
+    def _lgd_backfill_storable_stones(self):
+        """Make not-yet-used stones storable. Idempotent.
+
+        Stones raised from a Customer RFQ were created without
+        `is_storable`, so they were non-storable consumables: every receipt,
+        QC and storage move completed and wrote no quant, leaving on-hand at
+        0 for ever and Dispatch refusing the parcel with "only 0 in stock".
+        Nothing in the inbound chain complained, which is what made it look
+        like a dispatch fault rather than a product one.
+
+        Only stones with NO stock moves yet are repaired. Odoo refuses to
+        change inventory tracking on a product that has already moved -
+        "You can not change the inventory tracking of a product that was
+        already used" - and that guard is right: flipping the flag
+        underneath a ledger that was written without quants would leave
+        stock records that disagree with their own history.
+
+        A stone that has already moved therefore cannot be repaired here.
+        Those are reported in the log so somebody can decide what to do with
+        each one; there is no safe blanket answer, and inventing the stock
+        they never had is not one.
+        """
+        candidates = self.sudo().search([
+            ('is_storable', '=', False),
+            ('type', '=', 'consu'),
+            '|', ('certificate', '!=', False),
+                 ('lgd_stock_number', '!=', False),
+        ])
+        if not candidates:
+            return 0
+
+        variants = candidates.mapped('product_variant_ids')
+        used_ids = set(self.env['stock.move'].sudo().search([
+            ('product_id', 'in', variants.ids)]).mapped('product_id.id'))
+        fixable = candidates.filtered(
+            lambda t: not (set(t.product_variant_ids.ids) & used_ids))
+        stuck = candidates - fixable
+
+        if fixable:
+            fixable.write({'is_storable': True})
+            _logger.info(
+                "[LGD MIGRATION] %s stone(s) made storable.", len(fixable))
+        if stuck:
+            _logger.warning(
+                "[LGD MIGRATION] %s stone(s) cannot be made storable: they "
+                "already have stock moves, and Odoo refuses to change "
+                "inventory tracking on a used product. They will keep "
+                "reporting 0 on hand and Dispatch will refuse them. Decide "
+                "per stone - the first few: %s",
+                len(stuck), ', '.join(stuck[:5].mapped('display_name')))
+        return len(fixable)
+
+    @api.model
+    def _lgd_backfill_offline_stock_numbers(self):
+        """One-time, idempotent: number offline stones created before this
+        series existed. Wired into data/lgd_migrations.xml so it runs on
+        upgrade; safe to run repeatedly because it only ever selects stones
+        that still have no number."""
+        stones = self.sudo().with_context(active_test=False).search([
+            '|', ('lgd_stock_number', '=', False), ('lgd_stock_number', '=', ''),
+            ('website_product_id', 'in', (False, '')),
+        ])
+        numbered = 0
+        for stone in stones:
+            if not self._lgd_needs_offline_stock_number({
+                    'certificate_type': stone.certificate_type,
+                    'stone_type': stone.stone_type}):
+                continue
+            number = self._lgd_next_offline_stock_number()
+            if not number:
+                break
+            stone.lgd_stock_number = number
+            numbered += 1
+        if numbered:
+            _logger.info("LGD offline SKU backfill: numbered %s stone(s).", numbered)
+        return numbered
+
+    # ── Stone lookup ──────────────────────────────────────────────────────
+    @api.model
+    def _lgd_find_stone(self, certificate=None, stock_number=None,
+                        lgd_stock_number=None):
+        def _first(domain):
+            return self.sudo().with_context(active_test=False).search(
+                domain, order='active desc, id asc', limit=1)
+
+        if certificate:
+            found = _first([('certificate', '=', certificate)])
+            if found:
+                return found
+
+        identifiers = []
+        if lgd_stock_number:
+            identifiers.append(('lgd_stock_number', '=', lgd_stock_number))
+        if stock_number:
+            identifiers.append(('stock_number', '=', stock_number))
+        for clause in identifiers:
+            found = _first([clause])
+            if found:
+                return found
+        return self.browse()
+
+    # ── Uniqueness of lgd_stock_number ────────────────────────────────────
+    _LGD_SKU_INDEX = 'product_template_lgd_stock_number_active_uniq'
+
+    @api.model
+    def _lgd_repair_duplicate_stock_numbers(self):
+
+        self.env.cr.execute("""
+            SELECT lgd_stock_number, array_agg(id ORDER BY id)
+              FROM product_template
+             WHERE active
+               AND lgd_stock_number IS NOT NULL
+               AND lgd_stock_number <> ''
+             GROUP BY lgd_stock_number
+            HAVING COUNT(*) > 1
+        """)
+        groups = self.env.cr.fetchall()
+        for sku, ids in groups:
+            for position, template_id in enumerate(ids[1:], start=2):
+                suffixed = '%s-D%s' % (sku, position)
+                self.browse(template_id).sudo().lgd_stock_number = suffixed
+                _logger.warning(
+                    "Duplicate LGD SKU %s on product %s renamed to %s - "
+                    "review which stone is the real one.",
+                    sku, template_id, suffixed)
+
+        # The renames above live in the ORM cache until flushed; CREATE INDEX
+        # is raw SQL and would otherwise still see the duplicates and fail.
+        self.env.flush_all()
+
+        self.env.cr.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS %s ON product_template "
+            "(lgd_stock_number) WHERE active AND lgd_stock_number IS NOT NULL "
+            "AND lgd_stock_number <> ''" % self._LGD_SKU_INDEX)
+        return len(groups)
+
     @api.model_create_multi
     def create(self, vals_list):
+        for vals in vals_list:
+            if self._lgd_needs_offline_stock_number(vals):
+                number = self._lgd_next_offline_stock_number()
+                if number:
+                    vals['lgd_stock_number'] = number
+
         records = super().create(vals_list)
 
         # if sale_order_id is passed in context → add line
@@ -526,7 +702,7 @@ class ProductTemplate(models.Model):
             if not number_id:
                 raise UserError("No certificate/stock number found for this record.")
             Param = self.env['ir.config_parameter'].sudo()
-            url = Param.get_param('base_augmont_url')
+            url = (Param.get_param('base_augmont_url') or '').rstrip('/')
             url = f"{url}/api/v1/odoo/product?id={number_id}&country=IN"
             headers = {
                 "Authorization": (

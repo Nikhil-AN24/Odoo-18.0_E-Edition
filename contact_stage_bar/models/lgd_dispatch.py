@@ -378,15 +378,21 @@ class LgdDispatch(models.Model):
             # parcel that left without one keeps whatever it already had.
             handover_vals['invoice_move_id'] = invoice.id
         self.write(handover_vals)
-        self.line_ids.sudo().write({'availability_status': 'dispatched'})
 
-        # The existing website push reads these off the order.
+        # Carrier details FIRST, status second. Setting the status is what
+        # pushes it to the website, and the push reads the courier off the
+        # order - so writing the status first sent a dispatch with no courier
+        # and the website refused the whole update. Harmless while the push
+        # was manual (the fields were long since saved by the time anyone
+        # pressed the button); a live bug the moment it became automatic.
         order_vals = {'courier_partner_name': self.agent_id.name}
         if self.tracking_number:
             order_vals['tracking_number'] = self.tracking_number
         if self.tracking_url:
             order_vals['tracking_url'] = self.tracking_url
         self.order_id.sudo().write(order_vals)
+
+        self.line_ids.sudo().write({'availability_status': 'dispatched'})
 
         self.sudo().message_post(body=_(
             "Handed to %(agent)s (%(route)s) by %(user)s."
@@ -481,6 +487,13 @@ class LgdDispatch(models.Model):
             Quant = self.env['stock.quant'].sudo()
             shortages = []
             for line in lines:
+
+                if not line.product_id.is_storable:
+                    _logger.info(
+                        "Dispatch %s: %s is not stock-tracked, so there is no "
+                        "availability to check.",
+                        self.name, line.product_id.display_name)
+                    continue
                 needed = line.product_uom_qty or 1.0
                 available = Quant._get_available_quantity(
                     line.product_id, location_id)
@@ -643,13 +656,15 @@ class LgdDispatch(models.Model):
                     "the order is not finished yet."
                 ) % {'count': len(outstanding),
                      'order': order.name})
-            # The payment leg runs alongside dispatch, not inside it. An order
-            # is only complete once the money is in, evidenced by the UTR captured at Payment Completed.
-            if 'utr_number' in order._fields and not (order.utr_number or '').strip():
-                problems.append(_(
-                    "Payment is not recorded for %s. Confirm the payment with "
-                    "its UTR number before completing the order."
-                ) % order.name)
+            # Payment is NOT a condition of completing an order. The two
+            # run independently: goods can be delivered and the order closed
+            # while the money is still in transit, and money can arrive for
+            # some stones and not others. Blocking completion on a UTR forced
+            # one order-level flag to answer a per-stone question, and left
+            # delivered orders stuck open waiting for a field to be typed.
+            #
+            # Where the money actually stands is on sale.order.lgd_payment_state
+            # and on each line's own lgd_payment_state, both read from the invoices - see models/lgd_payment_state.py.
         if problems:
             raise UserError("\n".join(problems))
 

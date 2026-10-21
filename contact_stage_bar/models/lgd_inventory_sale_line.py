@@ -14,6 +14,24 @@ GROUP_SHIPMENT = 'contact_stage_bar.group_lgd_shipment'
 LGD_DEAD_STATUSES = (
     'cancelled', 'replaced', 'not_available', 'qc_fail', 'memo_returned')
 
+LINE_STATUS_TO_AUGMONT = {
+    'diamond_booked':    'Diamond Booked',
+    'confirmed':         'Confirmed',
+    'not_available':     'Not available',
+    'cancelled':         'Cancelled',
+    'replaced':          'Replaced',
+    'memo_returned':     'Returned from memo',
+    'in_qc_process':     'In QC process',
+    'qc_fail':           'QC Fail',
+    'payment_pending':   'Payment Pending',
+    'payment_completed': 'Payment Completed',
+    'dispatched':        'Dispatched',
+    'return_of_order':   'Return of Order',
+    're_dispatched':     'Re - Dispatched',
+    'delivered':         'Delivered',
+    'order_completed':   'Order Completed',
+}
+
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
 

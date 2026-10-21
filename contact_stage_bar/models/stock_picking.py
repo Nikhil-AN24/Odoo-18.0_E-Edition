@@ -12,7 +12,16 @@ class StockMove(models.Model):
     _inherit = 'stock.move'
 
     weight_carat = fields.Char(related="product_id.product_tmpl_id.weight_carat", string="Carat Weight")
-    lgd_stock_number = fields.Char(related="product_id.product_tmpl_id.lgd_stock_number", string="LGD SKU")
+    lgd_stock_number = fields.Char(
+        string="LGD SKU", compute='_compute_lgd_stock_number', store=True)
+
+    @api.depends('sale_line_id.lgd_stock_number',
+                 'product_id.product_tmpl_id.lgd_stock_number')
+    def _compute_lgd_stock_number(self):
+        for move in self:
+            move.lgd_stock_number = (
+                move.sale_line_id.lgd_stock_number
+                or move.product_id.product_tmpl_id.lgd_stock_number)
     order_specific = fields.Char(related="product_id.product_tmpl_id.order_specific", string="Order Specific Notes")
     item_notes = fields.Char(related="product_id.product_tmpl_id.item_notes", string="Item Notes")
     default_qc_requirements = fields.Char(

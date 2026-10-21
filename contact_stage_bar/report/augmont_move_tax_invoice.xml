@@ -54,13 +54,12 @@
                 <t t-set="igst" t-value="-sum(tax_lines.filtered(lambda l: 'IGST' in (l.tax_line_id.name or '').upper()).mapped('balance'))"/>
                 <t t-set="intra" t-value="bool(cgst or sgst)"/>
                 <t t-set="tax_pct"
-                   t-value="round(amt_tax / amt_untaxed * 100, 2) if amt_untaxed else 0.0"/>
+                   t-value="round(sum((sum(t.children_tax_ids.mapped('amount')) if t.amount_type == 'group' else t.amount) for t in lines.tax_ids), 2)"/>
+                <t t-set="tax_pct"
+                   t-value="tax_pct or (round(amt_tax / amt_untaxed * 100, 2) if amt_untaxed else 0.0)"/>
                 <t t-set="half_pct" t-value="round(tax_pct / 2.0, 2)"/>
                 <t t-set="round_off" t-value="amt_total - amt_untaxed - amt_tax"/>
-
-                <t t-set="_raw" t-value="doc.currency_id.amount_to_text(amt_total)"/>
-                <t t-set="words"
-                   t-value="' '.join([w for w in _raw.replace('-', ' ').split() if w.lower() not in ('and','rupee','rupees','paisa','paise','only','zero')]).title() + ' Only'"/>
+                <t t-set="words" t-value="doc.currency_id.lgd_amount_in_words(amt_total)"/>
 
                 <!-- The running bands, shared with the slip. -->
                 <t t-set="aug_doc_label">Tax Invoice</t>
@@ -70,6 +69,7 @@
                 <t t-set="aug_doc_date" t-value="doc.invoice_date or doc.date"/>
                 <t t-set="aug_payment_terms" t-value="doc.invoice_payment_term_id.name"/>
                 <t t-call="contact_stage_bar.report_augmont_band_header"/>
+                <t t-set="aug_footer_show_address" t-value="False"/>
                 <t t-call="contact_stage_bar.report_augmont_band_footer"/>
 
 <div class="article aug-sheet" t-att-data-oe-model="doc._name" t-att-data-oe-id="doc.id">
@@ -85,12 +85,22 @@
                                         <div class="lbl">From</div>
                                         <div class="rule" style="margin-top:7pt;"/>
                                         <div style="margin-top:12pt; padding-bottom:6pt;">
-                                            <div style="color:#191C1E; font-size:11.7pt; font-weight:700; text-transform:uppercase; line-height:17.6pt;">ANIRATH OVERSEAS LIMITED</div>
+                                            <div style="color:#191C1E; font-size:11.7pt; font-weight:700; text-transform:uppercase; line-height:17.6pt;"><span t-esc="company.name"/></div>
+                                        </div>
+                                        <!-- The registered address. It used to live
+                                             only in the page footer; the Order
+                                             Confirmation no longer prints that
+                                             footer, and a document naming the
+                                             seller should say where the seller
+                                             is either way. -->
+                                        <div class="addr" style="margin-bottom:6pt;">
+                                            <div t-foreach="company.lgd_address_lines()" t-as="aline"
+                                                 t-esc="aline"/>
                                         </div>
                                         <div>
-                                            <div><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">GSTIN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">27AADCA8955F1Z2</span></div>
-                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">PAN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">AADCA8955F</span></div>
-                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-size:8.8pt; font-weight:400; line-height:13.2pt;">State: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">Maharashtra</span></div>
+                                            <div><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">GSTIN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;" t-esc="company.vat or ''"/></div>
+                                            <div style="margin-top:3pt;"><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">PAN: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;" t-esc="company.l10n_in_pan or ''"/></div>
+                                            <div style="margin-top:3pt;"><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;">State: </span><span style="color:#191C1E; font-size:8.8pt; font-weight:500; line-height:13.2pt;" t-esc="company.state_id.name or ''"/></div>
                                         </div>
                                     </td>
                                     <td style="width:6.66%;"/>
@@ -181,9 +191,14 @@
                                     <tr>
                                         <th style="width:16.85%; text-align:left; letter-spacing:0.15pt; text-transform:none;">Certificate No.</th>
                                         <th style="width:7.15%;  text-align:left;">SHAPE</th>
-                                        <th style="width:9.90%;  text-align:center;">COL</th>
-                                        <th style="width:6.90%;  text-align:center;">CLA</th>
-                                        <th style="width:18.40%; text-align:center;">HSN/SAC</th>
+                                        <!-- COLOR and CLARITY in full. CLA was 6.90%,
+                                             which is not wide enough for the longer
+                                             word; the 3.10% it needs comes out of
+                                             HSN/SAC, which had room to spare. The row
+                                             still totals 100%. -->
+                                        <th style="width:9.90%;  text-align:center;">COLOR</th>
+                                        <th style="width:10.00%; text-align:center;">CLARITY</th>
+                                        <th style="width:15.30%; text-align:center;">HSN/SAC</th>
                                         <th style="width:7.10%;  text-align:right;">QTY</th>
                                         <th style="width:8.42%;  text-align:right;">CTS</th>
                                         <th style="width:8.43%;  text-align:right;">PER. CT RATE</th>
@@ -199,7 +214,11 @@
                                         <td><span t-esc="(line.lgd_shapes or '').upper()"/></td>
                                         <td class="c"><span t-esc="line.lgd_color or ''"/></td>
                                         <td class="c"><span t-esc="line.lgd_clarity or ''"/></td>
-                                        <td class="c" style="color:#5F5E5E;"><span t-esc="hsn_by_kind.get(line.lgd_stone_type) or line.product_id.l10n_in_hsn_code or ''"/></td>
+                                        <!-- Same ink and weight as SHAPE: the HSN was the only
+                                             muted column in the row, which read as
+                                             though it mattered less than the rest. The
+                                             "c" class is kept - it only centres. -->
+                                        <td class="c"><span t-esc="hsn_by_kind.get(line.lgd_stone_type) or line.product_id.l10n_in_hsn_code or ''"/></td>
                                         <td class="r"><span t-esc="'%.2f' % line.quantity"/></td>
                                         <td class="r" style="font-weight:500;"><span t-esc="line.lgd_carat_weight or ''"/></td>
                                         <!-- Sales Price/carat, not price_unit. price_unit is the
@@ -236,16 +255,16 @@
                                             </tr>
                                             <t t-if="intra">
                                                 <tr>
-                                                    <td class="lab">CGST (<span t-esc="'%g' % half_pct"/>%)</td>
+                                                    <td class="lab">CGST (<span t-esc="'%.2f' % half_pct"/>%)</td>
                                                     <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(cgst)"/></td>
                                                 </tr>
                                                 <tr>
-                                                    <td class="lab">SGST (<span t-esc="'%g' % half_pct"/>%)</td>
+                                                    <td class="lab">SGST (<span t-esc="'%.2f' % half_pct"/>%)</td>
                                                     <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(sgst)"/></td>
                                                 </tr>
                                             </t>
                                             <tr t-else="">
-                                                <td class="lab">IGST (<span t-esc="'%g' % tax_pct"/>%)</td>
+                                                <td class="lab">IGST (<span t-esc="'%.2f' % tax_pct"/>%)</td>
                                                 <td class="r val"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(igst)"/></td>
                                             </tr>
                                             <tr t-if="abs(round_off) &gt;= 0.005">
@@ -313,9 +332,30 @@
                                         <div class="lbl-sec">Bank Details</div>
                                         <div class="rule" style="margin-top:6pt; width:56pt;"/>
                                         <div style="margin-top:1pt; padding-bottom:24pt; font-size:8pt; line-height:10.2pt;">
-                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">Bank: </span><span style="color:#191C1E; font-weight:500;">HDFC BANK LTD</span></div>
-                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C: </span><span style="color:#191C1E; font-weight:500;">50200114382193</span></div>
-                                            <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">IFSC: </span><span style="color:#191C1E; font-weight:500;">HDFC0000542</span></div>
+                                            <t t-set="bank" t-value="company.lgd_bank_account()"/>
+                                            <!-- The bank account from the company record when
+                                                 one is configured; the literals below otherwise.
+                                                 The literals are a stopgap at your request - add
+                                                 the account on the ANIRATH contact (Accounting
+                                                 tab > Bank Accounts) and it takes over here
+                                                 automatically, with nothing to edit in this
+                                                 file. Until then these five lines are the only
+                                                 place the account number lives, so they must be
+                                                 changed here if the bank ever changes. -->
+                                            <t t-if="bank">
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C Name: </span><span style="color:#191C1E; font-weight:500;" t-esc="bank.acc_holder_name or company.name"/></div>
+                                                <div style="margin-top:3pt;" t-if="bank.bank_id"><span style="color:#5F5E5E; font-weight:400;">Bank: </span><span style="color:#191C1E; font-weight:500;" t-esc="bank.bank_id.name"/></div>
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C: </span><span style="color:#191C1E; font-weight:500;" t-esc="bank.acc_number"/></div>
+                                                <div style="margin-top:3pt;" t-if="bank.bank_id.bic"><span style="color:#5F5E5E; font-weight:400;">IFSC: </span><span style="color:#191C1E; font-weight:500;" t-esc="bank.bank_id.bic"/></div>
+                                                <div style="margin-top:3pt;" t-if="bank.bank_id.city"><span style="color:#5F5E5E; font-weight:400;">Branch: </span><span style="color:#191C1E; font-weight:500;" t-esc="bank.bank_id.city"/></div>
+                                            </t>
+                                            <t t-else="">
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C Name: </span><span style="color:#191C1E; font-weight:500;">Anirath Overseas Limited</span></div>
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">Bank: </span><span style="color:#191C1E; font-weight:500;">HDFC BANK LTD</span></div>
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">A/C: </span><span style="color:#191C1E; font-weight:500;">50200114382193</span></div>
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">IFSC: </span><span style="color:#191C1E; font-weight:500;">HDFC0000542</span></div>
+                                                <div style="margin-top:3pt;"><span style="color:#5F5E5E; font-weight:400;">Branch: </span><span style="color:#191C1E; font-weight:500;">Kamala Mills Compound</span></div>
+                                            </t>
                                         </div>
 
                                         <!-- The at-a-glance summary of the
@@ -361,7 +401,7 @@
                                                  #5F5E5E; the name is w600, not ink. -->
                                             <div class="sm r" style="margin-top:8pt; color:#5F5E5E; font-weight:400; text-transform:uppercase;">Authorised Signatory</div>
                                             <div class="sm r" style="color:#5F5E5E;">
-                                                <span style="font-weight:400;">For </span><span style="font-weight:600;">Anirath Overseas Limited</span>
+                                                <span style="font-weight:400;">For </span><span style="font-weight:600;" t-esc="company.name"/>
                                             </div>
                                         </div>
                                     </td>
