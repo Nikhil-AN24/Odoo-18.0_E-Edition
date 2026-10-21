@@ -1,4 +1,5 @@
 from odoo import http
+from .lgd_api_auth import lgd_check_api_token
 from odoo.http import request, Response
 from markupsafe import Markup
 import logging
@@ -89,35 +90,11 @@ class AugmontBidirectionalAPI(http.Controller):
             # ------------------------------------------------------------------
             # Auth
             # ------------------------------------------------------------------
-            auth_header = request.httprequest.headers.get('Authorization', '')
-            if not auth_header.startswith('Bearer '):
-                _logger.warning("🔒 [AUTH FAIL] Missing or invalid Authorization header")
-                return Response(
-                    json.dumps({'status': 'error', 'message': 'Missing Authorization header', 'code': 401}),
-                    content_type='application/json',
-                    status=401
-                )
-
-            token = auth_header.split(' ')[1]
-            Param = request.env['ir.config_parameter'].sudo()
-            expected_token = Param.get_param('website.api.token', default='')
-
-            if not expected_token:
-                _logger.error("⚠️ [CONFIG] website.api.token not set in system parameters!")
-                return Response(
-                    json.dumps({'status': 'error', 'message': 'Server configuration error', 'code': 500}),
-                    content_type='application/json',
-                    status=500
-                )
-
-            if token!= expected_token:
-                _logger.warning("🔒 [AUTH FAIL] Invalid token")
-                return Response(
-                    json.dumps({'status': 'error', 'message': 'Invalid API token', 'code': 401}),
-                    content_type='application/json',
-                    status=401
-                )
-
+            # Same check, same responses, now shared with
+            # /api/sale_order/update_status so the two cannot drift.
+            denied = lgd_check_api_token(request)
+            if denied:
+                return denied
             _logger.info("✅ [AUTH] Token validated")
 
             # ------------------------------------------------------------------
@@ -154,6 +131,7 @@ class AugmontBidirectionalAPI(http.Controller):
             # Loop through each order in the 'orders' list
             for order_data in orders_to_process:
                 order_number = order_data.get('orderNumber')
+                order_number = str(order_number) if order_number else order_number
                 # Use order-specific status if present, else fall back to common status
                 new_status = order_data.get('status', common_status)
                 utr = order_data.get('utr', common_utr)
@@ -215,16 +193,27 @@ class AugmontBidirectionalAPI(http.Controller):
                 # ------------------------------------------------------------------
                 try:
                     _logger.info(f"🔍 [SEARCH] Looking for order line for order number: {order_number}")
-                    order_line = request.env['sale.order.line'].sudo().search([
+                    matches = request.env['sale.order.line'].sudo().search([
                         ('order_number', '=', order_number)
-                    ], limit=1)
+                    ])
 
-                    if not order_line:
+                    if not matches:
                         result['message'] = f'Sale Order Line with order number "{order_number}" not found'
                         failed_updates.append(result)
                         _logger.warning(f"❌ [NOT FOUND] {result['message']}")
                         continue
 
+                    if len(matches) > 1:
+                        result['message'] = (
+                            f'Order number "{order_number}" is on {len(matches)} '
+                            f'order lines ({", ".join(map(str, matches.ids))}). '
+                            f'Refusing to guess which one this update is for.'
+                        )
+                        failed_updates.append(result)
+                        _logger.error(f"❌ [AMBIGUOUS] {result['message']}")
+                        continue
+
+                    order_line = matches
                     sale_order = order_line.order_id
                     old_order_status = sale_order.sdk_augmont_status
                     old_line_status = order_line.availability_status

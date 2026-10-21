@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Payment status as its own dimension, independent of order status.
+
+         An order can be Order Completed with the money still outstanding, and
+         money can arrive for some stones on an order and not others. These
+         views exist so both facts can be seen and filtered without reading
+         them out of availability_status, which no longer carries them. -->
+
+    <!-- Order Status and Payment Status side by side on the order form. -->
+    <record id="view_order_form_lgd_payment_state" model="ir.ui.view">
+        <field name="name">sale.order.form.lgd.payment.state</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <field name="sdk_augmont_status" position="after">
+                <field name="lgd_payment_state" readonly="1"
+                       widget="badge"
+                       decoration-success="lgd_payment_state == 'paid'"
+                       decoration-warning="lgd_payment_state == 'partial'"
+                       decoration-danger="lgd_payment_state == 'not_paid'"/>
+                <field name="lgd_unpaid_stone_count" readonly="1"
+                       invisible="lgd_unpaid_stone_count == 0"/>
+                <!-- The website and Accounting disagree about the money.
+                     Not an error in itself, but one of the two is wrong. -->
+                <field name="lgd_payment_mismatch" readonly="1"
+                       invisible="not lgd_payment_mismatch"
+                       widget="boolean_toggle"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Re-send an offline order the website never received. Shown only when
+         there is actually something missing, so it is not a button people
+         press out of habit. -->
+    <record id="view_order_form_lgd_resend_push" model="ir.ui.view">
+        <field name="name">sale.order.form.lgd.resend.offline.push</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_lgd_resend_offline_push" type="object"
+                        string="Send to Website"
+                        invisible="order_source != 'offline' or state not in ('sale', 'done')"
+                        help="Push this offline order to the LGD website again
+                              and collect the order numbers it allocates."/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Payment Status on the Sales list, and a filter + group-by for it. -->
+    <record id="view_order_tree_lgd_payment_state" model="ir.ui.view">
+        <field name="name">sale.order.list.lgd.payment.state</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_tree"/>
+        <field name="arch" type="xml">
+            <field name="state" position="before">
+                <field name="lgd_payment_state" string="Payment Status"
+                       optional="show" widget="badge"
+                       decoration-success="lgd_payment_state == 'paid'"
+                       decoration-warning="lgd_payment_state == 'partial'"
+                       decoration-danger="lgd_payment_state == 'not_paid'"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_sales_order_filter_lgd_payment_state" model="ir.ui.view">
+        <field name="name">sale.order.search.lgd.payment.state</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            <filter name="my_sale_orders_filter" position="after">
+                <separator/>
+                <filter string="Payment Pending" name="lgd_payment_pending"
+                        domain="[('lgd_payment_state', '=', 'not_paid')]"/>
+                <filter string="Partially Paid" name="lgd_payment_partial"
+                        domain="[('lgd_payment_state', '=', 'partial')]"/>
+                <filter string="Payment Completed" name="lgd_payment_paid"
+                        domain="[('lgd_payment_state', '=', 'paid')]"/>
+                <filter string="Not Invoiced" name="lgd_payment_not_invoiced"
+                        domain="[('lgd_payment_state', '=', 'not_invoiced')]"/>
+                <separator/>
+                <filter string="Payment Mismatch" name="lgd_payment_mismatch"
+                        domain="[('lgd_payment_mismatch', '=', True)]"
+                        help="The website and Accounting disagree about whether
+                              this order has been paid."/>
+            </filter>
+            <group position="inside">
+                <filter string="Payment Status" name="group_lgd_payment_state"
+                        context="{'group_by': 'lgd_payment_state'}"/>
+            </group>
+        </field>
+    </record>
+
+    <record id="view_lgd_payment_line_search" model="ir.ui.view">
+        <field name="name">sale.order.line.search.lgd.payment</field>
+        <field name="model">sale.order.line</field>
+        <field name="arch" type="xml">
+            <search string="Stones by Payment">
+                <field name="order_id"/>
+                <field name="product_template_id"/>
+                <field name="order_number"/>
+                <filter string="Payment Pending" name="payment_pending"
+                        domain="[('lgd_payment_state', 'in', ('not_paid', 'partial'))]"/>
+                <filter string="Payment Completed" name="payment_paid"
+                        domain="[('lgd_payment_state', '=', 'paid')]"/>
+                <filter string="Not Invoiced" name="payment_not_invoiced"
+                        domain="[('lgd_payment_state', '=', 'not_invoiced')]"/>
+                <group expand="1" string="Group By">
+                    <filter string="Payment" name="group_payment"
+                            context="{'group_by': 'lgd_payment_state'}"/>
+                    <filter string="Order" name="group_order"
+                            context="{'group_by': 'order_id'}"/>
+                    <filter string="Customer" name="group_partner"
+                            context="{'group_by': 'order_partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_lgd_payment_line_list" model="ir.ui.view">
+        <field name="name">sale.order.line.list.lgd.payment</field>
+        <field name="model">sale.order.line</field>
+        <field name="arch" type="xml">
+            <list string="Stones by Payment" create="false" edit="false">
+                <field name="order_id" string="Order"/>
+                <field name="order_number" string="Order Number"/>
+                <field name="product_template_id" string="Stone"/>
+                <field name="certificate" string="Certificate"/>
+                <field name="availability_status" string="Order Status"/>
+                <field name="lgd_payment_state" string="Payment" widget="badge"
+                       decoration-success="lgd_payment_state == 'paid'"
+                       decoration-warning="lgd_payment_state == 'partial'"
+                       decoration-danger="lgd_payment_state == 'not_paid'"/>
+                <field name="price_subtotal" string="Amount" sum="Total"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_lgd_payment_by_stone" model="ir.actions.act_window">
+        <field name="name">Payment by Stone</field>
+        <field name="res_model">sale.order.line</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_lgd_payment_line_list"/>
+        <field name="search_view_id" ref="view_lgd_payment_line_search"/>
+        <field name="domain">[('display_type', '=', False)]</field>
+        <field name="context">{'search_default_group_payment': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No stones yet.</p>
+            <p>Every stone with the state of its own money, read from the
+               invoice that bills it. Group by Payment to see at a glance what
+               has been received and what is still outstanding.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_lgd_payment_by_stone"
+              name="Payment by Stone"
+              parent="sale.sale_order_menu"
+              action="action_lgd_payment_by_stone"
+              sequence="25"/>
+</odoo>

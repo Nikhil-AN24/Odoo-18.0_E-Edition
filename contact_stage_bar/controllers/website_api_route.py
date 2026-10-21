@@ -1,6 +1,7 @@
 from odoo import http
 from odoo.http import request, Response
-from markupsafe import Markup
+from markupsafe import Markup, escape
+from .lgd_api_auth import lgd_check_api_token
 
 import logging, json
 from datetime import datetime
@@ -680,13 +681,15 @@ class PartnerSyncController(http.Controller):
                 stock_number = product_details.get('stockNum')
                 lgd_stock_number =  product_details.get('lgdStockNum')
                 
-                product = request.env['product.template'].sudo().search([
-                    ('certificate', '=', certificate),
-                    ('stock_number', '=', stock_number),
-                    ('lgd_stock_number', '=', lgd_stock_number)
-                ], limit=1)
+                # Certificate-led lookup: ANDing all three identifiers
+                # missed stones whose payload carries no lgdStockNum (every
+                # offline stone) and duplicated them. See product.template._lgd_find_stone.
+                product = request.env['product.template'].sudo()._lgd_find_stone(
+                    certificate=certificate,
+                    stock_number=stock_number,
+                    lgd_stock_number=lgd_stock_number,
+                )
                 
-
                 buy = request.env.ref('purchase_stock.route_warehouse0_buy', raise_if_not_found=False)
                 mto = request.env.ref('stock.route_warehouse0_mto', raise_if_not_found=False)
                 routes = [r.id for r in (buy, mto) if r]
@@ -771,12 +774,18 @@ class PartnerSyncController(http.Controller):
                     })
                 
 
-                # Now handle sale order line
-                existing_line = request.env['sale.order.line'].sudo().search([
+                # Now handle sale order line Same reasoning as the product lookup above: only constrain
+                # on lgd_stock_number when the payload actually supplied one,
+                # or an offline re-post duplicates every line.
+                _line_domain = [
                     ('order_id', '=', sale_order.id),
                     ('certificate', '=', certificate),
-                    ('lgd_stock_number', '=', lgd_stock_number),
-                ], limit=1)
+                ]
+                if lgd_stock_number:
+                    _line_domain.append(
+                        ('lgd_stock_number', '=', lgd_stock_number))
+                existing_line = request.env['sale.order.line'].sudo().search(
+                    _line_domain, limit=1)
 
                 if not existing_line:
                     # Fetch availability_status from this order item's
@@ -832,6 +841,9 @@ class PartnerSyncController(http.Controller):
 
     @http.route('/api/sale_order/update_status', type='http', auth='public', methods=['POST'], csrf=False)
     def update_sale_order_status(self, **kwargs):
+        denied = lgd_check_api_token(request)
+        if denied:
+            return denied
 
         STATUS_MAP = {
             'Diamond Booked':    'diamond_booked',
@@ -882,8 +894,7 @@ class PartnerSyncController(http.Controller):
 
         # For single mode: wrap the flat fields into a one-item list so the
         # processing loop below is identical for both modes.
-        # For bulk mode: use the "orders" list directly; shared fields
-        # (updated_by) live at the top level.
+        # For bulk mode: use the "orders" list directly; shared fields (updated_by) live at the top level.
         
         updated_by_info = data.get('updated_by', {}) or data.get('updatedBy', {})
 
@@ -1098,29 +1109,37 @@ class PartnerSyncController(http.Controller):
                                       sale_order.name, _xe)
 
                 # ── Chatter ───────────────────────────────────────────────────
-                msg = f"<p><b>Status updated via API:</b></p><ul>"
-                msg += f"<li><b>New Status:</b> {new_status}</li>"
-                msg += f"<li><b>Order Number:</b> {order_number}</li>"
+                # Every value below arrives in the request body. escape() each
+                # one before it goes anywhere near Markup(): the comment, the
+                # courier name and the updated_by fields are free text from
+                # outside, and Markup tells Odoo the string is already safe to
+                # render. Unescaped, anything posted here becomes live HTML in the order's chatter.
+                def _row(label, value):
+                    return Markup("<li><b>%s:</b> %s</li>") % (label, value)
+
+                rows = [
+                    _row("New Status", new_status),
+                    _row("Order Number", order_number),
+                ]
                 if utr_number and new_status in ['Payment Completed', 'Payment Pending']:
-                    msg += f"<li><b>UTR:</b> {utr_number}</li>"
+                    rows.append(_row("UTR", utr_number))
                 if new_status in ['Dispatched', 'Re - Dispatched']:
                     if tracking_number:
-                        msg += f"<li><b>Tracking Number:</b> {tracking_number}</li>"
+                        rows.append(_row("Tracking Number", tracking_number))
                     if courier_partner_name:
-                        msg += f"<li><b>Courier Partner:</b> {courier_partner_name}</li>"
+                        rows.append(_row("Courier Partner", courier_partner_name))
                     if tracking_url:
-                        msg += f"<li><b>Tracking URL:</b> {tracking_url}</li>"
+                        rows.append(_row("Tracking URL", tracking_url))
                 if comment:
-                    msg += f"<li><b>Comment:</b> {comment}</li>"
+                    rows.append(_row("Comment", comment))
                 if updated_by_info:
-                    msg += (
-                        f"<li><b>Updated By:</b> "
-                        f"{updated_by_info.get('name', 'Unknown')} "
-                        f"({updated_by_info.get('email', '')})</li>"
-                    )
-                msg += "</ul>"
+                    rows.append(_row("Updated By", "%s (%s)" % (
+                        updated_by_info.get('name', 'Unknown'),
+                        updated_by_info.get('email', ''))))
+                msg = (Markup("<p><b>Status updated via API:</b></p><ul>")
+                       + Markup("").join(rows) + Markup("</ul>"))
                 sale_order.sudo().message_post(
-                    body=Markup(msg),
+                    body=msg,
                     subject="Status Update via API",
                     message_type='notification',
                 )

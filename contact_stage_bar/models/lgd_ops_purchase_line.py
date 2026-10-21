@@ -68,6 +68,17 @@ class PurchaseOrderLine(models.Model):
     ], string='Stage', index=True, copy=False,
         help="Empty means Expected. Written only by the Logistics/QC buttons "
              "and the go-live action.")
+
+    lgd_memo_return_destination = fields.Selection([
+        ('in_inventory', 'Our inventory'),
+        ('cust_returned', 'Back to the vendor'),
+    ], string="Restock As", copy=False)
+
+    lgd_memo_return_qc = fields.Boolean(
+        string="Memo Return Inspection", copy=False, index=True,
+        help="Set when a stone returned from a customer memo is sent for "
+             "re-inspection. Changes what QC Pass and Fail do.")
+
     #: The RFQ/PO state, surfaced on the Inventory lists so a user can see at
     #: a glance whether a stone can be accepted into stock or only held on
     #: memo. Stored so the Awaiting Acceptance list can group and filter on it.
@@ -580,6 +591,162 @@ class PurchaseOrderLine(models.Model):
                 responsible)
         return True
 
+    # ── Back from a customer memo, for re-inspection ───────────────────
+    def _lgd_send_to_memo_return_qc(self):
+
+        queued = self.browse()
+        for line in self:
+            if not line.sale_line_id:
+                continue
+            line.sudo().write({
+                'lgd_stage': 'with_qc',
+                'lgd_memo_return_qc': True,
+                'lgd_memo_return_destination': (
+                    'cust_returned'
+                    if line.sale_line_id.lgd_memo_return_to == 'vendor'
+                    else 'in_inventory'),
+                'lgd_qc_result': False,
+                'lgd_qc_decided_by': False,
+                'lgd_qc_decided_at': False,
+                'lgd_handed_to_qc_by': self.env.uid,
+                'lgd_handed_to_qc_at': fields.Datetime.now(),
+            })
+            line._lgd_write_order_line_status(
+                'in_qc_process', ('delivered', 'memo_returned', 'dispatched'))
+            queued |= line
+
+        if queued:
+            responsible = queued._lgd_responsible_user(
+                'lgd.qc_responsible_login', GROUP_QUALITY)
+            for line in queued:
+                line._lgd_notify(
+                    line.sale_line_id.order_id,
+                    _('Memo return — inspect before restocking'),
+                    _("%s came back from a customer memo and needs "
+                      "re-inspection before it can be sold again.")
+                    % line._lgd_stone_description(),
+                    responsible)
+        return queued
+
+    def _lgd_memo_return_pass(self):
+        """QC passed a stone that came back from a memo: it is ours again.
+
+        Deliberately does none of what an inbound pass does - no
+        'payment_pending', no commit deadline, no nudge to Procurement. The sale that put it on memo is over.
+        All that is left is to put it back in inventory & release it.
+        """
+        now = fields.Datetime.now()
+        self.sudo().write({
+            'lgd_qc_result': 'pass',
+            'lgd_qc_decided_by': self.env.uid,
+            'lgd_qc_decided_at': now,
+            'lgd_qc_selected': False,
+        })
+
+        # The two destinations part company here.
+        #
+        # A VENDOR's stone is not ours to shelve. Inspected, it goes to
+        # Logistics > Returns to Vendor, which is the queue for stage
+        # 'cust_returned'. Nothing to accept into stock, so the sale line is
+        # released now.
+        #
+        # OUR OWN stone stops at 'qc_passed' and waits in Inventory >
+        # Awaiting Acceptance. It is not back with us until someone signs
+        # for it, so its sale line stays held until then.
+        to_vendor = self.filtered(
+            lambda l: l.lgd_memo_return_destination == 'cust_returned')
+        if to_vendor:
+            reason = self.env.ref(
+                'contact_stage_bar.lgd_fail_reason_cust_memo_return',
+                raise_if_not_found=False)
+            to_vendor.sudo().write({
+                'lgd_stage': 'cust_returned',
+                'lgd_memo_return_qc': False,
+                'lgd_memo_return_destination': False,
+                'lgd_fail_reason_id': reason.id if reason else False,
+            })
+            to_vendor._lgd_write_order_line_status(
+                'memo_returned', ('in_qc_process',))
+        ours = self - to_vendor
+        if ours:
+            ours.sudo().write({'lgd_stage': 'qc_passed'})
+        self = ours
+        if not self:
+            return True
+        responsible = self._lgd_responsible_user(
+            'lgd.inventory_responsible_login', GROUP_INVENTORY)
+        for line in self:
+            line._lgd_notify(
+                line.sale_line_id.order_id,
+                _('Memo return passed QC — accept it back'),
+                _("%(stone)s passed re-inspection. Accept it in Inventory to "
+                  "put it back as %(dest)s.") % {
+                      'stone': line._lgd_stone_description(),
+                      'dest': (_('held on vendor memo')
+                               if line.lgd_memo_return_destination == 'on_memo'
+                               else _('our inventory')),
+                  },
+                responsible)
+        return True
+
+    def _lgd_memo_return_accept(self):
+        """Inventory signs the stone back in. This is 'with us'.
+
+        Only now does the sale line become 'memo_returned' - a dead status,
+        and therefore the write that finally releases the stone. Holding it
+        until acceptance means a stone cannot be sold while it is still
+        somewhere between the customer, QC and the vault.
+        """
+        now = fields.Datetime.now()
+        for line in self:
+            destination = line.lgd_memo_return_destination or 'in_inventory'
+            line.sudo().write({
+                'lgd_stage': destination,
+                'lgd_memo_return_qc': False,
+                'lgd_memo_return_destination': False,
+                'lgd_accepted_by': self.env.uid,
+                'lgd_accepted_at': now,
+            })
+            line._lgd_write_order_line_status(
+                'memo_returned', ('in_qc_process',))
+        return True
+
+    def _lgd_memo_return_fail(self, reason, note=None):
+        """QC failed a stone that came back from a memo.
+
+        No vendor return and no PO cancellation: the stone is ours, bought
+        and paid for, and the vendor had nothing to do with whatever happened
+        to it on memo. It stays out of saleable stock at 'qc_fail' for a
+        human to decide - a claim against the customer, a re-polish, or a
+        write-off - which is a commercial call, not one to automate.
+        """
+        now = fields.Datetime.now()
+        self.sudo().write({
+            'lgd_qc_result': 'fail',
+            'lgd_fail_reason_id': reason.id if reason else False,
+            'lgd_fail_note': note or False,
+            'lgd_qc_decided_by': self.env.uid,
+            'lgd_qc_decided_at': now,
+            'lgd_stage': 'failed',
+            'lgd_memo_return_qc': False,
+            'lgd_qc_selected': False,
+        })
+        responsible = self._lgd_responsible_user(
+            'lgd.procurement_responsible_login', GROUP_PROCUREMENT)
+        for line in self:
+            line._lgd_write_order_line_status('qc_fail', ('in_qc_process',))
+            line._lgd_notify(
+                line.sale_line_id.order_id,
+                _('Memo return FAILED QC'),
+                _("%(stone)s came back from a customer memo and failed "
+                  "re-inspection. Reason: %(reason)s. It is held out of "
+                  "saleable stock pending a decision.") % {
+                      'stone': line._lgd_stone_description(),
+                      'reason': reason.name if reason else _('not given'),
+                  },
+                responsible)
+        return True
+
     # ── Received from Logistics (QC) ───────────────────────────────────
     def action_lgd_qc_receive(self):
         self._lgd_check_group(GROUP_QUALITY)
@@ -606,6 +773,18 @@ class PurchaseOrderLine(models.Model):
                 yield _("tick all required checks (missing: %s).") % ", ".join(missing)
 
         self._lgd_guard(('in_qc',), problems)
+
+        # A memo return ends somewhere else entirely - see
+        # _lgd_memo_return_pass. Split here rather than inside the write
+        # below so the inbound path stays exactly as it was.
+        memo_returns = self.filtered('lgd_memo_return_qc')
+        if memo_returns:
+            memo_returns._lgd_memo_return_pass()
+        inbound = self - memo_returns
+        if not inbound:
+            return True
+        self = inbound
+
         now = fields.Datetime.now()
         self.write({
             'lgd_qc_result': 'pass',
@@ -639,6 +818,18 @@ class PurchaseOrderLine(models.Model):
 
     def _lgd_action_fail(self, reason, note=None):
         self._lgd_guard(('in_qc',))
+
+        # Same split as the pass path: a failed memo return must NOT raise a
+        # vendor return or cancel a PO, because the stone is ours and that
+        # purchase settled long ago.
+        memo_returns = self.filtered('lgd_memo_return_qc')
+        if memo_returns:
+            memo_returns._lgd_memo_return_fail(reason, note)
+        inbound = self - memo_returns
+        if not inbound:
+            return True
+        self = inbound
+
         now = fields.Datetime.now()
         responsible = self._lgd_responsible_user(
             'lgd.procurement_responsible_login', GROUP_PROCUREMENT)
@@ -754,6 +945,19 @@ class PurchaseOrderLine(models.Model):
             if line.order_id.state != 'purchase':
                 yield _("not confirmed yet. Procurement must confirm the PO first.")
 
+        # A memo return is accepted back, not accepted IN. It carries no new
+        # purchase to confirm and no goods to receive, and a vendor's stone
+        # must land back on 'on_memo' rather than being counted as ours - so
+        # it skips the PO guard and the inward chain entirely.
+        memo_returns = self.filtered('lgd_memo_return_qc')
+        if memo_returns:
+            memo_returns._lgd_guard(('qc_passed',))
+            memo_returns._lgd_memo_return_accept()
+        inbound = self - memo_returns
+        if not inbound:
+            return True
+        self = inbound
+
         self._lgd_guard(('qc_passed', 'on_memo'), problems)
         now = fields.Datetime.now()
         for line in self:
@@ -792,6 +996,11 @@ class PurchaseOrderLine(models.Model):
             if not line.sale_line_id:
                 yield _("not linked to an order line. Ask Procurement to link "
                         "it first.")
+            if line.lgd_memo_return_qc:
+                yield _("this stone came back from a customer memo. Accept it "
+                        "back in Inventory instead of holding it on memo - "
+                        "holding it here would leave its order line stuck "
+                        "mid-inspection.")
 
         self._lgd_guard(('qc_passed',), problems)
         now = fields.Datetime.now()

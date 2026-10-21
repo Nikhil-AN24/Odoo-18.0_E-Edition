@@ -418,6 +418,14 @@
                         <field name="can_edit_availability" column_invisible="True"/>
                         <field name="availability_status" string="Availability"
                                readonly="is_replaced or not can_edit_availability"/>
+                        <!-- Payment is its own dimension, not a stage of the
+                             order. Read from the invoice billing this stone. -->
+                        <field name="lgd_payment_state" string="Payment"
+                               readonly="1" optional="show"
+                               decoration-success="lgd_payment_state == 'paid'"
+                               decoration-warning="lgd_payment_state == 'partial'"
+                               decoration-danger="lgd_payment_state == 'not_paid'"
+                               widget="badge"/>
                         <field name="order_number" readonly="1"/>
                         <field name="product_template_id" readonly="1"/>
                         <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
@@ -466,6 +474,12 @@
                 <field name="can_edit_availability" column_invisible="True"/>
                 <field name="availability_status" string="Availability"
                        readonly="is_replaced or not can_edit_availability"/>
+                <field name="lgd_payment_state" string="Payment"
+                       readonly="1" optional="show"
+                       decoration-success="lgd_payment_state == 'paid'"
+                       decoration-warning="lgd_payment_state == 'partial'"
+                       decoration-danger="lgd_payment_state == 'not_paid'"
+                       widget="badge"/>
                 <field name="order_number" readonly="1"/>
             </xpath>
 
@@ -494,8 +508,7 @@
                 <field name="can_edit_vendor" column_invisible="True"/>
                 <field name="lgd_line_closed" column_invisible="True"/>
                 <!-- One "Vendor Company" column: editable vendor picker on active
-                     lines, read-only "N/A" on Cancelled / Not available (handled
-                     by the vendor_company widget). -->
+                     lines, read-only "N/A" on Cancelled / Not available (handled by the vendor_company widget). -->
                 <field name="vendor_id" widget="vendor_company"
                        groups="!contact_stage_bar.group_lgd_sales"
                        readonly="not can_edit_vendor"/>
@@ -665,13 +678,19 @@
                 <attribute name="column_invisible">parent.order_source == 'offline'</attribute>
             </xpath>
 
-            <!-- {Confirm} calls action_confirm_wrapper.
-                 {Save}    calls action_save_statuses. -->
+            <!-- {Confirm} calls action_confirm_wrapper. -->
             <xpath expr="//button[@name='action_confirm']" position="replace">
                 <!-- Confirm & Save hidden for the sales family (LGD Sales, Sales
                      Manager, Regional Sales Head — all members of group_lgd_sales). -->
                 <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_sales" />
-                <button name="action_save_statuses" string="Save" type="object" class="btn-secondary" invisible="not sdk_augmont_number or state not in ('draft', 'sent')" groups="!contact_stage_bar.group_lgd_sales" />
+                <!-- The {Save} button that used to sit here is gone. It was
+                     the only thing that pushed an availability change to the
+                     website, which meant someone had to open every order and
+                     press it after every QC handover, dispatch or payment -
+                     and nobody did, so the website kept the status the stone
+                     had when the order was first created. The push now happens
+                     automatically wherever the status is actually set, in
+                     sale.order.line._lgd_push_status_changes. -->
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this

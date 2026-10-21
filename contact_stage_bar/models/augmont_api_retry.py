@@ -5,9 +5,7 @@ import requests
 import logging
 import time
 
-
 _logger = logging.getLogger(__name__)
-
 
 class AugmontApiRetry(models.Model):
     _name = "augmont.api.retry"
@@ -20,6 +18,8 @@ class AugmontApiRetry(models.Model):
 
     sdk_augmont_number = fields.Char(string="Augmont Number")
     updated_on = fields.Datetime(string="Updated On")
+
+    lgd_endpoint_url = fields.Char(string="Endpoint URL")
 
     payload_json = fields.Text(string="Payload JSON")
     headers_json = fields.Text(string="Headers JSON")
@@ -79,8 +79,30 @@ class AugmontApiRetry(models.Model):
         _logger.info("[CRON] ▶ Starting Augmont API Retry Job")
 
         Param = self.env['ir.config_parameter'].sudo()
-        base_url = Param.get_param('base_augmont_url')
+        base_url = (Param.get_param('base_augmont_url') or '').rstrip('/')
         api_url = f"{base_url}/api/v1/odoo/orderStatusUpdate"
+
+    def _lgd_retry_url(self, default_url):
+        self.ensure_one()
+        stored = (self.lgd_endpoint_url or '').strip()
+        if not stored:
+            return default_url
+        try:
+            from urllib.parse import urlsplit, urlunsplit
+            stored_parts = urlsplit(stored)
+            current = urlsplit(default_url)
+            if stored_parts.netloc and current.netloc and \
+                    stored_parts.netloc != current.netloc:
+                _logger.info(
+                    "[CRON] Record %s was queued against %s; sending to %s "
+                    "instead.", self.id, stored_parts.netloc, current.netloc)
+                return urlunsplit((current.scheme, current.netloc,
+                                   stored_parts.path, stored_parts.query, ''))
+        except Exception:
+            _logger.warning(
+                "[CRON] Record %s: could not re-point %r; using it as stored.",
+                self.id, stored)
+        return stored
 
         pending_records = self.search([('state', '=', 'pending')], order='id asc')
         _logger.info("[CRON] Pending retry records found: %d", len(pending_records))
@@ -171,12 +193,13 @@ class AugmontApiRetry(models.Model):
                 payload = json.loads(rec.payload_json)
                 headers = json.loads(rec.headers_json)
 
+                target_url = rec._lgd_retry_url(api_url)
+
                 _logger.info(
                     "[CRON] Retrying Record %d | URL: %s | Payload: %s",
-                    rec.id, api_url, json.dumps(payload)
+                    rec.id, target_url, json.dumps(payload)
                 )
-
-                response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+                response = requests.post(target_url, json=payload, headers=headers, timeout=30)
 
                 _logger.info(
                     "[CRON] Record %d | HTTP %s | Response: %s",

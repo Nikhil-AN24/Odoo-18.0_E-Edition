@@ -12,28 +12,36 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
-from .lgd_inventory_sale_line import LGD_DEAD_STATUSES
+from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 _LGD_DEAD_LINE_STATUSES = (
     'cancelled', 'not_available', 'replaced', 'memo_returned')
 
+#: Mirror of the website's own ALLOWED_ORDER_STATUS_TRANSITIONS. It must track
+#: theirs: the website enforces these and rejects anything else, while this copy
+#: only logs, so the two drifting apart turns a real rejection into a silent
+#: surprise. Last synced 19 Oct 2026.
+#:
+#: "Payment Pending" -> "Dispatched" is ours, not stock: goods can leave before
+#: payment clears, and a memo ships unpaid by definition.
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
     "Diamond Booked": ["Confirmed", "Not available"],
     "Confirmed": ["In QC process", "Cancelled"],
-    "Not available": ["Cancelled"],
+    "Not available": ["Cancelled", "Replaced"],
     "In QC process": ["Payment Pending", "QC Fail"],
-    "QC Fail": ["Cancelled"],
-    "Payment Pending": ["Payment Completed", "Cancelled"],
+    "QC Fail": ["Cancelled", "Replaced"],
+    "Replaced": ["Not available", "QC Fail"],
+    "Payment Pending": ["Payment Completed", "Cancelled", "Dispatched"],
     "Payment Completed": ["Dispatched"],
-    "Dispatched": ["Delivered", "Return of Order"],
+    "Dispatched": ["Delivered", "Return of Order", "Returned from memo"],
     "Return of Order": ["Re - Dispatched", "Delivered"],
     "Re - Dispatched": ["Delivered", "Return of Order"],
-    "Delivered": ["Order Completed", "Return of Order"],
+    "Delivered": ["Order Completed", "Return of Order", "Returned from memo"],
+    "Returned from memo": [],
     "Cancelled": [],
     "Order Completed": [],
 }
-
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
@@ -625,10 +633,9 @@ class SaleOrder(models.Model):
             
             if not order.utr_number:
                 raise UserError(f"No UTR number to update for order {order.name}")
-
-            
+    
             Param = self.env['ir.config_parameter'].sudo()
-            url = Param.get_param('base_augmont_url')
+            url = (Param.get_param('base_augmont_url') or '').rstrip('/')
             url = f"{url}/api/v1/odoo/utr-tracking/update"
             headers = {
                 "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI",
@@ -934,20 +941,24 @@ class SaleOrder(models.Model):
                     _logger.error("❌ Failed to send Auto-Confirmation Email for Order: %s. Error: %s", order.name, str(e))
 
             order.action_send_product_to_api()
-            _logger.info("🌐 [CONFIRM] Sending current statuses to API for order %s", order.name)
-            try:
-                order._call_augmont_status_api(order.sdk_augmont_status)
-            except Exception as _api_err:
-                _logger.error(
-                    "❌ [action_confirm] Augmont API call failed for %s: %s",
-                    order.name, _api_err
-                )
+            # skip_api_sync is set by callers that confirm an order as a side
+            # effect of something else - the auto-QC cascade and the
+            # auto-confirm in the line write both do. They have already pushed,
+            # or are about to, and honouring the flag here is what stops the same status going out twice.
+            if self.env.context.get('skip_api_sync'):
+                _logger.info(
+                    "🔕 [CONFIRM] Status push skipped for %s (skip_api_sync)",
+                    order.name)
+            else:
+                _logger.info("🌐 [CONFIRM] Sending current statuses to API for order %s", order.name)
+                try:
+                    order._call_augmont_status_api(order.sdk_augmont_status)
+                except Exception as _api_err:
+                    _logger.error(
+                        "❌ [action_confirm] Augmont API call failed for %s: %s",
+                        order.name, _api_err
+                    )
 
-
-            # sale.order.picking_ids is provided by the sale_stock module. It is
-            # present on the Enterprise/production database but may be absent on
-            # a plain community setup; guard so Confirm still completes there
-            # (there are no pickings to adjust in that case anyway).
             pickings = (order.picking_ids
                         if 'picking_ids' in order._fields
                         else self.env['stock.picking'])
@@ -1476,7 +1487,7 @@ class SaleOrder(models.Model):
         self.ensure_one()
 
         Param = self.env['ir.config_parameter'].sudo()
-        url = Param.get_param('base_augmont_url')
+        url = (Param.get_param('base_augmont_url') or '').rstrip('/')
 
         if not url:
             raise UserError(_('KYC API Base URL is not configured. Please configure it in System Parameters with key: kyc_api.base_url'))
@@ -1619,7 +1630,7 @@ class SaleOrder(models.Model):
     
     def action_send_product_to_api(self):
         Param = self.env['ir.config_parameter'].sudo()
-        url = Param.get_param('base_augmont_url')
+        url = (Param.get_param('base_augmont_url') or '').rstrip('/')
 
         if not url:
             _logger.warning(
@@ -1797,58 +1808,172 @@ class SaleOrder(models.Model):
                 order._call_augmont_status_api(status)
     
  
-    def _prepare_augmont_status_data(self, status, comment=None, order_number=None):
-        """Prepare data for Augmont API for a specific sale order line"""
-        self.ensure_one()
+    def _lgd_status_user_block(self, user):
+        partner = user.partner_id
+        company = self.company_id.partner_id
 
-        # Get current login user
+        mobile = ((partner.mobile or partner.phone or '').strip()
+                  or (company.mobile or company.phone or '').strip())
+        if not mobile:
+            _logger.error(
+                "[STATUS PUSH] Neither %s nor %s has a phone number. The "
+                "website requires one and will refuse this update. Set a "
+                "Mobile on the user's contact.",
+                user.display_name, company.display_name or 'the company')
+        elif not (partner.mobile or partner.phone):
+            _logger.warning(
+                "[STATUS PUSH] %s has no phone number; sending the company's. "
+                "Set a Mobile on their contact to send their own.",
+                user.display_name)
+
+        # A one-word name leaves lastName empty, and the website refuses that
+        # too - it already rejected an order over buyer.lastName. Repeat the
+        # single word rather than lose the update over a surname.
+        parts = (user.name or '').split()
+        if not parts:
+            first = last = 'Odoo'
+        elif len(parts) == 1:
+            first = last = parts[0]
+        else:
+            first, last = parts[0], ' '.join(parts[1:])
+
+        block = {
+            "firstName": first,
+            "lastName": last,
+            "email": user.email or company.email or '',
+            "mobileNumber": mobile,
+        }
+
+        id_number = self._lgd_status_user_id_number(user)
+        if id_number:
+            block["idNumber"] = id_number
+        return block
+
+    def _lgd_status_user_id_number(self, user):
+        if 'hr.employee' not in self.env:
+            return ''
+        employee = self.env['hr.employee'].sudo().search(
+            [('user_id', '=', user.id)], limit=1)
+        for candidate in (employee.identification_id, employee.barcode):
+            if (candidate or '').strip():
+                return candidate.strip()
+        return ''
+
+    #: Statuses that bring a fact into existence. A field is sent when the
+    #: status that produces it has happened, and left out entirely otherwise -
+    #: an empty string is not "not applicable", it asserts the value is blank,
+    #: and on a QC event nobody has a UTR or a tracking number yet.
+    _LGD_UTR_STATUSES = ('Payment Completed',)
+    _LGD_COURIER_STATUSES = ('Dispatched', 'Re - Dispatched')
+
+    def _prepare_augmont_status_data(self, status, comment=None,
+                                     order_number=None, line=None):
+        """One status update wrapped as a complete request body.
+
+        Kept because a retry row stores its payload and re-sends it alone:
+        each row must be valid by itself even though the live call batches.
+        """
+        return {"ordersStatus": [
+            self._lgd_status_entry(status, comment, order_number, line)]}
+
+    def _lgd_status_entry(self, status, comment=None,
+                          order_number=None, line=None):
+        """One status update, in the shape the website accepts.
+
+        Only facts that exist at this point in the order's life are included.
+        The alternative - sending every key always, padded with empty strings -
+        makes the payload unreadable and tells the website that a stone in QC
+        has a blank courier rather than no courier at all.
+
+        `line` carries the stone, which is where the certificate comes from.
+        It is optional so the older call style still works, but without it the
+        certificate cannot be sent.
+        """
+        self.ensure_one()
         user = self.env.user
 
-        # Ensure UTR is always a string (API requires string, not None/False)
-        utr_value = str(self.utr_number) if self.utr_number else ""
-        
-        # Only include UTR when status is Payment Completed
-        include_utr = (status == "Payment Completed")
-        
-        # Only include courier fields when status is Dispatched or Re - Dispatched
-        include_courier = (status in ["Dispatched", "Re - Dispatched"])
-
-        data = {
-            "ordersStatus": [{
-                "id": order_number,  # fetched from sale.order.line
-                "status": status,
-                "utr": utr_value if include_utr else "",
-                "courierPartnerName": str(self.courier_partner_name) if (include_courier and self.courier_partner_name) else "",
-                "trackingNumber": str(self.tracking_number) if (include_courier and self.tracking_number) else "",
-                "comment": comment or f"Order status updated to {status} by Odoo system",
-                "user": {
-                    "firstName": user.name.split(' ')[0] if user.name else '',
-                    "lastName": ' '.join(user.name.split(' ')[1:]) if user.name and len(user.name.split(' ')) > 1 else '',
-                    "email": user.email or '',
-                    "mobileNumber": user.partner_id.mobile or user.partner_id.phone or '',
-                }
-            }]
+        entry = {
+            # Integer, and snake_case, per the website's contract. Every
+            # order_number we hold is numeric; a non-numeric one would be a
+            # website-side format change, so it is passed through untouched
+            # and logged rather than silently mangled by int().
+            "order_unique_id": self._lgd_status_unique_id(order_number),
+            "status": status,
+            "comment": comment or f"Order status updated to {status} by Odoo system",
+            "user": self._lgd_status_user_block(user),
         }
-        return data
+
+        # The certificate. For a spec-based order no stone is chosen when the
+        # order is placed, so this is genuinely absent at creation and only
+        # becomes real once procurement sources it - which is why it travels
+        # on the status update rather than only on the order.
+        certificate = (line.certificate or '').strip() if line else ''
+        if certificate:
+            entry["certNumber"] = certificate
+
+        if status in self._LGD_UTR_STATUSES:
+            utr = str(self.utr_number).strip() if self.utr_number else ''
+            if utr:
+                entry["utr"] = utr
+            else:
+                _logger.warning(
+                    "[STATUS PUSH] Order %s reached %s with no UTR recorded; "
+                    "sending the status without one.", self.name, status)
+
+        if status in self._LGD_COURIER_STATUSES:
+            courier = (self.courier_partner_name or '').strip()
+            tracking = (self.tracking_number or '').strip()
+            if courier:
+                entry["courierPartnerName"] = courier
+            if tracking:
+                entry["trackingNumber"] = tracking
+            # The website requires BOTH on a dispatch and refuses the update
+            # without them. Odoo deliberately does not force either at
+            # hand-over - a parcel is often prepared before the courier gives
+            # a number, and blocking that would stop goods leaving. So say
+            # plainly what is missing, or the 400 that follows looks like the
+            # website rejecting us for no reason.
+            missing = [name for name, value in
+                       (('courier', courier), ('tracking number', tracking))
+                       if not value]
+            if missing:
+                _logger.warning(
+                    "[STATUS PUSH] Order %s reached %s with no %s recorded. "
+                    "The website requires both and will refuse this update.",
+                    self.name, status, ' and no '.join(missing))
+
+        return entry
+
+    def _lgd_status_unique_id(self, order_number):
+        """The website's line id, as the integer its contract specifies."""
+        raw = (order_number or '')
+        if isinstance(raw, int):
+            return raw
+        raw = str(raw).strip()
+        if raw.isdigit():
+            return int(raw)
+        _logger.warning(
+            "[STATUS PUSH] Order %s: order_number %r is not numeric, so it "
+            "cannot be sent as an integer. Sending it as text.",
+            self.name, raw)
+        return raw
 
     def _call_augmont_status_api(self, new_status, old_status=None):
         self.ensure_one()
-
-        # Offline orders live entirely inside Odoo — they must never sync to the
-        # Augmont website API (their AUG-OFF invoice number is unknown there).
-        if self.order_source == 'offline':
+        if self.order_source == 'offline' and not any(
+                line.order_number for line in self.order_line):
             _logger.info(
-                "🔕 [API SKIP] Order: %s | offline order — no website sync",
+                "🔕 [API SKIP] Order: %s | offline order not yet pushed to the "
+                "website — no status sync",
                 self.name
             )
             return
 
-        AUGMONT_VALID_API_STATUSES = frozenset([
-            'Diamond Booked', 'Confirmed', 'Not available', 'Cancelled',
-            'In QC process', 'QC Fail', 'Payment Pending', 'Payment Completed',
-            'Dispatched', 'Return of Order', 'Re - Dispatched', 'Delivered',
-            'Order Completed',
-        ])
+        # Every word the website knows. A status missing from here is dropped
+        # by the per-line guard below and never sent at all, which is how a
+        # new status on their side goes silently unreported on ours.
+        AUGMONT_VALID_API_STATUSES = frozenset(
+            ALLOWED_AUGMONT_STATUS_TRANSITIONS)
         if not new_status:
             _logger.info(
                 "🔕 [API SKIP] Order: %s | Empty status — nothing to send",
@@ -1865,23 +1990,10 @@ class SaleOrder(models.Model):
             )
 
         # ── LINE-STATUS → AUGMONT API STATUS MAP ────────────────────────────────
- 
-        _LINE_TO_AUGMONT = {
-            'diamond_booked':    'Diamond Booked',
-            'confirmed':         'Confirmed',
-            'not_available':     'Not available',
-            'cancelled':         'Cancelled',
-            'replaced':          'Cancelled',
-            'in_qc_process':     'In QC process',
-            'qc_fail':           'QC Fail',
-            'payment_pending':   'Payment Pending',
-            'payment_completed': 'Payment Completed',
-            'dispatched':        'Dispatched',
-            'return_of_order':   'Return of Order',
-            're_dispatched':     'Re - Dispatched',
-            'delivered':         'Delivered',
-            'order_completed':   'Order Completed',
-        }
+        # The shared map - see LINE_STATUS_TO_AUGMONT. The offline push
+        # uses the same one so a line is created on the website under the
+        # same word it is later updated with.
+        _LINE_TO_AUGMONT = LINE_STATUS_TO_AUGMONT
 
         sale_order_lines = self.order_line.filtered(lambda l: l.order_number)
         if not sale_order_lines:
@@ -1891,9 +2003,14 @@ class SaleOrder(models.Model):
             )
             return
 
+        # Declared before the try so the exception handler can still say which
+        # lines were affected when the failure lands before the batch is built.
+        entries = []
+        headers = {}
+
         try:
             Param = self.env['ir.config_parameter'].sudo()
-            base_url = Param.get_param('base_augmont_url')
+            base_url = (Param.get_param('base_augmont_url') or '').rstrip('/')
             api_url = f"{base_url}/api/v1/odoo/orderStatusUpdate"
 
             headers = {
@@ -1912,6 +2029,8 @@ class SaleOrder(models.Model):
                 new_status,
             )
 
+            # ── Build every line's entry, then send them as ONE call ──────
+            entries = []
             for line in sale_order_lines:
                 order_number = line.order_number
 
@@ -1942,9 +2061,6 @@ class SaleOrder(models.Model):
                         continue
 
                 # ── PER-LINE GUARD: Skip lines whose final status is internal ──────
-                # This is the safety net that was previously an ORDER-LEVEL guard.
-                # Moving it here allows all other lines (with valid statuses) to still
-                # be sent even when one line has an unusual/internal status.
                 if final_status not in AUGMONT_VALID_API_STATUSES:
                     _logger.info(
                         "🔕 [LINE SKIP] Line %s | final_status='%s' not a valid API status — skipping",
@@ -1952,102 +2068,102 @@ class SaleOrder(models.Model):
                     )
                     continue
 
-                data = self._prepare_augmont_status_data(final_status, order_number=order_number)
+                entries.append({
+                    'line': line,
+                    'order_number': order_number,
+                    'final_status': final_status,
+                    'entry': self._lgd_status_entry(
+                        final_status, order_number=order_number, line=line),
+                })
 
+            if not entries:
                 _logger.info(
-                    "▶▶ ODOO → WEBSITE | Line: %s | %s → %s",
-                    order_number,
-                    line.availability_status,
-                    final_status
-                )
+                    "🔕 [API SKIP] Order: %s | No line had a sendable status",
+                    self.name)
+                return
+
+            data = {"ordersStatus": [item['entry'] for item in entries]}
+
+            _logger.info(
+                "▶▶ ODOO → WEBSITE | %s line(s) in one call: %s",
+                len(entries),
+                ', '.join('%s → %s' % (i['order_number'], i['final_status'])
+                          for i in entries))
+            _logger.info(
+                "   METHOD: POST | URL: %s | Payload: %s",
+                api_url, json.dumps(data))
+
+            response = requests.post(api_url, json=data, headers=headers, timeout=30)
+
+            if response.status_code == 200:
+                response_data = response.json()
                 _logger.info(
-                    "   METHOD: POST | URL: %s | Payload: %s",
-                    api_url, json.dumps(data)
+                    "▶▶ ODOO → WEBSITE | STATUS UPDATE RESPONSE | %s line(s) | HTTP 200 ✅ | Response: %s",
+                    len(entries), json.dumps(response_data)
                 )
+                _logger.info("=" * 70)
 
-                response = requests.post(api_url, json=data, headers=headers, timeout=30)
+                rows = Markup('').join(
+                    Markup("<li>Line <b>%s</b>: %s</li>") % (
+                        item['order_number'],
+                        ("%s → %s" % (old_status, item['final_status']))
+                        if old_status else item['final_status'])
+                    for item in entries)
+                self.message_post(
+                    body=Markup("<p>Augmont status updated:</p><ul>%s</ul>"
+                                "<p>Response: %s</p>") % (
+                        rows, response_data.get('message', 'Success')),
+                    subject="Augmont Status Update"
+                )
+            else:
+                _logger.error(
+                    "▶▶ ODOO → WEBSITE | STATUS UPDATE RESPONSE | %s line(s) | HTTP %s ❌ | Response: %s",
+                    len(entries), response.status_code, response.text
+                )
+                _logger.info("=" * 70)
+                error_text = response.text or ""
 
-                if response.status_code == 200:
-                    response_data = response.json()
+                def _is_noise(item):
+                    same = ("Status transition from" in error_text
+                            and "is not allowed" in error_text
+                            and "from '%s' to '%s'" % (item['final_status'],
+                                                       item['final_status']) in error_text)
+                    echo = (item['final_status'] == "Diamond Booked"
+                            and (not old_status or old_status == "Diamond Booked"))
+                    return same or echo
+
+                if all(_is_noise(item) for item in entries):
                     _logger.info(
-                        "▶▶ ODOO → WEBSITE | STATUS UPDATE RESPONSE | Line: %s | HTTP 200 ✅ | Response: %s",
-                        order_number,
-                        json.dumps(response_data)
-                    )
-                    _logger.info("=" * 70)
-
-                    status_change = f"{old_status} → {final_status}" if old_status else final_status
-
-                    self.message_post(
-                        body=Markup(
-                            f"<p>Augmont status updated for line {order_number}:</p>"
-                            f"<ul><li>Status: {status_change}</li>"
-                            f"<li>Response: {response_data.get('message', 'Success')}</li></ul>"
-                        ),
-                        subject="Augmont Status Update"
-                    )
+                        "🔕 [SKIP] Order %s: suppressed — same-status / initial echo",
+                        self.name)
                 else:
-                    _logger.error(
-                        "▶▶ ODOO → WEBSITE | STATUS UPDATE RESPONSE | Line: %s | HTTP %s ❌ | Response: %s",
-                        order_number,
-                        response.status_code,
-                        response.text
-                    )
-                    _logger.info("=" * 70)
-                    error_text = response.text or ""
 
-                    # 1. Same-status transition: website already has the correct status.
-                    # 2. Diamond Booked → Diamond Booked (any error): when an order is
-                    #    first created from the website, Odoo echoes "Diamond Booked"
-                    #    back to the website, which the website may reject ("not found"
-                    #    or same-status). The website already has Diamond Booked;
-                    #    no action is needed and no chatter noise should appear.
-                    is_same_status_error = (
-                        "Status transition from" in error_text
-                        and "is not allowed" in error_text
-                        and f"from '{final_status}' to '{final_status}'" in error_text
-                    )
-                    is_db_to_db = (
-                        final_status == "Diamond Booked"
-                        and (not old_status or old_status == "Diamond Booked")
-                    )
-                    if is_same_status_error or is_db_to_db:
-                        _logger.info(
-                            "🔕 [SKIP] Line %s: suppressed — %s",
-                            order_number,
-                            "same-status transition" if is_same_status_error else "Diamond Booked → Diamond Booked (initial echo)"
-                        )
-                    else:
-                        # Save failed API call for retry
+                    for item in entries:
                         retry_rec = self.env["augmont.api.retry"].create({
                             "order_id": self.id,
-                            "order_line_id": line.id,
+                            "order_line_id": item['line'].id,
                             "sdk_augmont_number": self.sdk_augmont_number,
-                            "order_number": order_number,
-                            "payload_json": json.dumps(data),
+                            "order_number": item['order_number'],
+                            "payload_json": json.dumps(
+                                {"ordersStatus": [item['entry']]}),
                             "headers_json": json.dumps(headers),
                             "old_status": old_status or "",
-                            "new_status": final_status,
+                            "new_status": item['final_status'],
                             "error_message": response.text,
                             "status_code": response.status_code,
                             "state": "pending",
                         })
-
                         _logger.info(
                             "🔄 [RETRY CREATED] ID: %s | Line: %s",
-                            retry_rec.id,
-                            order_number
-                        )
+                            retry_rec.id, item['order_number'])
 
-                        # Log in chatter — Markup for proper HTML render
-                        self.message_post(
-                            body=Markup(
-                                f"<p style='color:red;'><b>Augmont API FAILED</b> for line {order_number}</p>"
-                                f"<p>Error: {response.text}</p>"
-                            ),
-                            subject="Augmont API Failure"
-                        )
-
+                    self.message_post(
+                        body=Markup(
+                            "<p style='color:red;'><b>Augmont API FAILED</b> "
+                            "for %s line(s)</p><p>Error: %s</p>") % (
+                            len(entries), response.text),
+                        subject="Augmont API Failure"
+                    )
         except Exception as e:
             _logger.error(
                 "💥 [API EXCEPTION] Order: %s | Error: %s",
@@ -2055,33 +2171,41 @@ class SaleOrder(models.Model):
                 str(e)
             )
 
-            # CREATE RETRY RECORD ON EXCEPTION
-            retry_rec = self.env["augmont.api.retry"].create({
-                "order_id": self.id,
-                "order_line_id": line.id,
-                "sdk_augmont_number": self.sdk_augmont_number,
-                "order_number": order_number,
-                "payload_json": json.dumps(data),
-                "headers_json": json.dumps(headers),
-                "old_status": old_status or "",
-                "new_status": new_status or "",
-                "error_message": str(e),
-                "status_code": "EXCEPTION",
-                "state": "pending",
-            })
+            # One retry row per line, each independently re-sendable. The
+            # batch may have failed before it was built (an unreachable
+            # website, a bad URL), so fall back to the lines themselves
+            # rather than assuming `entries` exists.
+            pending = entries or [
+                {'line': l, 'order_number': l.order_number,
+                 'final_status': new_status or '', 'entry': None}
+                for l in sale_order_lines
+            ]
+            for item in pending:
+                payload = ({"ordersStatus": [item['entry']]}
+                           if item.get('entry') else {})
+                retry_rec = self.env["augmont.api.retry"].create({
+                    "order_id": self.id,
+                    "order_line_id": item['line'].id,
+                    "sdk_augmont_number": self.sdk_augmont_number,
+                    "order_number": item['order_number'],
+                    "payload_json": json.dumps(payload),
+                    "headers_json": json.dumps(headers),
+                    "old_status": old_status or "",
+                    "new_status": item['final_status'] or new_status or "",
+                    "error_message": str(e),
+                    "status_code": "EXCEPTION",
+                    "state": "pending",
+                })
+                _logger.info(
+                    "[AUGMONT RETRY CREATED FROM EXCEPTION] ID: %s | Line: %s",
+                    retry_rec.id, item['order_number'])
 
-            _logger.info(
-                f"[AUGMONT RETRY CREATED FROM EXCEPTION] ID: {retry_rec.id}"
-            )
-
-            # CHATTER LOG FOR EXCEPTION — Markup() so HTML renders correctly
             self.message_post(
                 body=Markup(
-                    f"<p style='color:red;'><b>Augmont API EXCEPTION</b></p>"
-                    f"<p>Order Number: {order_number}</p>"
-                    f"<p>Status: {old_status} → {new_status}</p>"
-                    f"<p>Error: {str(e)}</p>"
-                ),
+                    "<p style='color:red;'><b>Augmont API EXCEPTION</b></p>"
+                    "<p>%s line(s) affected</p><p>Status: %s → %s</p>"
+                    "<p>Error: %s</p>") % (
+                    len(pending), old_status or 'None', new_status, str(e)),
                 subject="Augmont API Connection Error"
             )
 
@@ -2168,9 +2292,7 @@ class SaleOrder(models.Model):
 
     def action_save_statuses(self):
         self.ensure_one()
-        # Sanctioned action: let this method's cascade (auto-QC POs, status push,
-        # optional cancel) run past the procurement field-guard; elevate for a
-        # plain procurement user so QC PO creation / system reads don't wall.
+
         if self._lgd_proc_needs_elevation():
             self = self.sudo()
         self = self.with_context(lgd_proc_action=True)
@@ -3244,7 +3366,38 @@ class SaleOrderLine(models.Model):
     final_price = fields.Float(related='product_template_id.final_price',string="Vendor Price" ) 
     final_price_margin = fields.Float(related='product_template_id.final_price_margin', string="Final Price")
     stock_number = fields.Char(related='product_template_id.stock_number', string="Vendor SKU")
-    lgd_stock_number = fields.Char(related='product_template_id.lgd_stock_number', string="LGD SKU")
+    # ── LGD SKU: per LINE, not per product ────────────────────────────────
+    lgd_own_stock_number = fields.Char(
+        string="Line LGD SKU", copy=False, readonly=True, index=True,
+        help="SKU minted for this specific line, used when the product record "
+             "is shared across several lines.")
+
+    lgd_stock_number = fields.Char(
+        string="LGD SKU", compute='_compute_lgd_stock_number',
+        store=True, readonly=True,
+        help="The SKU that identifies the goods on this line.")
+
+    @api.depends('lgd_own_stock_number', 'product_template_id.lgd_stock_number')
+    def _compute_lgd_stock_number(self):
+        for line in self:
+            line.lgd_stock_number = (
+                line.lgd_own_stock_number
+                or line.product_template_id.lgd_stock_number)
+
+    def _lgd_assign_own_stock_numbers(self):
+        Product = self.env['product.template']
+        for line in self:
+            if line.display_type or line.lgd_own_stock_number:
+                continue
+            template = line.product_template_id
+            if not template or template.certificate:
+                continue
+            if not template.lgd_stock_number:
+                # Natural stones get no SKU at all - nothing to make unique.
+                continue
+            number = Product._lgd_next_offline_stock_number()
+            if number:
+                line.lgd_own_stock_number = number
     vendor_id = fields.Many2one(
         'res.partner', string="Vendor Company",
         domain="[('partner_kind', '=', 'supplier')]")
@@ -3653,7 +3806,9 @@ class SaleOrderLine(models.Model):
             )
             return self.env['sale.order.line']
 
-        return super(SaleOrderLine, self).create(filtered_vals)
+        lines = super(SaleOrderLine, self).create(filtered_vals)
+        lines._lgd_assign_own_stock_numbers()
+        return lines
 
     def _cancel_or_reduce_related_rfq(self):
         """
@@ -4109,9 +4264,8 @@ class SaleOrderLine(models.Model):
             affected_orders = self.filtered(lambda l: l.order_id).mapped('order_id')
             for order in affected_orders:
                 _logger.info(
-                    "💾 [NATIVE SAVE / LINE WRITE] Order %s: availability_status "
-                    "recomputed — API suppressed here. Use {Save} button to push "
-                    "status to website.",
+                    "💾 [LINE WRITE] Order %s: availability_status recomputed. "
+                    "Any real status change is pushed below.",
                     order.name
                 )
                 order.order_line.invalidate_recordset(['availability_status'])
@@ -4201,8 +4355,40 @@ class SaleOrderLine(models.Model):
                     "⏭️ Skipping auto-confirm (from_quality=%s, from_pack=%s, from_website_api=%s, dispatch_validation=%s)",
                     from_quality_module, from_pack_wizard, from_website_api, dispatch_validation
                 )
-        
+
+        self._lgd_push_status_changes(old_statuses, from_website_api)
+
         return result
+
+    def _lgd_push_status_changes(self, old_statuses, from_website_api):
+
+        if from_website_api or self.env.context.get('skip_api_sync'):
+            return
+        if self.env.context.get('_in_compute_augmont_status'):
+            return
+
+        changed = self.filtered(
+            lambda l: l.id in old_statuses
+            and l.availability_status
+            and l.availability_status != old_statuses[l.id]
+            and l.order_number
+            and l.order_id)
+        if not changed:
+            return
+
+        for order in changed.mapped('order_id'):
+            moves = ', '.join(
+                '%s: %s -> %s' % (line.order_number, old_statuses[line.id],
+                                  line.availability_status)
+                for line in changed if line.order_id == order)
+            _logger.info(
+                "🔔 [AUTO STATUS PUSH] Order %s | %s", order.name, moves)
+            try:
+                order._call_augmont_status_api(order.sdk_augmont_status)
+            except Exception as exc:
+                _logger.error(
+                    "❌ [AUTO STATUS PUSH] Order %s: %s. The status is saved in "
+                    "Odoo; the retry queue will re-send it.", order.name, exc)
                 
     def _action_launch_stock_rule(self, previous_product_uom_qty=False):
         """

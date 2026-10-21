@@ -116,6 +116,10 @@
                                         <field name="lgd_note_qc_requirements"
                                                string="Default QC Requirements" readonly="1"/>
                                         <field name="lgd_stage" string="Stage" readonly="1"/>
+                                        <field name="lgd_memo_return_qc"
+                                               string="Memo Return" readonly="1"
+                                               optional="show"
+                                               widget="boolean_toggle"/>
                                     </list>
                                 </field>
                             </page>
@@ -160,6 +164,12 @@
                     <field name="lgd_note_qc_requirements"
                            string="Default QC Requirements" readonly="1" optional="show"/>
                     <field name="lgd_stage" string="Stage" readonly="1"/>
+                    <!-- Tells the inspector which kind of inspection this is:
+                         a stone in from a vendor, or one back from a customer
+                         memo. Pass and Fail do different things for each. -->
+                    <field name="lgd_memo_return_qc" string="Memo Return"
+                           readonly="1" optional="show"
+                           widget="boolean_toggle"/>
                 </list>
             </field>
         </record>
