@@ -1808,23 +1808,53 @@ class SaleOrder(models.Model):
                 order._call_augmont_status_api(status)
     
  
+    #: Used when a status change has no human behind it. Overridable per database via the lgd_system_email system parameter.
+    _LGD_SYSTEM_EMAIL_DEFAULT = 'odoo-system@augmont.com'
+
+    def _lgd_system_email(self):
+        """The address to name when nobody in particular made the change."""
+        return (self.env['ir.config_parameter'].sudo().get_param(
+            'lgd_system_email') or '').strip() or self._LGD_SYSTEM_EMAIL_DEFAULT
+
     def _lgd_status_user_block(self, user):
+
         partner = user.partner_id
         company = self.company_id.partner_id
+        salesperson = self.user_id.partner_id if self.user_id else None
 
-        mobile = ((partner.mobile or partner.phone or '').strip()
-                  or (company.mobile or company.phone or '').strip())
-        if not mobile:
+        def _first(label, *candidates):
+            for source, value in candidates:
+                text = (value or '').strip()
+                if text:
+                    if source != 'user':
+                        _logger.warning(
+                            "[STATUS PUSH] Order %s: %s has no %s; sending "
+                            "the %s's instead. Set it on their contact to "
+                            "send the real one.",
+                            self.name, user.display_name, label, source)
+                    return text
             _logger.error(
-                "[STATUS PUSH] Neither %s nor %s has a phone number. The "
-                "website requires one and will refuse this update. Set a "
-                "Mobile on the user's contact.",
-                user.display_name, company.display_name or 'the company')
-        elif not (partner.mobile or partner.phone):
-            _logger.warning(
-                "[STATUS PUSH] %s has no phone number; sending the company's. "
-                "Set a Mobile on their contact to send their own.",
-                user.display_name)
+                "[STATUS PUSH] Order %s: no %s available from %s, the "
+                "salesperson or %s. The website requires it and will refuse "
+                "this update with a 400.",
+                self.name, label, user.display_name,
+                company.display_name or 'the company')
+            return ''
+
+        mobile = _first(
+            'phone number',
+            ('user', partner.mobile or partner.phone),
+            ('salesperson', salesperson and (salesperson.mobile
+                                             or salesperson.phone)),
+            ('company', company.mobile or company.phone))
+
+        email = _first(
+            'email address',
+            ('user', partner.email),
+            ('user', user.login if '@' in (user.login or '') else ''),
+            ('salesperson', salesperson and salesperson.email),
+            ('company', company.email),
+            ('service account', self._lgd_system_email()))
 
         # A one-word name leaves lastName empty, and the website refuses that
         # too - it already rejected an order over buyer.lastName. Repeat the
@@ -1840,7 +1870,7 @@ class SaleOrder(models.Model):
         block = {
             "firstName": first,
             "lastName": last,
-            "email": user.email or company.email or '',
+            "email": email,
             "mobileNumber": mobile,
         }
 

@@ -74,15 +74,8 @@ class AugmontApiRetry(models.Model):
             pass
         return False
 
-    def retry_api_call(self):
-        _logger.info("=" * 60)
-        _logger.info("[CRON] ▶ Starting Augmont API Retry Job")
-
-        Param = self.env['ir.config_parameter'].sudo()
-        base_url = (Param.get_param('base_augmont_url') or '').rstrip('/')
-        api_url = f"{base_url}/api/v1/odoo/orderStatusUpdate"
-
     def _lgd_retry_url(self, default_url):
+
         self.ensure_one()
         stored = (self.lgd_endpoint_url or '').strip()
         if not stored:
@@ -104,6 +97,13 @@ class AugmontApiRetry(models.Model):
                 self.id, stored)
         return stored
 
+    def retry_api_call(self):
+        _logger.info("=" * 60)
+        _logger.info("[CRON] ▶ Starting Augmont API Retry Job")
+
+        Param = self.env['ir.config_parameter'].sudo()
+        base_url = (Param.get_param('base_augmont_url') or '').rstrip('/')
+        api_url = f"{base_url}/api/v1/odoo/orderStatusUpdate"
         pending_records = self.search([('state', '=', 'pending')], order='id asc')
         _logger.info("[CRON] Pending retry records found: %d", len(pending_records))
 

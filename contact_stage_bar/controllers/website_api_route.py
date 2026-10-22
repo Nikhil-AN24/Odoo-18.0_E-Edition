@@ -206,10 +206,50 @@ class PartnerSyncController(http.Controller):
     # Tax historically hardcoded on website stone products.
     _WEBSITE_STONE_TAX_ID = 112
 
+    #: Which company website orders belong to. Set per database, because
+    #: localhost and UAT do not hold the same companies.
+    _WEBSITE_ORDER_COMPANY_PARAM = 'lgd_website_order_company'
+
     def _website_order_company(self):
-        company = request.env['res.company'].sudo().search(
+        """The company a website order is filed under.
+
+        Reads the system parameter first - an id, or a company name. Falling
+        back to request.env.company is what went wrong before: a public call
+        has no session, so it ran as the Public user and inherited THAT
+        user's company. Orders then landed in a company nobody was looking
+        at, and Odoo's own record rules hid them from the Sales list, which
+        made a successfully received order look like it had never arrived.
+
+        The old hardcoded name is still honoured so nothing breaks where it
+        does match, but a miss is now logged rather than silently inherited.
+        """
+        Company = request.env['res.company'].sudo()
+        configured = (request.env['ir.config_parameter'].sudo()
+                      .get_param(self._WEBSITE_ORDER_COMPANY_PARAM) or '').strip()
+        if configured:
+            company = (Company.browse(int(configured)).exists()
+                       if configured.isdigit()
+                       else Company.search([('name', '=', configured)], limit=1))
+            if company:
+                return company
+            _logger.warning(
+                "[CART_ADD] %s is set to %r, which matches no company. "
+                "Falling back.", self._WEBSITE_ORDER_COMPANY_PARAM, configured)
+
+        company = Company.search(
             [('name', '=', self._WEBSITE_ORDER_COMPANY_NAME)], limit=1)
-        return company or request.env.company
+        if company:
+            return company
+
+        fallback = request.env.company
+        _logger.warning(
+            "[CART_ADD] No company configured for website orders and %r "
+            "matches none, so this order goes to %r - whichever company the "
+            "calling user happens to belong to. Set the %s system parameter "
+            "to choose deliberately.",
+            self._WEBSITE_ORDER_COMPANY_NAME, fallback.display_name,
+            self._WEBSITE_ORDER_COMPANY_PARAM)
+        return fallback
 
     def _website_stone_tax(self, company):
         """Tax for website stone products, taken from the order's company.
@@ -238,6 +278,13 @@ class PartnerSyncController(http.Controller):
             'Fair': 'F',
             'Poor': 'P'
         }
+
+        # Everything this handler touches is website-originated. Setting it
+        # once here, rather than on each write, is what stops Odoo echoing a
+        # status back for an order the website just told us about - they
+        # already know it, and the echo was being refused anyway. Individual
+        # call sites kept missing the flag; a request-wide context cannot.
+        request.update_context(from_website_api=True)
 
         try:
             data = json.loads(request.httprequest.data)
@@ -777,15 +824,34 @@ class PartnerSyncController(http.Controller):
                 # Now handle sale order line Same reasoning as the product lookup above: only constrain
                 # on lgd_stock_number when the payload actually supplied one,
                 # or an offline re-post duplicates every line.
-                _line_domain = [
-                    ('order_id', '=', sale_order.id),
-                    ('certificate', '=', certificate),
-                ]
-                if lgd_stock_number:
-                    _line_domain.append(
-                        ('lgd_stock_number', '=', lgd_stock_number))
-                existing_line = request.env['sale.order.line'].sudo().search(
-                    _line_domain, limit=1)
+                # orderUniqueId first: it is the website's own key for this
+                # line and the only value that survives everything else being
+                # renamed. The certificate/SKU match below cannot be trusted
+                # alone - a line's lgd_stock_number is computed as
+                # `lgd_own_stock_number or the template's SKU`, so once a line
+                # is given its own LGD-OFF- number it stops matching the SKU
+                # the website sent, and every re-post of the same order adds
+                # another copy of the same stone. S00221 ended up with the
+                # same stone twice, both carrying orderUniqueId 530710.
+                existing_line = request.env['sale.order.line']
+                if order_number:
+                    existing_line = existing_line.sudo().search([
+                        ('order_id', '=', sale_order.id),
+                        ('order_number', '=', str(order_number)),
+                    ], limit=1)
+
+                if not existing_line:
+                    # No orderUniqueId (or an older order that predates it):
+                    # fall back to identifying the stone itself.
+                    _line_domain = [
+                        ('order_id', '=', sale_order.id),
+                        ('certificate', '=', certificate),
+                    ]
+                    if lgd_stock_number:
+                        _line_domain.append(
+                            ('lgd_stock_number', '=', lgd_stock_number))
+                    existing_line = request.env['sale.order.line'].sudo().search(
+                        _line_domain, limit=1)
 
                 if not existing_line:
                     # Fetch availability_status from this order item's
@@ -841,9 +907,14 @@ class PartnerSyncController(http.Controller):
 
     @http.route('/api/sale_order/update_status', type='http', auth='public', methods=['POST'], csrf=False)
     def update_sale_order_status(self, **kwargs):
-        denied = lgd_check_api_token(request)
-        if denied:
-            return denied
+        # Token check removed on request (21 Oct 2026). These endpoints move
+        # money and inventory and are reachable by anyone who knows the URL.
+        # To restore it, put back the two lines below — the helper is still
+        # here, still tested, and website.api.token is still set:
+        #
+        #     denied = lgd_check_api_token(request)
+        #     if denied:
+        #         return denied
 
         STATUS_MAP = {
             'Diamond Booked':    'diamond_booked',

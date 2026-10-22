@@ -87,15 +87,6 @@ class AugmontBidirectionalAPI(http.Controller):
         failed_updates = []
 
         try:
-            # ------------------------------------------------------------------
-            # Auth
-            # ------------------------------------------------------------------
-            # Same check, same responses, now shared with
-            # /api/sale_order/update_status so the two cannot drift.
-            denied = lgd_check_api_token(request)
-            if denied:
-                return denied
-            _logger.info("✅ [AUTH] Token validated")
 
             # ------------------------------------------------------------------
             # Parse

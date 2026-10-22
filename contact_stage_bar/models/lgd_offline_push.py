@@ -1,7 +1,8 @@
-
 import json
 import logging
 import requests
+
+from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
@@ -521,11 +522,82 @@ class SaleOrder(models.Model):
         self._lgd_store_order_unique_ids(data)
         return True
 
+    _LGD_ERROR_EXCERPT = 500
+
+    def _lgd_explain_push_error(self, error, status_code):
+        headline, fields_hit = (error or '').strip(), []
+        try:
+            parsed = json.loads(error)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            headline = (parsed.get('message')
+                        or parsed.get('error')
+                        or headline)
+            for item in (parsed.get('errors') or [])[:12]:
+                if isinstance(item, dict):
+                    name = item.get('path') or item.get('param') or ''
+                    why = item.get('msg') or item.get('message') or ''
+                    fields_hit.append('%s: %s' % (name, why) if name else why)
+
+        if len(headline) > self._LGD_ERROR_EXCERPT:
+            headline = headline[:self._LGD_ERROR_EXCERPT] + ' …'
+
+        # What the code usually means, so nobody has to go and look it up.
+        hint = {
+            '401': _("The website rejected our token. Check the "
+                     "lgd_offline_order_token system parameter on THIS "
+                     "database - it is stored per database, so setting it "
+                     "elsewhere does not help."),
+            '400': _("The website accepted our token but refused the "
+                     "payload. The fields it named are listed above."),
+            '404': _("The endpoint was not found. Check base_augmont_url "
+                     "and lgd_offline_order_path."),
+            '500': _("The website hit an error of its own. Worth sending "
+                     "this to them rather than changing anything here."),
+        }.get(str(status_code or ''))
+        if not status_code:
+            hint = _("The request never reached the website - DNS, a "
+                     "firewall, or the host being down. Nothing was sent, so "
+                     "nothing was half-created on their side.")
+        return headline, fields_hit, hint
+
+    def _lgd_post_push_failure(self, error, status_code, url):
+        
+        self.ensure_one()
+        headline, fields_hit, hint = self._lgd_explain_push_error(
+            error, status_code)
+
+        rows = Markup('').join(
+            Markup("<li>%s</li>") % f for f in fields_hit)
+        body = Markup("<p style='color:#A8322B;'><b>%s</b></p><p>%s</p>") % (
+            _("Could not send this order to the website (%s)")
+            % (_("HTTP %s") % status_code if status_code
+               else _("no response")),
+            headline or _("No message returned."))
+        if rows:
+            body += Markup("<p>%s</p><ul>%s</ul>") % (
+                _("Fields the website refused:"), rows)
+        if hint:
+            body += Markup("<p><i>%s</i></p>") % hint
+        body += Markup("<p style='color:#76838F;font-size:90%%;'>%s</p>") % (
+            _("Endpoint: %s — queued for retry. Use Send to Website to try "
+              "again once the cause is fixed.") % (url or '(not configured)'))
+
+        try:
+            self.message_post(body=body, subject=_("Website push failed"))
+        except Exception:
+            # Never let a logging failure swallow the real error.
+            _logger.exception(
+                "Could not post the push failure to %s's chatter.", self.name)
+
     def _lgd_queue_offline_retry(self, payload, headers, error, status_code):
         """Hand a failed push to the existing augmont.api.retry cron."""
         self.ensure_one()
         _logger.warning("Offline push failed for %s (%s): %s",
                         self.sdk_augmont_number or self.name, status_code, error)
+        self._lgd_post_push_failure(
+            error, status_code, self._lgd_offline_push_url())
         self.env['augmont.api.retry'].sudo().create({
             'order_id': self.id,
             # Without this the retry cron would POST this offline-order body
