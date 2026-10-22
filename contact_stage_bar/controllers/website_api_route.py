@@ -3,11 +3,52 @@ from odoo.http import request, Response
 from markupsafe import Markup, escape
 from .lgd_api_auth import lgd_check_api_token
 
-import logging, json
+import logging, json, re
 from datetime import datetime
 from odoo import models, fields, api
 
 _logger = logging.getLogger(__name__)
+
+LGD_STONE_TYPE_KEYS = (
+    'stoneType', 'stone_type', 'diamondType', 'growthType', 'type',
+    'naturalOrLabGrown', 'isLabGrown', 'labGrown',
+)
+
+#: Values of those keys, normalised (lower-cased, letters only).
+LGD_NATURAL_WORDS = frozenset(('natural', 'naturaldiamond', 'nat', 'earthmined',
+                               'mined', 'false', 'no'))
+LGD_LAB_GROWN_WORDS = frozenset((
+    'labgrown', 'lab', 'labcreated', 'labgrowndiamond', 'lgd', 'synthetic',
+    'cvd', 'hpht', 'true', 'yes'))
+
+
+def lgd_stone_type_from_payload(details):
+    """Natural vs lab-grown from the website's productDetails, or False.
+
+    False means "not stated", which the caller leaves alone rather than
+    guessing - a wrong origin is worse than an unset one, since it decides
+    which Procurement list the stone lands in and whether a replacement is
+    allowed to swap it.
+    """
+    for key in LGD_STONE_TYPE_KEYS:
+        if key not in details:
+            continue
+        raw = details.get(key)
+        if raw is None or raw == '':
+            continue
+        if isinstance(raw, bool):
+            # isLabGrown / labGrown style flags.
+            return 'lab_grown' if raw else 'natural'
+        text = re.sub(r'[^a-z]', '', str(raw).lower())
+        if text in LGD_NATURAL_WORDS:
+            return 'natural'
+        if text in LGD_LAB_GROWN_WORDS:
+            return 'lab_grown'
+        _logger.warning(
+            "   ⚠️  productDetails.%s is %r, which is neither Natural nor "
+            "Lab Grown. Leaving the stone's origin unset.", key, raw)
+    return False
+
 
 ALLOWED_STATUSES = {
     'Diamond Booked',
@@ -788,6 +829,26 @@ class PartnerSyncController(http.Controller):
                     'sdk_is_code_enabled': True,
                 }
 
+
+                _lgd_origin = lgd_stone_type_from_payload(product_details)
+                if _lgd_origin:
+                    product_vals['stone_type'] = _lgd_origin
+
+                _nat_markers = sorted(
+                    k for k in ('mineOfOrigin', 'mineToMarket', 'hasTracr',
+                                'isCanadaMarkEligible', 'sustainability',
+                                'sustainabilityCerts')
+                    if k in product_details)
+                _logger.info(
+                    "   💎 Origin for %s: %s | lineType=%r treatment=%r "
+                    "lab=%r | natural-only keys present: %s",
+                    product_details.get('certNumber')
+                    or product_details.get('stockNum') or '(no id)',
+                    _lgd_origin or "NOT STATED - defaulting to Lab Grown",
+                    product_details.get('lineType'),
+                    product_details.get('treatment'),
+                    product_details.get('lab'),
+                    ', '.join(_nat_markers) or 'none')
                 _logger.info(f"product_vals>>>>>>>>>>>>>>>>>>>: {product_vals}")
                 existing_seller = product.seller_ids.filtered(lambda s: s.partner_id.id == vendor.id)
 

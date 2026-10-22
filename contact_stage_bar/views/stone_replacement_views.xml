@@ -78,6 +78,11 @@
                         <field name="fluorescence_color"/>
                         <field name="treatments"/>
                         <field name="measurements"/>
+                        <!-- The LGD website requires both on a replacement
+                             it has not seen before. IGI fills them; type
+                             them by hand for a manual stone. -->
+                        <field name="table_pct"/>
+                        <field name="depth_pct"/>
                         <field name="certificate"/>
                     </group>
                 </group>

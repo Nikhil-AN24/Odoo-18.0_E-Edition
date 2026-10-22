@@ -9,7 +9,7 @@ from datetime import datetime
 _logger = logging.getLogger(__name__)
 
 ALLOWED_STATUSES = {
-    'Diamond Booked', 'Confirmed', 'Not available', 'In QC process', 'Payment Pending', 'Cancelled', 'Payment Completed', 'Dispatched', 'Return of Order', 'Re - Dispatched', 'Delivered', 'Order Completed', 'QC Fail'
+    'Diamond Booked', 'Confirmed', 'Not available', 'In QC process', 'Payment Pending', 'Cancelled', 'Payment Completed', 'Dispatched', 'Return of Order', 'Re - Dispatched', 'Delivered', 'Order Completed', 'QC Fail', 'Replaced'
 }
 
 # ============================================================================
@@ -24,6 +24,7 @@ STATUS_TO_LINE_AVAILABILITY = {
     'Cancelled': 'cancelled',
     'In QC process': 'in_qc_process',
     'QC Fail': 'qc_fail',
+    'Replaced': 'replaced',
     'Payment Pending': 'payment_pending',
     'Payment Completed':'payment_completed',
     'Dispatched': 'dispatched',
@@ -195,19 +196,66 @@ class AugmontBidirectionalAPI(http.Controller):
                         continue
 
                     if len(matches) > 1:
-                        result['message'] = (
-                            f'Order number "{order_number}" is on {len(matches)} '
-                            f'order lines ({", ".join(map(str, matches.ids))}). '
-                            f'Refusing to guess which one this update is for.'
-                        )
-                        failed_updates.append(result)
-                        _logger.error(f"❌ [AMBIGUOUS] {result['message']}")
-                        continue
+
+                        live = matches.filtered(lambda l: not l.is_replaced)
+                        if len(live) == 1:
+                            _logger.info(
+                                "🔎 [RESOLVED] Order number %s is on %s lines; "
+                                "%s are replaced, so this update is for the "
+                                "live line %s.",
+                                order_number, len(matches),
+                                len(matches) - 1, live.id)
+                            matches = live
+                        else:
+                            result['message'] = (
+                                f'Order number "{order_number}" is on {len(live)} '
+                                f'live order lines ({", ".join(map(str, live.ids))}). '
+                                f'Refusing to guess which one this update is for.'
+                            )
+                            failed_updates.append(result)
+                            _logger.error(f"❌ [AMBIGUOUS] {result['message']}")
+                            continue
 
                     order_line = matches
                     sale_order = order_line.order_id
                     old_order_status = sale_order.sdk_augmont_status
                     old_line_status = order_line.availability_status
+
+                    if (new_status == 'Cancelled'
+                            and order_line.replaced_by_line_id):
+                        _logger.info(
+                            "🔕 [ALREADY REPLACED] order_number %s is closed as "
+                            "Replaced (by line %s); leaving it as it is.",
+                            order_number, order_line.replaced_by_line_id.id)
+                        successful_updates.append({
+                            'orderNumber': order_number,
+                            'status': 'success',
+                            'message': ('Line is already closed as "Replaced", '
+                                        'which supersedes "Cancelled". No '
+                                        'change made.'),
+                            'data': {
+                                'invoiceNumber': sale_order.sdk_augmont_number or '',
+                                'orderNumber': order_number,
+                                'oldLineStatus': old_line_status or '',
+                                'newLineStatus': order_line.availability_status,
+                                'replacedByOrderUniqueId':
+                                    order_line.replaced_by_line_id.order_number or '',
+                                'updatedAt': datetime.now().strftime(
+                                    '%Y-%m-%d %H:%M:%S'),
+                            },
+                        })
+                        continue
+
+                    if new_status == 'Replaced' and not order_line.replaced_by_line_id:
+                        result['message'] = (
+                            f'Order number "{order_number}" has no replacement '
+                            f'stone linked, so it cannot be set to "Replaced" '
+                            f'here. Use POST /api/v1/odoo/order/stone/replace '
+                            f'with the new stone\'s details instead.'
+                        )
+                        failed_updates.append(result)
+                        _logger.warning(f"❌ [REPLACE VIA STATUS] {result['message']}")
+                        continue
 
                     _logger.info(
                         f"✅ [FOUND] Order: {sale_order.name} | "

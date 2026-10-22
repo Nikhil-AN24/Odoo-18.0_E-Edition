@@ -52,6 +52,11 @@ class StoneReplacement(models.TransientModel):
     fluorescence_color = fields.Char(string="Fluorescence Color")
     treatments = fields.Selection(TREATMENT_SELECTION, string="Treatments")
     measurements = fields.Char(string="Measurements")
+    # The LGD website refuses a replacement stone without both of these
+    # ("manualStone.tableDepth is required"), so they are collected here.
+    # IGI returns them; a manually typed stone needs them entered.
+    table_pct = fields.Float(string="Table %", digits=(16, 2))
+    depth_pct = fields.Float(string="Depth %", digits=(16, 2))
     certificate = fields.Char(string="Certificate Number")
 
     # ── Resolving IGI's wording onto the pickers ────────────────────────
@@ -196,6 +201,8 @@ class StoneReplacement(models.TransientModel):
             'treatments': self._resolve_selection(
                 self.TREATMENT_SELECTION, result.get('treatment') or 'None'),
             'measurements': result.get('measurements'),
+            'table_pct': result.get('table_pct_value') or 0.0,
+            'depth_pct': result.get('depth_pct_value') or 0.0,
             'certificate': result.get('report_number') or report,
             'lab': 'IGI',
             'stone_type': 'lab_grown' if result.get('is_lab_grown') else 'natural',
@@ -236,6 +243,8 @@ class StoneReplacement(models.TransientModel):
             'fluorescence_color': self.fluorescence_color or 'None',
             'treatments': self.treatments or 'None',
             'measurements': self.measurements,
+            'table_pct': self.table_pct,
+            'depth_pct': self.depth_pct,
             'stone_type': self.stone_type,
         }
 

@@ -30,4 +30,5 @@ from . import lgd_dispatch
 from . import lgd_dispatch_reports
 from . import lgd_customer_invoice
 from . import lgd_offline_push
+from . import lgd_replacement_push
 from . import lgd_payment_state

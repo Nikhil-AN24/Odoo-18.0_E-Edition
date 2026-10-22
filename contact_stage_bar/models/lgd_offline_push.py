@@ -142,6 +142,15 @@ class SaleOrder(models.Model):
             'certNumber': template.certificate or '',
             'certType': template.certificate_type or '',
             'lab': template.labs or '',
+            # Natural vs Lab Grown. Without it the website has nothing to
+            # file the stone under and shows every offline stone as Lab
+            # Grown - which is right for its own catalogue and wrong for a
+            # natural stone Sales raised from an RFQ. Taken from the LINE:
+            # one invoice can carry both kinds, and the line is where that
+            # distinction is held.
+            'stoneType': dict(
+                line._fields['stone_type'].selection
+            ).get(line.stone_type, '') if line.stone_type else '',
             'shape': template.shapes or '',
             'weight': float(template.carat_value or 0.0),
             'color': template.color or '',
@@ -181,6 +190,43 @@ class SaleOrder(models.Model):
             'mobileNumber': vendor.mobile or vendor.phone or '',
             'countryIsoCode': self._lgd_offline_country_code(vendor, 'vendor'),
         }
+
+    #: Addresses that cannot belong to a real seller on the website. A vendor
+    #: invented in Odoo for an offline order gets one of these, and the
+    #: website then refuses the whole order with "Seller profile not found".
+    _LGD_PLACEHOLDER_EMAIL_PREFIXES = ('dummy', 'test', 'noreply', 'no-reply')
+
+    def _lgd_warn_unusable_sellers(self):
+        """Name vendors whose email the website cannot match, before sending.
+
+        The website looks a seller up by email and refuses the ENTIRE order
+        when it finds none - one unusable vendor loses every line. Said here,
+        the cause is obvious; left to the response it arrives as
+        "Seller profile not found for dummyX@augmont.com" with nothing
+        pointing at which Odoo record to fix.
+
+        A warning, never a block: the push must not stop an order being
+        booked, and the vendor can be corrected and the order re-sent.
+        """
+        self.ensure_one()
+        problems = []
+        for vendor in self._lgd_offline_lines().mapped('vendor_id'):
+            email = (vendor.email or '').strip()
+            if not email:
+                problems.append(_("%s has no email") % vendor.display_name)
+                continue
+            local = email.split('@', 1)[0].lower()
+            if local.startswith(self._LGD_PLACEHOLDER_EMAIL_PREFIXES):
+                problems.append(
+                    _("%(name)s has a placeholder email (%(email)s)")
+                    % {'name': vendor.display_name, 'email': email})
+        if problems:
+            _logger.warning(
+                "Offline push %s: the website matches sellers by email and "
+                "will refuse this order - %s. Set the address their seller "
+                "profile is registered under.",
+                self.sdk_augmont_number or self.name, '; '.join(problems))
+        return problems
 
     # The status every stone is expected to hold when the order is punched.
     _LGD_OFFLINE_PUSH_STATUS = 'diamond_booked'
@@ -466,6 +512,8 @@ class SaleOrder(models.Model):
                 ', '.join(sorted(set(
                     l.availability_status or '(empty)' for l in unexpected))))
 
+        self._lgd_warn_unusable_sellers()
+
         payload = self._lgd_offline_payload()
         headers = {'Content-Type': 'application/json'}
         token = self.env['ir.config_parameter'].sudo().get_param(
@@ -551,11 +599,23 @@ class SaleOrder(models.Model):
                      "elsewhere does not help."),
             '400': _("The website accepted our token but refused the "
                      "payload. The fields it named are listed above."),
+            # Not an HTTP code — matched on the message below.
+            'seller': _("The website matches sellers by email address and "
+                        "has no seller registered under the one we sent. "
+                        "Open the vendor in Contacts and set the email their "
+                        "seller profile uses, then use Send to Website. A "
+                        "placeholder address will always be refused."),
             '404': _("The endpoint was not found. Check base_augmont_url "
                      "and lgd_offline_order_path."),
             '500': _("The website hit an error of its own. Worth sending "
                      "this to them rather than changing anything here."),
-        }.get(str(status_code or ''))
+        }
+        # The seller lookup is the commonest 400 and has its own fix, so it
+        # wins over the generic "check the fields above".
+        if 'seller profile not found' in (error or '').lower():
+            hint = hint['seller']
+        else:
+            hint = hint.get(str(status_code or ''))
         if not status_code:
             hint = _("The request never reached the website - DNS, a "
                      "firewall, or the host being down. Nothing was sent, so "

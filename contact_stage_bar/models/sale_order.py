@@ -5,6 +5,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.osv import expression
 import requests
 import json
+import re
 import time
 import psycopg2
 from markupsafe import Markup
@@ -21,24 +22,32 @@ _LGD_DEAD_LINE_STATUSES = (
 #: Mirror of the website's own ALLOWED_ORDER_STATUS_TRANSITIONS. It must track
 #: theirs: the website enforces these and rejects anything else, while this copy
 #: only logs, so the two drifting apart turns a real rejection into a silent
-#: surprise. Last synced 19 Oct 2026.
+#: surprise. Last synced 22 Oct 2026 against "Odoo Order Status Update
+#: Payloads", the website's own published contract — several rows here were
+#: narrower than theirs, which made us log a warning for transitions they
+#: accept perfectly well.
 #:
 #: "Payment Pending" -> "Dispatched" is ours, not stock: goods can leave before
 #: payment clears, and a memo ships unpaid by definition.
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
-    "Diamond Booked": ["Confirmed", "Not available"],
-    "Confirmed": ["In QC process", "Cancelled"],
+    "Diamond Booked": ["Confirmed", "Not available", "In QC process",
+                       "Cancelled"],
+    "Confirmed": ["In QC process", "Not available", "Cancelled"],
     "Not available": ["Cancelled", "Replaced"],
-    "In QC process": ["Payment Pending", "QC Fail"],
-    "QC Fail": ["Cancelled", "Replaced"],
-    "Replaced": ["Not available", "QC Fail"],
+    "In QC process": ["Payment Pending", "QC Fail", "Returned from memo",
+                      "Cancelled"],
+    "QC Fail": ["Cancelled", "Replaced", "In QC process"],
+    "Replaced": ["Not available", "QC Fail", "Cancelled"],
     "Payment Pending": ["Payment Completed", "Cancelled", "Dispatched"],
-    "Payment Completed": ["Dispatched"],
-    "Dispatched": ["Delivered", "Return of Order", "Returned from memo"],
-    "Return of Order": ["Re - Dispatched", "Delivered"],
-    "Re - Dispatched": ["Delivered", "Return of Order"],
-    "Delivered": ["Order Completed", "Return of Order", "Returned from memo"],
-    "Returned from memo": [],
+    "Payment Completed": ["Dispatched", "Delivered", "Order Completed"],
+    "Dispatched": ["Delivered", "Return of Order", "Returned from memo",
+                   "Re - Dispatched", "In QC process", "Order Completed"],
+    "Return of Order": ["Re - Dispatched", "Delivered", "Order Completed"],
+    "Re - Dispatched": ["Delivered", "Return of Order", "Returned from memo",
+                        "Order Completed"],
+    "Delivered": ["Order Completed", "Return of Order", "Returned from memo",
+                  "Re - Dispatched", "In QC process"],
+    "Returned from memo": ["In QC process", "Cancelled"],
     "Cancelled": [],
     "Order Completed": [],
 }
@@ -1941,6 +1950,24 @@ class SaleOrder(models.Model):
         if certificate:
             entry["certNumber"] = certificate
 
+        # ── Replacement chain ────────────────────────────────────────────
+        # Without these two the website receives a stone going "Replaced" and
+        # an unrelated stone going "Diamond Booked", and cannot tell they are
+        # the same swap. Only sent when the partner line carries its own
+        # order id: pointing at the id we are already sending under tells
+        # them nothing, and a blank id is worse than no key at all.
+        if line:
+            if line.replaced_by_line_id:
+                partner_id = line.replaced_by_line_id.order_number
+                if partner_id and str(partner_id) != str(order_number or ''):
+                    entry["replacedByOrderUniqueId"] = \
+                        self._lgd_status_unique_id(partner_id)
+            if line.replaces_line_id:
+                partner_id = line.replaces_line_id.order_number
+                if partner_id and str(partner_id) != str(order_number or ''):
+                    entry["replacesOrderUniqueId"] = \
+                        self._lgd_status_unique_id(partner_id)
+
         if status in self._LGD_UTR_STATUSES:
             utr = str(self.utr_number).strip() if self.utr_number else ''
             if utr:
@@ -1973,6 +2000,85 @@ class SaleOrder(models.Model):
                     self.name, status, ' and no '.join(missing))
 
         return entry
+
+    def _lgd_drop_already_pushed(self, entries):
+        """Drop entries already sent for the same line and status in this
+        transaction.
+
+        Two paths push the same change: sale.order.line.write() pushes
+        automatically through _lgd_push_status_changes, and the {Save} button
+        pushes again in action_save_statuses. Clicking {Save} after editing an
+        availability runs BOTH - Odoo saves the record, then calls the button
+        method - so the website received the same status twice and refused the
+        second with "Status transition from 'X' to 'X' is not allowed".
+
+        Guarded here rather than by removing one of the two call sites:
+        _call_augmont_status_api has around twenty callers across sale_order
+        and stock_picking, and any pair of them firing in one transaction has
+        the same effect. The key includes the status, so a line genuinely
+        moving twice in one transaction (confirmed, then in_qc_process) still
+        sends both.
+        """
+        self.ensure_one()
+        cr = self.env.cr
+        seen = getattr(cr, '_lgd_pushed_statuses', None)
+        if seen is None:
+            seen = set()
+            cr._lgd_pushed_statuses = seen
+
+        fresh = []
+        for item in entries:
+            key = (self.id, str(item['order_number'] or ''),
+                   item['final_status'])
+            if key in seen:
+                _logger.info(
+                    "🔕 [ALREADY PUSHED] Order %s: %s → %s was already sent in "
+                    "this transaction; not sending it again.",
+                    self.name, item['order_number'], item['final_status'])
+                continue
+            seen.add(key)
+            fresh.append(item)
+        return fresh
+
+    def _lgd_status_entries_deduped(self, entries):
+        """One entry per order_unique_id, keeping the ORIGINAL stone's.
+
+        Two lines share an order id only while the website has not allocated
+        one for the replacement - a procurement-raised swap it has not been
+        told about, or a replace-product push that failed. In that state the
+        line the website holds under that id IS the original stone, and the
+        only truthful thing to say about it is "Replaced": a word their
+        transition table accepts from both Not available and QC Fail.
+
+        Sending the replacement's "Diamond Booked" instead claims the
+        ORIGINAL stone was freshly booked. It is rejected - QC Fail ->
+        Diamond Booked is not a transition they allow - and it would be
+        wrong even if it were accepted. The new stone starts reporting for
+        itself once replace-product returns an id of its own.
+        """
+        self.ensure_one()
+        by_id = {}
+        for item in entries:
+            key = str(item['order_number'] or '')
+            kept = by_id.get(key)
+            if kept is None:
+                by_id[key] = item
+                continue
+            # The replaced line wins: it is the one the website knows.
+            winner = item if item['line'].is_replaced else kept
+            by_id[key] = winner
+            dropped = kept if winner is item else item
+            _logger.info(
+                "🔕 [DEDUPE] Order %s: order_unique_id %s is on lines %s (%s) "
+                "and %s (%s) because the website has no id for the "
+                "replacement yet. Sending '%s' from line %s; dropping '%s'.",
+                self.name, key,
+                kept['line'].id, kept['final_status'],
+                item['line'].id, item['final_status'],
+                winner['final_status'], winner['line'].id,
+                dropped['final_status'])
+        return [item for item in entries
+                if by_id.get(str(item['order_number'] or '')) is item]
 
     def _lgd_status_unique_id(self, order_number):
         """The website's line id, as the integer its contract specifies."""
@@ -2105,6 +2211,9 @@ class SaleOrder(models.Model):
                     'entry': self._lgd_status_entry(
                         final_status, order_number=order_number, line=line),
                 })
+
+            entries = self._lgd_status_entries_deduped(entries)
+            entries = self._lgd_drop_already_pushed(entries)
 
             if not entries:
                 _logger.info(
@@ -2348,9 +2457,16 @@ class SaleOrder(models.Model):
                     skip_auto_procurement=True,
                 )._auto_create_procurement_for_qc()
 
-        # This is the ONLY path that pushes availability_status changes
-        # to the connected website. The native Odoo {Save manually} (floppy icon)
-        # only persists to the Odoo database and does NOT call the website API.
+        # This used to be the only path that pushed availability_status to the
+        # website; the line write() override now pushes real changes on its
+        # own. Both still run when {Save} is clicked on an edited line - Odoo
+        # saves the record first, then calls this - so the duplicate is
+        # dropped by _lgd_drop_already_pushed rather than by removing either
+        # call. This one still earns its place: it re-sends the current status
+        # when nothing changed, which is the manual re-sync operators rely on
+        # after a website outage.
+        # The native Odoo {Save manually} (floppy icon) only persists to the
+        # Odoo database and does NOT call the website API.
         _logger.info(
             "🖱️ [SAVE BUTTON] {Save} button clicked for order %s | "
             "Pushing status '%s' to website API.",
@@ -2961,6 +3077,41 @@ class SaleOrderLine(models.Model):
     replacement_pending_sales = fields.Boolean(
         string="Replacement Pending Sales", copy=False)
 
+    # ── Where the replacement came from ──────────────────────────────
+    # The links above say WHICH stone replaced which. These say WHO asked
+    # and WHY, which only the website knows: a customer-raised replacement
+    # and a procurement-raised one are indistinguishable without them, and
+    # the reason never reaches Odoo any other way.
+    lgd_replacement_source = fields.Selection(
+        [('odoo', 'Odoo (Procurement)'), ('website', 'LGD Website')],
+        string="Replacement Raised By", copy=False)
+    # The website's own id for the replacement event. Unique, so a retried
+    # POST cannot create a second replacement for the same request.
+    lgd_replacement_request_id = fields.Char(
+        string="Website Replacement ID", copy=False, index=True)
+    lgd_replacement_reason_code = fields.Char(
+        string="Replacement Reason Code", copy=False)
+    lgd_replacement_reason_label = fields.Char(
+        string="Replacement Reason", copy=False)
+    lgd_replacement_reason_note = fields.Text(
+        string="Replacement Comment", copy=False)
+    lgd_replacement_requested_by = fields.Char(
+        string="Replacement Requested By", copy=False)
+    lgd_replacement_requested_email = fields.Char(
+        string="Requester Email", copy=False)
+    lgd_replacement_requested_role = fields.Char(
+        string="Requester Role", copy=False)
+    # The website's timestamp, not Odoo's: the two clocks differ and the
+    # customer's own record of when they asked is the one that matters.
+    lgd_replacement_requested_at = fields.Datetime(
+        string="Replacement Requested At", copy=False)
+
+    _sql_constraints = [
+        ('lgd_replacement_request_id_uniq',
+         'UNIQUE(lgd_replacement_request_id)',
+         'This website replacement request has already been processed.'),
+    ]
+
     @api.depends('replaced_by_line_id')
     def _compute_is_replaced(self):
         for line in self:
@@ -3052,8 +3203,25 @@ class SaleOrderLine(models.Model):
             if not product.fluorescence_color:
                 fill['fluorescence_color'] = (
                     vals.get('fluorescence_color') or 'None')
+            # Identity and grading the record is missing but the caller
+            # supplied. The match above can land on a product found by stock
+            # number alone - one created earlier with no certificate - and
+            # returning it untouched then fails the certified-replacement
+            # check with a certificate that WAS sent sitting in the payload,
+            # unread. Only blanks are filled: what the record already holds
+            # is the stone as Odoo knows it, and must not be rewritten.
+            for field in ('certificate', 'certificate_type', 'labs',
+                          'stock_number', 'lgd_stock_number', 'shapes',
+                          'color', 'clarity', 'cut', 'polish', 'symmetry',
+                          'weight_carat', 'measurements', 'stone_type'):
+                supplied = vals.get(field)
+                if supplied and not product[field]:
+                    fill[field] = supplied
             if fill:
                 product.write(fill)
+                _logger.info(
+                    "[REPLACEMENT] Filled %s on existing product %s from the "
+                    "payload.", ', '.join(sorted(fill)), product.id)
             return product
         create_vals = dict(vals)
         create_vals.setdefault('name', '[NEW]')
@@ -3111,10 +3279,22 @@ class SaleOrderLine(models.Model):
                 labels.get(new_origin, new_origin),
                 labels.get(orig_origin, orig_origin)))
         if self.stone_certification_type == 'certified':
-            if not product.certificate:
+            # Tested against the certificate the ORIGINAL actually holds, not
+            # the classification alone. The rule exists to stop a certified
+            # stone being swapped for an uncertified one; where the original
+            # carries no certificate there is nothing to protect, and
+            # demanding one of the replacement only blocks a legitimate swap.
+            # A spec-based line whose stone is not sourced yet is exactly
+            # that case.
+            if (self.certificate or '').strip() and not product.certificate:
                 raise UserError(_(
-                    "The original stone is certified — the replacement needs a "
-                    "certificate number."))
+                    "The original stone is certified (%(orig)s), so the "
+                    "replacement needs a certificate number too. The "
+                    "replacement stone sent (%(new)s) has none — check that "
+                    "productDetails.certNumber is set.",
+                    orig=self.certificate,
+                    new=(product.lgd_stock_number or product.stock_number
+                         or product.name or 'no identifier')))
             orig_shape = self._normalize_shape(self.shapes)
             new_shape = self._normalize_shape(product.shapes)
             if orig_shape and new_shape and orig_shape != new_shape:
@@ -3208,9 +3388,21 @@ class SaleOrderLine(models.Model):
         return po
 
     def _create_replacement(self, product, vendor, gross_total, price_outcome,
-                            price_per_carat=None):
+                            price_per_carat=None, new_order_number=None,
+                            provenance=None):
         """Create the replacement line and its PO, then complete immediately or
-        leave it pending Sales confirmation."""
+        leave it pending Sales confirmation.
+
+        `new_order_number` is the website's id for the REPLACEMENT line. The
+        website knows it when the customer picked the stone there, and sends
+        it; a procurement-raised replacement has none, and the original's id
+        is reused as before so the stone is still reportable. Two lines then
+        share one id, which the status paths resolve by preferring the live
+        line over the replaced one - see _lgd_status_entries_deduped and the
+        lookup in status_sync_api.
+
+        `provenance` carries who asked and why, for a website-raised request.
+        """
         self.ensure_one()
         order = self.order_id
         needs_sales = price_outcome['needs_sales']
@@ -3229,10 +3421,14 @@ class SaleOrderLine(models.Model):
             'product_uom_qty': 1,
             'price_unit': price_outcome['final_price_unit'],
             'vendor_id': vendor.id,
-            'order_number': self.order_number,
+            'order_number': (str(new_order_number).strip()
+                             if new_order_number else self.order_number),
             'availability_status': 'diamond_booked',
             'replaces_line_id': self.id,
             'replacement_pending_sales': needs_sales,
+            'lgd_replacement_source': (provenance or {}).get(
+                'source', 'odoo'),
+            **{k: v for k, v in (provenance or {}).items() if k != 'source'},
             **vendor_price_vals,
         })
         if not new_line:
@@ -3249,6 +3445,19 @@ class SaleOrderLine(models.Model):
                 'stone': self.product_template_id.display_name or self.id,
                 'order': order.name,
             })
+        # Tell the website about a replacement IT did not ask for. Only an
+        # Odoo-raised one: a website-raised replacement arrives with its own
+        # order id already allocated, and pushing it back would be telling
+        # them what they just told us. Never allowed to raise - Procurement
+        # has made this change and a website outage must not undo it.
+        if (provenance or {}).get('source', 'odoo') == 'odoo':
+            try:
+                order._lgd_push_replacement(self, new_line)
+            except Exception as exc:
+                _logger.error(
+                    "[REPLACEMENT PUSH] Order %s: %s. The replacement is "
+                    "saved in Odoo; the retry queue will re-send it.",
+                    order.name, exc)
         self._replacement_create_po(product, vendor, gross_total, new_line,
                                     price_per_carat=price_per_carat)
         # Mark the original "Replaced" immediately on Submit — both paths.
@@ -3606,20 +3815,88 @@ class SaleOrderLine(models.Model):
         string="Certification", compute='_compute_stone_classification',
         store=True, index=True)
 
-    @api.depends('display_type', 'line_type')
+    #: How the website spells "this stone has no lab certificate" in the
+    #: `lab` field. Compared with punctuation and case removed, so
+    #: "Non-Cert", "non cert" and "NONCERTIFIED" all match.
+    _LGD_NON_CERT_LABS = frozenset(('noncert', 'noncertified', 'nocert'))
+
+    def _lgd_is_non_certified(self):
+        """True when this line's stone genuinely has no lab certificate.
+
+        line_type alone used to decide this - MELEE meant non-certified and
+        everything else meant certified. That stopped being true when the
+        website began sending non-certified SINGLE stones as ordinary LGD
+        lines: they arrive with no certNumber and lab "Non-Cert", and were
+        being filed as certified. The visible symptom was a replacement
+        refused with "the original stone is certified - the replacement
+        needs a certificate number" for a stone that never had one.
+
+        A line with no certificate yet but no sign of being non-certified
+        stays 'certified': that is a spec-based order whose stone
+        Procurement has not sourced yet, and flipping it would move it out
+        of the Certified lists it belongs in.
+        """
+        self.ensure_one()
+        if self.line_type == 'melee':
+            return True
+        template = self.product_template_id
+        if template.is_non_certified_source:
+            return True
+        if (template.certificate or '').strip():
+            return False
+        lab = re.sub(r'[^a-z]', '', (template.labs or '').lower())
+        return lab in self._LGD_NON_CERT_LABS
+
+    @api.model
+    def _lgd_reclassify_certification(self):
+        """Recompute certification over lines stored under the old rule.
+
+        Odoo does not re-run a stored compute just because its code changed,
+        so without this every stone already filed as Certified stays that
+        way - including the non-certified single stones this fixes. Runs on
+        upgrade; idempotent.
+        """
+        lines = self.sudo().search([
+            ('display_type', '=', False),
+            ('stone_certification_type', '=', 'certified'),
+        ])
+        wrong = lines.filtered(lambda l: l._lgd_is_non_certified())
+        if wrong:
+            wrong._compute_stone_classification()
+            _logger.info(
+                "Certification backfill: %s of %s certified line(s) "
+                "reclassified as Non-Certified.", len(wrong), len(lines))
+        else:
+            _logger.info(
+                "Certification backfill: nothing to change (%s certified "
+                "line(s) checked).", len(lines))
+        return len(wrong)
+
+    @api.depends('display_type', 'line_type',
+                 'product_template_id.certificate',
+                 'product_template_id.labs',
+                 'product_template_id.stone_type',
+                 'product_template_id.is_non_certified_source')
     def _compute_stone_classification(self):
         """Website orders come from the Augmont LGD platform, which sells only
-        lab-grown stones, and their certification follows line_type.
-        custom_sale_order extends this to read both values from the Customer
-        RFQ on offline orders. Section and note lines carry no stone."""
+        lab-grown stones. custom_sale_order extends this to read both values
+        from the Customer RFQ on offline orders. Section and note lines carry
+        no stone."""
         for line in self:
             if line.display_type:
                 line.stone_type = False
                 line.stone_certification_type = False
             else:
-                line.stone_type = 'lab_grown'
+                # The stone's own origin wins. 'lab_grown' used to be forced
+                # on every line because the website sells only lab-grown
+                # stones, which made a Natural stone on a mixed invoice
+                # report as Lab Grown and left the two indistinguishable.
+                # The default still applies when the product says nothing,
+                # so a website order with no origin behaves as before.
+                line.stone_type = line.product_template_id.stone_type or 'lab_grown'
                 line.stone_certification_type = (
-                    'non_certified' if line.line_type == 'melee' else 'certified')
+                    'non_certified' if line._lgd_is_non_certified()
+                    else 'certified')
 
     # True only on the summary/parent line that groups all parcel child-lines.
     is_melee_parent = fields.Boolean(
