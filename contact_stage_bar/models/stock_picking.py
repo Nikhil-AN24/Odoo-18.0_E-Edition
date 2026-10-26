@@ -6,6 +6,8 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 
 import logging
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 _logger = logging.getLogger(__name__)
 
 class StockMove(models.Model):
@@ -1000,7 +1002,12 @@ class StockPicking(models.Model):
             _logger.info("Updating tracking for invoice %s", picking.sdk_augmont_number)
             
             try:
+                log_api(OUT, "POST %s" % url, payload, headers=headers,
+                        env=self.env)
                 response = requests.post(url,headers=headers, json=payload, timeout=15)
+                log_api(OUT, "POST %s" % url, payload, env=self.env,
+                        response=getattr(response, "text", None),
+                        status=getattr(response, "status_code", None))
                 
                 if response.status_code == 200:
                     res_json = response.json()

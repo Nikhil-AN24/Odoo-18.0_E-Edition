@@ -5,6 +5,10 @@
         <field name="name">Available Invoices</field>
     </record>
 
+    <record id="sale.action_orders" model="ir.actions.act_window">
+        <field name="domain">[('state', 'not in', ('sent', 'cancel'))]</field>
+    </record>
+
     <record id="sale_order_tree_cutom" model="ir.ui.view">
         <field name="name">sale.order.list.custom.sale</field>
         <field name="model">sale.order</field>
@@ -448,7 +452,12 @@
                         <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
                         <field name="stone_type" optional="show"
                                readonly="not lgd_can_edit_stone_classification"/>
-                        <field name="stone_certification_type" optional="show"
+                        <!-- Which lab graded the stone (IGI, GIA, ...), or
+                             Non-Cert. Reads from the product, so it follows
+                             the stone rather than being typed per line. -->
+                        <field name="labs" string="Lab" optional="show" readonly="1"/>
+                        <field name="stone_list_name" optional="show"/>
+                        <field name="stone_certification_type" optional="hide"
                                readonly="not lgd_can_edit_stone_classification"/>
                         <field name="treatments" readonly="1"/>
                     </list>
@@ -519,7 +528,9 @@
                 <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
                 <field name="stone_type" optional="show"
                        readonly="not lgd_can_edit_stone_classification"/>
-                <field name="stone_certification_type" optional="show"
+                <field name="labs" string="Lab" optional="show" readonly="1"/>
+                <field name="stone_list_name" optional="show"/>
+                <field name="stone_certification_type" optional="hide"
                        readonly="not lgd_can_edit_stone_classification"/>
                 <field name="treatments"/>
             
@@ -683,14 +694,6 @@
                 <!-- Confirm & Save hidden for the sales family (LGD Sales, Sales
                      Manager, Regional Sales Head — all members of group_lgd_sales). -->
                 <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_sales" />
-                <!-- The {Save} button that used to sit here is gone. It was
-                     the only thing that pushed an availability change to the
-                     website, which meant someone had to open every order and
-                     press it after every QC handover, dispatch or payment -
-                     and nobody did, so the website kept the status the stone
-                     had when the order was first created. The push now happens
-                     automatically wherever the status is actually set, in
-                     sale.order.line._lgd_push_status_changes. -->
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this

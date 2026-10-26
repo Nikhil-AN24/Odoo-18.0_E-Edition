@@ -189,11 +189,35 @@ class SaleOrderLine(models.Model):
             'target': 'new',
         }
 
-    @api.depends('order_id.custom_sale_order_id.customer_rfq_id.price')
+    #: The RFQ size-line this order line was expanded from, carried over
+    #: from custom.sale.order.line. Without it a line cannot say which of
+    #: an RFQ's several costings is its own.
+    rfq_size_line_id = fields.Many2one(
+        'customer.rfq.size.line', string='RFQ Size Line',
+        ondelete='set null', index=True, copy=False)
+
+    @api.depends('order_id.custom_sale_order_id.customer_rfq_id.price',
+                 'order_id.custom_sale_order_id.customer_rfq_id.different_prices',
+                 'rfq_size_line_id.costing')
     def _compute_procurement_price_per_carat(self):
+        """The procurement rate per carat for this line.
+
+        An RFQ prices in one of two ways. Normally one rate covers the whole
+        request and lives in rfq.price. With Different Prices on, each size
+        line is costed separately and rfq.price stays 0 - this used to read
+        rfq.price regardless, so every line of a different-prices RFQ showed
+        0 while the real costings sat unread on the size lines.
+        """
         for line in self:
             rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
-            line.procurement_price_per_carat = rfq.price if rfq else 0.0
+            if not rfq:
+                line.procurement_price_per_carat = 0.0
+                continue
+            size_line = line.rfq_size_line_id
+            if rfq.different_prices and size_line:
+                line.procurement_price_per_carat = size_line.costing or 0.0
+            else:
+                line.procurement_price_per_carat = rfq.price or 0.0
 
     @api.depends(
         'order_id.custom_sale_order_id.customer_rfq_id.sale_rate_per_carat',

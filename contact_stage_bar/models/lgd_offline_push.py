@@ -1,7 +1,10 @@
-
 import json
 import logging
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 import requests
+
+from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
@@ -141,6 +144,15 @@ class SaleOrder(models.Model):
             'certNumber': template.certificate or '',
             'certType': template.certificate_type or '',
             'lab': template.labs or '',
+            # Natural vs Lab Grown. Without it the website has nothing to
+            # file the stone under and shows every offline stone as Lab
+            # Grown - which is right for its own catalogue and wrong for a
+            # natural stone Sales raised from an RFQ. Taken from the LINE:
+            # one invoice can carry both kinds, and the line is where that
+            # distinction is held.
+            'stoneType': dict(
+                line._fields['stone_type'].selection
+            ).get(line.stone_type, '') if line.stone_type else '',
             'shape': template.shapes or '',
             'weight': float(template.carat_value or 0.0),
             'color': template.color or '',
@@ -180,6 +192,43 @@ class SaleOrder(models.Model):
             'mobileNumber': vendor.mobile or vendor.phone or '',
             'countryIsoCode': self._lgd_offline_country_code(vendor, 'vendor'),
         }
+
+    #: Addresses that cannot belong to a real seller on the website. A vendor
+    #: invented in Odoo for an offline order gets one of these, and the
+    #: website then refuses the whole order with "Seller profile not found".
+    _LGD_PLACEHOLDER_EMAIL_PREFIXES = ('dummy', 'test', 'noreply', 'no-reply')
+
+    def _lgd_warn_unusable_sellers(self):
+        """Name vendors whose email the website cannot match, before sending.
+
+        The website looks a seller up by email and refuses the ENTIRE order
+        when it finds none - one unusable vendor loses every line. Said here,
+        the cause is obvious; left to the response it arrives as
+        "Seller profile not found for dummyX@augmont.com" with nothing
+        pointing at which Odoo record to fix.
+
+        A warning, never a block: the push must not stop an order being
+        booked, and the vendor can be corrected and the order re-sent.
+        """
+        self.ensure_one()
+        problems = []
+        for vendor in self._lgd_offline_lines().mapped('vendor_id'):
+            email = (vendor.email or '').strip()
+            if not email:
+                problems.append(_("%s has no email") % vendor.display_name)
+                continue
+            local = email.split('@', 1)[0].lower()
+            if local.startswith(self._LGD_PLACEHOLDER_EMAIL_PREFIXES):
+                problems.append(
+                    _("%(name)s has a placeholder email (%(email)s)")
+                    % {'name': vendor.display_name, 'email': email})
+        if problems:
+            _logger.warning(
+                "Offline push %s: the website matches sellers by email and "
+                "will refuse this order - %s. Set the address their seller "
+                "profile is registered under.",
+                self.sdk_augmont_number or self.name, '; '.join(problems))
+        return problems
 
     # The status every stone is expected to hold when the order is punched.
     _LGD_OFFLINE_PUSH_STATUS = 'diamond_booked'
@@ -465,6 +514,8 @@ class SaleOrder(models.Model):
                 ', '.join(sorted(set(
                     l.availability_status or '(empty)' for l in unexpected))))
 
+        self._lgd_warn_unusable_sellers()
+
         payload = self._lgd_offline_payload()
         headers = {'Content-Type': 'application/json'}
         token = self.env['ir.config_parameter'].sudo().get_param(
@@ -478,6 +529,7 @@ class SaleOrder(models.Model):
             url, 'yes' if 'Authorization' in headers else 'NO',
             len(payload.get('orders') or []), len(body))
 
+        log_api(OUT, "POST %s" % url, body, headers=headers, env=self.env)
         try:
             response = requests.post(
                 url, headers=headers, data=body,
@@ -521,11 +573,94 @@ class SaleOrder(models.Model):
         self._lgd_store_order_unique_ids(data)
         return True
 
+    _LGD_ERROR_EXCERPT = 500
+
+    def _lgd_explain_push_error(self, error, status_code):
+        headline, fields_hit = (error or '').strip(), []
+        try:
+            parsed = json.loads(error)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            headline = (parsed.get('message')
+                        or parsed.get('error')
+                        or headline)
+            for item in (parsed.get('errors') or [])[:12]:
+                if isinstance(item, dict):
+                    name = item.get('path') or item.get('param') or ''
+                    why = item.get('msg') or item.get('message') or ''
+                    fields_hit.append('%s: %s' % (name, why) if name else why)
+
+        if len(headline) > self._LGD_ERROR_EXCERPT:
+            headline = headline[:self._LGD_ERROR_EXCERPT] + ' …'
+
+        # What the code usually means, so nobody has to go and look it up.
+        hint = {
+            '401': _("The website rejected our token. Check the "
+                     "lgd_offline_order_token system parameter on THIS "
+                     "database - it is stored per database, so setting it "
+                     "elsewhere does not help."),
+            '400': _("The website accepted our token but refused the "
+                     "payload. The fields it named are listed above."),
+            # Not an HTTP code — matched on the message below.
+            'seller': _("The website matches sellers by email address and "
+                        "has no seller registered under the one we sent. "
+                        "Open the vendor in Contacts and set the email their "
+                        "seller profile uses, then use Send to Website. A "
+                        "placeholder address will always be refused."),
+            '404': _("The endpoint was not found. Check base_augmont_url "
+                     "and lgd_offline_order_path."),
+            '500': _("The website hit an error of its own. Worth sending "
+                     "this to them rather than changing anything here."),
+        }
+        # The seller lookup is the commonest 400 and has its own fix, so it
+        # wins over the generic "check the fields above".
+        if 'seller profile not found' in (error or '').lower():
+            hint = hint['seller']
+        else:
+            hint = hint.get(str(status_code or ''))
+        if not status_code:
+            hint = _("The request never reached the website - DNS, a "
+                     "firewall, or the host being down. Nothing was sent, so "
+                     "nothing was half-created on their side.")
+        return headline, fields_hit, hint
+
+    def _lgd_post_push_failure(self, error, status_code, url):
+        
+        self.ensure_one()
+        headline, fields_hit, hint = self._lgd_explain_push_error(
+            error, status_code)
+
+        rows = Markup('').join(
+            Markup("<li>%s</li>") % f for f in fields_hit)
+        body = Markup("<p style='color:#A8322B;'><b>%s</b></p><p>%s</p>") % (
+            _("Could not send this order to the website (%s)")
+            % (_("HTTP %s") % status_code if status_code
+               else _("no response")),
+            headline or _("No message returned."))
+        if rows:
+            body += Markup("<p>%s</p><ul>%s</ul>") % (
+                _("Fields the website refused:"), rows)
+        if hint:
+            body += Markup("<p><i>%s</i></p>") % hint
+        body += Markup("<p style='color:#76838F;font-size:90%%;'>%s</p>") % (
+            _("Endpoint: %s — queued for retry. Use Send to Website to try "
+              "again once the cause is fixed.") % (url or '(not configured)'))
+
+        try:
+            self.message_post(body=body, subject=_("Website push failed"))
+        except Exception:
+            # Never let a logging failure swallow the real error.
+            _logger.exception(
+                "Could not post the push failure to %s's chatter.", self.name)
+
     def _lgd_queue_offline_retry(self, payload, headers, error, status_code):
         """Hand a failed push to the existing augmont.api.retry cron."""
         self.ensure_one()
         _logger.warning("Offline push failed for %s (%s): %s",
                         self.sdk_augmont_number or self.name, status_code, error)
+        self._lgd_post_push_failure(
+            error, status_code, self._lgd_offline_push_url())
         self.env['augmont.api.retry'].sudo().create({
             'order_id': self.id,
             # Without this the retry cron would POST this offline-order body

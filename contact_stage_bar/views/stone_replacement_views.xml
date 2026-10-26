@@ -58,6 +58,7 @@
                         <field name="orig_color"/>
                         <field name="orig_clarity"/>
                         <field name="orig_cut"/>
+                        <field name="orig_lab"/>
                         <field name="orig_certificate"/>
                     </group>
                     <group string="Replacement Stone">
@@ -71,13 +72,18 @@
                         <field name="weight_carat"/>
                         <field name="color"/>
                         <field name="clarity"/>
-                        <field name="cut"/>
+                        <field name="cut_id" options="{'no_create': True}"/>
                         <field name="polish_id" options="{'no_create': True}"/>
                         <field name="symmetry_id" options="{'no_create': True}"/>
                         <field name="fluorescence_id" options="{'no_create': True}"/>
                         <field name="fluorescence_color"/>
                         <field name="treatments"/>
                         <field name="measurements"/>
+                        <!-- The LGD website requires both on a replacement
+                             it has not seen before. IGI fills them; type
+                             them by hand for a manual stone. -->
+                        <field name="table_pct"/>
+                        <field name="depth_pct"/>
                         <field name="certificate"/>
                     </group>
                 </group>

@@ -35,11 +35,12 @@ class StoneReplacement(models.TransientModel):
     lab = fields.Selection(LAB_SELECTION, string="Lab")
     shape_id = fields.Many2one('customer.rfq.shape', string="Shape")
     weight_carat = fields.Char(string="Carat Weight")
-    # Free text by choice: these carry lab-specific wording and fancy-colour
-    # descriptions that no fixed list covers well, so the user types them &  whatever IGI returns is kept verbatim.
+
     color = fields.Char(string="Colour")
     clarity = fields.Char(string="Clarity")
-    cut = fields.Char(string="Cut")
+    cut_id = fields.Many2one(
+        'customer.rfq.grade', string="Cut",
+        domain="[('category', '=', 'cut')]")
     polish_id = fields.Many2one(
         'customer.rfq.grade', string="Polish",
         domain="[('category', '=', 'polish')]")
@@ -52,6 +53,11 @@ class StoneReplacement(models.TransientModel):
     fluorescence_color = fields.Char(string="Fluorescence Color")
     treatments = fields.Selection(TREATMENT_SELECTION, string="Treatments")
     measurements = fields.Char(string="Measurements")
+    # The LGD website refuses a replacement stone without both of these
+    # ("manualStone.tableDepth is required"), so they are collected here.
+    # IGI returns them; a manually typed stone needs them entered.
+    table_pct = fields.Float(string="Table %", digits=(16, 2))
+    depth_pct = fields.Float(string="Depth %", digits=(16, 2))
     certificate = fields.Char(string="Certificate Number")
 
     # ── Resolving IGI's wording onto the pickers ────────────────────────
@@ -123,6 +129,7 @@ class StoneReplacement(models.TransientModel):
     orig_cut = fields.Char(related='sale_line_id.cut', string="Orig Cut", readonly=True)
     orig_carat = fields.Char(related='sale_line_id.carat_weight', string="Orig Carat", readonly=True)
     orig_certificate = fields.Char(related='sale_line_id.certificate', string="Orig Certificate", readonly=True)
+    orig_lab = fields.Char(related='sale_line_id.labs', string="Orig Lab", readonly=True)
     orig_stone_type = fields.Selection(related='sale_line_id.stone_type', string="Orig Type", readonly=True)
 
     @api.depends('weight_carat')
@@ -185,7 +192,7 @@ class StoneReplacement(models.TransientModel):
             'weight_carat': str(result.get('carat_value')) if result.get('carat_value') else False,
             'color': result.get('color'),
             'clarity': result.get('clarity_norm'),
-            'cut': result.get('cut'),
+            'cut_id': self._resolve_grade('cut', result.get('cut')).id or False,
             'polish_id': self._resolve_grade('polish', result.get('polish')).id or False,
             'symmetry_id': self._resolve_grade('symmetry', result.get('symmetry')).id or False,
             # IGI omits these for some stones — default to "None" so the column
@@ -196,6 +203,8 @@ class StoneReplacement(models.TransientModel):
             'treatments': self._resolve_selection(
                 self.TREATMENT_SELECTION, result.get('treatment') or 'None'),
             'measurements': result.get('measurements'),
+            'table_pct': result.get('table_pct_value') or 0.0,
+            'depth_pct': result.get('depth_pct_value') or 0.0,
             'certificate': result.get('report_number') or report,
             'lab': 'IGI',
             'stone_type': 'lab_grown' if result.get('is_lab_grown') else 'natural',
@@ -229,13 +238,15 @@ class StoneReplacement(models.TransientModel):
             'weight_carat': self.weight_carat,
             'color': self.color,
             'clarity': self.clarity,
-            'cut': self.cut,
+            'cut': self.cut_id.name or False,
             'polish': self.polish_id.name or False,
             'symmetry': self.symmetry_id.name or False,
             'fluorescence_intensity': self.fluorescence_id.name or 'None',
             'fluorescence_color': self.fluorescence_color or 'None',
             'treatments': self.treatments or 'None',
             'measurements': self.measurements,
+            'table_pct': self.table_pct,
+            'depth_pct': self.depth_pct,
             'stone_type': self.stone_type,
         }
 
