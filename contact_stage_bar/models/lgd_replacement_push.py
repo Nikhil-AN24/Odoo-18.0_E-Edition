@@ -11,13 +11,11 @@ The website answers with the orderUniqueId it allocated for the new line,
 which Odoo stores. That is what stops a procurement-raised replacement
 sharing the original's id: the website names the new line, exactly as it
 already does for an offline order push.
-
-Payload and response follow "Stone Replacement API - Odoo -> Augmont LGD",
-22 Oct 2026. Their side cancels the original line and adds the replacement
-to the same invoice as a new Diamond Booked line.
 """
 import json
 import logging
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 import re
 
 import requests
@@ -305,6 +303,7 @@ class SaleOrder(models.Model):
             'productIdentifier' if 'productIdentifier' in payload
             else 'manualStone')
 
+        log_api(OUT, "POST %s" % url, body, headers=headers, env=self.env)
         try:
             response = requests.post(
                 url, headers=headers, data=body,

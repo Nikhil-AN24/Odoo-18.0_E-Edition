@@ -54,16 +54,22 @@
                 <attribute name="invisible">1</attribute>
             </xpath>
 
-            <!-- ===== email / mobile_number ===== -->
+            <!-- ===== email / phone / alt. number =====
+                 Phone is the required one, not mobile. The platform's
+                 `mobileNumber` is written to `phone` by
+                 /api/lgd/order/cart_add, so requiring `mobile` here asked
+                 for a number no vendor arriving through the API ever had:
+                 the record saved fine over the API and then refused to save
+                 by hand. `mobile` stays as a second, optional number. -->
             <xpath expr="//field[@name='email'][1]" position="attributes">
                 <attribute name="required">1</attribute>
             </xpath>
-            <xpath expr="//field[@name='mobile'][1]" position="attributes">
-                <attribute name="required">1</attribute>
-                <attribute name="string">Mobile Number</attribute>
-            </xpath>
             <xpath expr="//field[@name='phone'][1]" position="attributes">
+                <attribute name="required">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='mobile'][1]" position="attributes">
                 <attribute name="required">0</attribute>
+                <attribute name="string">Alt. number</attribute>
             </xpath>
 
             <!-- ===== billing_address =====

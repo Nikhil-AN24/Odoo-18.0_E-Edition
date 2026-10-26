@@ -19,14 +19,7 @@ LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 _LGD_DEAD_LINE_STATUSES = (
     'cancelled', 'not_available', 'replaced', 'memo_returned')
 
-#: Mirror of the website's own ALLOWED_ORDER_STATUS_TRANSITIONS. It must track
-#: theirs: the website enforces these and rejects anything else, while this copy
-#: only logs, so the two drifting apart turns a real rejection into a silent
-#: surprise. Last synced 22 Oct 2026 against "Odoo Order Status Update
-#: Payloads", the website's own published contract — several rows here were
-#: narrower than theirs, which made us log a warning for transitions they
-#: accept perfectly well.
-#:
+
 #: "Payment Pending" -> "Dispatched" is ours, not stock: goods can leave before
 #: payment clears, and a memo ships unpaid by definition.
 ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
@@ -684,7 +677,12 @@ class SaleOrder(models.Model):
             _logger.info("Updating UTR %s for invoice %s", order.utr_number, order.sdk_augmont_number)
             
             try:
+                log_api(OUT, "POST %s" % url, payload, headers=headers,
+                        env=self.env)
                 response = requests.post(url,headers=headers, json=payload, timeout=15)
+                log_api(OUT, "POST %s" % url, payload, env=self.env,
+                        response=getattr(response, "text", None),
+                        status=getattr(response, "status_code", None))
                 
                 if response.status_code == 200:
                     res_json = response.json()
@@ -859,10 +857,23 @@ class SaleOrder(models.Model):
                 if not (dest.street or dest.city):
                     problems.append(line._lgd_label())
         if problems:
+            # Name the destination that is actually empty. The order form
+            # shows a populated-looking "Shipping Address" even when the
+            # platform sent something unusable (a bare company name, say),
+            # so "no delivery address" reads as nonsense unless the message
+            # says WHICH record is blank and where to go and fill it.
+            blank = self.order_line.filtered(
+                lambda l: l.product_id
+                and l.availability_status not in LGD_DEAD_STATUSES
+                and not (l.lgd_ship_address_eff.street
+                         or l.lgd_ship_address_eff.city)
+            ).mapped('lgd_ship_address_eff')
+            where = ', '.join(blank.mapped('display_name')) or _('the customer')
             raise UserError(_(
-                "These stones have no delivery address: %s. Pick an "
-                "address on the order, or on each stone."
-            ) % ', '.join(problems))
+                "These stones have no delivery address: %(stones)s.\n\n"
+                "%(where)s has neither a street nor a city. Add one there, "
+                "or set a delivery address on the order or on each stone.",
+                stones=', '.join(problems), where=where))
 
     def _lgd_assign_oc_number(self):
         Series = self.env['lgd.doc.series']
@@ -1612,7 +1623,12 @@ class SaleOrder(models.Model):
             "Content-Type": "application/json",
         }
             
+            log_api(OUT, "POST %s" % endpoint, payload, headers=headers,
+                    env=self.env)
             response = requests.post(endpoint, json=payload, headers=headers, timeout=30)
+            log_api(OUT, "POST %s" % endpoint, payload, env=self.env,
+                    response=getattr(response, "text", None),
+                    status=getattr(response, "status_code", None))
             
             # Handle response
             if response.status_code == 200:
@@ -1662,8 +1678,25 @@ class SaleOrder(models.Model):
                 raise ValidationError(_("No order lines found."))
 
             # Separate lines by is_custom_product flag (only active lines: diamond_booked or confirmed)
-            normal_lines = order.order_line.filtered(lambda l: l.product_template_id.website_product_id and l.availability_status in ['diamond_booked', 'confirmed'] and l.is_custom_product == True)
-            custom_lines = order.order_line.filtered(lambda l: not l.product_template_id.website_product_id and l.availability_status in ['diamond_booked', 'confirmed'] and l.is_custom_product == True)
+            #
+            # order_number is the website's own orderUniqueId, so a line that
+            # has one is ALREADY on the platform and must not be added again.
+            # A replacement stone is the case that bites: the replacement push
+            # creates it on the website and stores the id it comes back with,
+            # and then confirming the order offered the very same stone to
+            # product/add as if it were new. The platform refused the whole
+            # payload ("stockNum is required; country is required") because the
+            # Odoo-side product carries none of the identifiers the website had
+            # just generated for it.
+            def _needs_adding(line):
+                return (line.availability_status in ('diamond_booked', 'confirmed')
+                        and line.is_custom_product
+                        and not line.order_number)
+
+            normal_lines = order.order_line.filtered(
+                lambda l: _needs_adding(l) and l.product_template_id.website_product_id)
+            custom_lines = order.order_line.filtered(
+                lambda l: _needs_adding(l) and not l.product_template_id.website_product_id)
             _logger.info(f"🔹normal_linesssss: {normal_lines}")
             _logger.info(f"🔹custom_linesssss: {custom_lines}")
 
@@ -1682,6 +1715,19 @@ class SaleOrder(models.Model):
             # -------------------------
             # PAYLOAD 2 → Custom Products (is_custom_product = True)
             # -------------------------
+            def _country_for(line):
+                own = line.product_id.country_id.name
+                if own:
+                    return own
+                fallback = order.company_id.country_id.name
+                _logger.warning(
+                    "Augmont product push %s: stone '%s' has no Country set; "
+                    "sending the company's %s instead. Set a Country on the "
+                    "product to send the real one.",
+                    order.sdk_augmont_number or order.name,
+                    line.product_id.display_name, fallback or '(none)')
+                return fallback or ""
+
             payload2_data = []
             for line in custom_lines:
                 payload2_data.append({
@@ -1696,7 +1742,12 @@ class SaleOrder(models.Model):
                     "pricePerCarat": float(line.final_price or 0),
                     "finalPrice": float(line.price_unit or 0),
                     "lab": line.product_id.labs or "",
-                    "country": line.product_id.country_id.name or "",
+                    # The website rejects an empty country outright. Fall back
+                    # to the company's, the same way the offline push does for
+                    # its own country field, and say so - a stone that reaches
+                    # here with no Country set is a data gap worth fixing at
+                    # the source rather than silently papering over.
+                    "country": _country_for(line),
                 })
 
             # -------------------------
@@ -1728,7 +1779,12 @@ class SaleOrder(models.Model):
             # raise ValidationError(str(payload))
             try:
                 _logger.info(f"🔹 Sending Augmont product payload: {json.dumps(payload)}")
+                log_api(OUT, "POST %s" % url, payload, headers=headers,
+                        env=self.env)
                 response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=20)
+                log_api(OUT, "POST %s" % url, payload, env=self.env,
+                        response=getattr(response, "text", None),
+                        status=getattr(response, "status_code", None))
 
                 if response.status_code == 200:
                     response_data = response.json()
@@ -2036,9 +2092,61 @@ class SaleOrder(models.Model):
                     "this transaction; not sending it again.",
                     self.name, item['order_number'], item['final_status'])
                 continue
-            seen.add(key)
             fresh.append(item)
         return fresh
+
+    def _lgd_push_key(self, item):
+        return (self.id, str(item['order_number'] or ''), item['final_status'])
+
+    def _lgd_drop_unchanged_on_website(self, entries):
+        """Drop entries whose status the website already holds.
+
+        The platform rejects a no-op transition AND rejects the entire
+        payload with it, so one unchanged line takes every genuine update
+        batched beside it down. A MELEE line sat at Diamond Booked through
+        two batches for exactly this reason: both carried an unchanged line
+        that the platform refused, and its own Confirmed was never applied.
+        """
+        fresh = []
+        for item in entries:
+            line = item['line']
+            if line.lgd_last_pushed_status \
+                    and line.lgd_last_pushed_status == item['final_status']:
+                _logger.info(
+                    "🔕 [UNCHANGED] Order %s: %s is already %s on the website; "
+                    "leaving it out of this call.",
+                    self.name, item['order_number'], item['final_status'])
+                continue
+            fresh.append(item)
+        return fresh
+
+    def _lgd_mark_pushed(self, entries):
+        """Record what the website now holds. Called ONLY after a 200.
+
+        Marking at build time instead was how the MELEE line was lost: its
+        one attempt failed inside a rejected batch, yet it was recorded as
+        sent and suppressed from every later batch in the transaction.
+
+        Written in SQL: the ORM write would run the sale.order.line override
+        and its auto-confirm path for a field that is pure bookkeeping.
+        """
+        cr = self.env.cr
+        seen = getattr(cr, '_lgd_pushed_statuses', None)
+        if seen is None:
+            seen = set()
+            cr._lgd_pushed_statuses = seen
+        for item in entries:
+            seen.add(self._lgd_push_key(item))
+        by_status = {}
+        for item in entries:
+            by_status.setdefault(item['final_status'], []).append(item['line'].id)
+        for status, ids in by_status.items():
+            cr.execute(
+                "UPDATE sale_order_line SET lgd_last_pushed_status = %s "
+                "WHERE id IN %s", (status, tuple(ids)))
+        self.env['sale.order.line'].browse(
+            [i['line'].id for i in entries]
+        ).invalidate_recordset(['lgd_last_pushed_status'])
 
     def _lgd_status_entries_deduped(self, entries):
         """One entry per order_unique_id, keeping the ORIGINAL stone's.
@@ -2213,6 +2321,7 @@ class SaleOrder(models.Model):
                 })
 
             entries = self._lgd_status_entries_deduped(entries)
+            entries = self._lgd_drop_unchanged_on_website(entries)
             entries = self._lgd_drop_already_pushed(entries)
 
             if not entries:
@@ -2232,7 +2341,12 @@ class SaleOrder(models.Model):
                 "   METHOD: POST | URL: %s | Payload: %s",
                 api_url, json.dumps(data))
 
+            log_api(OUT, "POST %s" % api_url, data, headers=headers,
+                    env=self.env)
             response = requests.post(api_url, json=data, headers=headers, timeout=30)
+            log_api(OUT, "POST %s" % api_url, data, env=self.env,
+                    response=getattr(response, "text", None),
+                    status=getattr(response, "status_code", None))
 
             if response.status_code == 200:
                 response_data = response.json()
@@ -2254,6 +2368,7 @@ class SaleOrder(models.Model):
                         rows, response_data.get('message', 'Success')),
                     subject="Augmont Status Update"
                 )
+                self._lgd_mark_pushed(entries)
             else:
                 _logger.error(
                     "▶▶ ODOO → WEBSITE | STATUS UPDATE RESPONSE | %s line(s) | HTTP %s ❌ | Response: %s",
@@ -3398,8 +3513,7 @@ class SaleOrderLine(models.Model):
         it; a procurement-raised replacement has none, and the original's id
         is reused as before so the stone is still reportable. Two lines then
         share one id, which the status paths resolve by preferring the live
-        line over the replaced one - see _lgd_status_entries_deduped and the
-        lookup in status_sync_api.
+        line over the replaced one - see _lgd_status_entries_deduped.
 
         `provenance` carries who asked and why, for a website-raised request.
         """
@@ -3594,7 +3708,31 @@ class SaleOrderLine(models.Model):
     # IGI (writes through to the product). The order-line lists show it with an
     # explicit readonly="1", so they stay read-only.
     certificate = fields.Char(related='product_template_id.certificate', string="Certificate Number", readonly=False)
-    carat_weight = fields.Char(related='product_template_id.weight_carat', string="Carat Weight")
+    carat_weight = fields.Char(
+        string="Carat Weight",
+        compute='_compute_carat_weight', store=True, readonly=False,
+        help="Carat weight of the stone on this line.")
+
+    @api.depends('product_template_id.weight_carat')
+    def _compute_carat_weight(self):
+        """Default to the product's weight, but let the line keep its own.
+
+        This was a plain related field on product_template_id.weight_carat,
+        which works while one product is one stone - true for a certified
+        line, where the product is created for that stone alone.
+
+        It is not true offline. There a whole RFQ's worth of lines share one
+        generic product ("Non-Certified - Pear"), so the product carries no
+        weight and the related field could only ever read blank; worse, being
+        related it was read-only, so the per-stone weight the RFQ had already
+        worked out was silently discarded on the way to the sale order.
+
+        Stored and writable, so a line that was given a weight keeps it, and
+        one that was not still falls back to its product.
+        """
+        for line in self:
+            if not line.carat_weight:
+                line.carat_weight = line.product_template_id.weight_carat or False
     polish = fields.Char(string='Polish', related='product_template_id.polish')
     symmetry = fields.Char(string='Symmetry', related='product_template_id.symmetry')
     color = fields.Char(related='product_template_id.color', string="Color")
@@ -3818,34 +3956,68 @@ class SaleOrderLine(models.Model):
     #: How the website spells "this stone has no lab certificate" in the
     #: `lab` field. Compared with punctuation and case removed, so
     #: "Non-Cert", "non cert" and "NONCERTIFIED" all match.
-    _LGD_NON_CERT_LABS = frozenset(('noncert', 'noncertified', 'nocert'))
+    # Stone Type carries only the origin half of the category and
+    # Certification the other, so a MELEE line reads "Lab Grown" +
+    # "Non-Certified" and you have to combine two columns by eye to see that
+    # it is LabGrown Melle. This is that combination, named exactly as the
+    # four Procurement lists are. Not stored: it is two stored fields
+    # concatenated, so there is nothing to keep in step.
+    stone_list_name = fields.Char(
+        string="Stone List", compute='_compute_stone_list_name')
+
+    @api.depends('stone_type', 'stone_certification_type')
+    def _compute_stone_list_name(self):
+        Order = self.env['sale.order']
+        by_kind = {kind: Order._PROCUREMENT_ORDER_SEGMENT_LABELS[segment]
+                   for segment, kind
+                   in Order._PROCUREMENT_ORDER_SEGMENTS.items()}
+        for line in self:
+            line.stone_list_name = by_kind.get(
+                (line.stone_type, line.stone_certification_type)) or False
+
+    # What the WEBSITE currently holds for this line, as an Augmont status
+    # word. Written only when the platform has confirmed it: at intake from
+    # the payload it sent us, and after a push it answered 200 to.
+    #
+    # Without it every push re-sent the status of every line on the order,
+    # changed or not. The platform refuses a no-op ("Status transition from
+    # 'Confirmed' to 'Confirmed' is not allowed") and refuses the WHOLE
+    # payload with it, so one unchanged line silently destroyed the genuine
+    # updates batched alongside it.
+    lgd_last_pushed_status = fields.Char(
+        string="Status on website", copy=False, readonly=True)
 
     def _lgd_is_non_certified(self):
-        """True when this line's stone genuinely has no lab certificate.
+        """True when this line belongs in one of the Melle lists.
 
-        line_type alone used to decide this - MELEE meant non-certified and
-        everything else meant certified. That stopped being true when the
-        website began sending non-certified SINGLE stones as ordinary LGD
-        lines: they arrive with no certNumber and lab "Non-Cert", and were
-        being filed as certified. The visible symptom was a replacement
-        refused with "the original stone is certified - the replacement
-        needs a certificate number" for a stone that never had one.
+        The platform has three line types and Odoo has four Procurement
+        lists, and the agreed mapping between them runs on lineType alone:
 
-        A line with no certificate yet but no sign of being non-certified
-        stays 'certified': that is a spec-based order whose stone
-        Procurement has not sourced yet, and flipping it would move it out
-        of the Certified lists it belongs in.
+            LGD     -> LabGrown Certified
+            MELEE   -> LabGrown Melle
+            NATURAL -> Natural Certified
+
+        (Natural Melle has no lineType yet; the list stays for when it
+        does.) So MELEE is the only inbound signal that means Melle.
+
+        A middle period also treated lab "Non-Cert" on an ordinary LGD line
+        as non-certified, because a replacement was once refused with "the
+        original stone is certified - the replacement needs a certificate
+        number" for a stone that never carried one. That is no longer this
+        method's job to prevent: the replacement check tests the
+        certificate the original ACTUALLY holds rather than its
+        classification, so a Non-Cert LGD stone passes it on its own. Were
+        the clause kept, those stones would sit in LabGrown Melle, which is
+        a parcel list they do not belong to.
+
+        is_non_certified_source stays: it is set only from a Customer RFQ,
+        where a human chose Non-Certified explicitly, and offline orders
+        have no lineType to go on.
         """
         self.ensure_one()
         if self.line_type == 'melee':
             return True
-        template = self.product_template_id
-        if template.is_non_certified_source:
-            return True
-        if (template.certificate or '').strip():
-            return False
-        lab = re.sub(r'[^a-z]', '', (template.labs or '').lower())
-        return lab in self._LGD_NON_CERT_LABS
+        return self.product_template_id.is_non_certified_source
 
     @api.model
     def _lgd_reclassify_certification(self):
@@ -3856,25 +4028,22 @@ class SaleOrderLine(models.Model):
         way - including the non-certified single stones this fixes. Runs on
         upgrade; idempotent.
         """
-        lines = self.sudo().search([
-            ('display_type', '=', False),
-            ('stone_certification_type', '=', 'certified'),
-        ])
-        wrong = lines.filtered(lambda l: l._lgd_is_non_certified())
+        lines = self.sudo().search([('display_type', '=', False)])
+        wrong = lines.filtered(
+            lambda l: l.stone_certification_type != (
+                'non_certified' if l._lgd_is_non_certified() else 'certified'))
         if wrong:
             wrong._compute_stone_classification()
             _logger.info(
-                "Certification backfill: %s of %s certified line(s) "
-                "reclassified as Non-Certified.", len(wrong), len(lines))
+                "Certification backfill: %s of %s line(s) reclassified.",
+                len(wrong), len(lines))
         else:
             _logger.info(
-                "Certification backfill: nothing to change (%s certified "
-                "line(s) checked).", len(lines))
+                "Certification backfill: nothing to change (%s line(s) "
+                "checked).", len(lines))
         return len(wrong)
 
     @api.depends('display_type', 'line_type',
-                 'product_template_id.certificate',
-                 'product_template_id.labs',
                  'product_template_id.stone_type',
                  'product_template_id.is_non_certified_source')
     def _compute_stone_classification(self):
@@ -3983,6 +4152,29 @@ class SaleOrderLine(models.Model):
         string="Qty (Carats)",
         digits=(16, 6),
     )
+
+    melee_parcel_pieces_text = fields.Char(
+        string="Melee Pieces", compute='_compute_melee_parcel_text')
+    melee_parcel_carats_text = fields.Char(
+        string="Melee Carats", compute='_compute_melee_parcel_text')
+
+    @api.depends('melee_parcel_quantity', 'melee_parcel_qty_carats',
+                 'is_melee_parent')
+    def _compute_melee_parcel_text(self):
+        def _plain(value):
+            """A number with no trailing zeros: 0.100000 -> 0.1, 18.0 -> 18."""
+            if not value:
+                return False
+            text = ('%.6f' % value).rstrip('0').rstrip('.')
+            return text or False
+
+        for line in self:
+            if not line.is_melee_parent:
+                line.melee_parcel_pieces_text = False
+                line.melee_parcel_carats_text = False
+                continue
+            line.melee_parcel_pieces_text = _plain(line.melee_parcel_quantity)
+            line.melee_parcel_carats_text = _plain(line.melee_parcel_qty_carats)
 
     # Quoted price per carat for this parcel line
     melee_parcel_price_per_carat = fields.Float(string="Price/Carat")

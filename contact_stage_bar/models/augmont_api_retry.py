@@ -3,6 +3,8 @@ from markupsafe import Markup
 import json
 import requests
 import logging
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 import time
 
 _logger = logging.getLogger(__name__)
@@ -199,7 +201,12 @@ class AugmontApiRetry(models.Model):
                     "[CRON] Retrying Record %d | URL: %s | Payload: %s",
                     rec.id, target_url, json.dumps(payload)
                 )
+                log_api(OUT, "POST %s" % target_url, payload, headers=headers,
+                        env=self.env)
                 response = requests.post(target_url, json=payload, headers=headers, timeout=30)
+                log_api(OUT, "POST %s" % target_url, payload, env=self.env,
+                        response=getattr(response, "text", None),
+                        status=getattr(response, "status_code", None))
 
                 _logger.info(
                     "[CRON] Record %d | HTTP %s | Response: %s",

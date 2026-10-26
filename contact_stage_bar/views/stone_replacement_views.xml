@@ -58,6 +58,7 @@
                         <field name="orig_color"/>
                         <field name="orig_clarity"/>
                         <field name="orig_cut"/>
+                        <field name="orig_lab"/>
                         <field name="orig_certificate"/>
                     </group>
                     <group string="Replacement Stone">
@@ -71,7 +72,7 @@
                         <field name="weight_carat"/>
                         <field name="color"/>
                         <field name="clarity"/>
-                        <field name="cut"/>
+                        <field name="cut_id" options="{'no_create': True}"/>
                         <field name="polish_id" options="{'no_create': True}"/>
                         <field name="symmetry_id" options="{'no_create': True}"/>
                         <field name="fluorescence_id" options="{'no_create': True}"/>

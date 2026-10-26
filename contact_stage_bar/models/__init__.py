@@ -1,3 +1,4 @@
+from . import lgd_api_log
 from . import res_partner_stage
 from . import res_partner
 from . import lgd_ship_address

@@ -369,6 +369,19 @@
                                 <group>
                                     <field name="labs" readonly="not lgd_can_edit_product_specs"/>
                                     <field name="lgd_stock_number"/>
+                                    <!-- Melee parcels only: the same parcel
+                                         by piece and by carat. Hidden on a
+                                         certified single stone, which is one
+                                         stone with one weight. -->
+                                    <field name="is_melee_parent" invisible="1"/>
+                                    <field name="melee_parcel_unit_type"
+                                           string="Melee Sold By"
+                                           invisible="not is_melee_parent"/>
+
+                                    <field name="melee_parcel_pieces_text"
+                                           invisible="not is_melee_parent"/>
+                                    <field name="melee_parcel_carats_text"
+                                           invisible="not is_melee_parent"/>
                                     <field name="shapes"/>
                                     <field name="carat_weight" string="Carat"/>
                                     <field name="clarity"/>

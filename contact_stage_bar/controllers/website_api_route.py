@@ -4,15 +4,28 @@ from markupsafe import Markup, escape
 from .lgd_api_auth import lgd_check_api_token
 
 import logging, json, re
+
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 from datetime import datetime
-from odoo import models, fields, api
+from odoo import models, fields, api, _
+from ..models.lgd_ship_address import GROUP_SALES
+from ..models.lgd_inventory_sale_line import LINE_STATUS_TO_AUGMONT
 
 _logger = logging.getLogger(__name__)
 
 LGD_STONE_TYPE_KEYS = (
+    # lineType first: it is the field the website actually populates, and
+    # the only one of these that has ever arrived in a real payload. Without
+    # it every key below was absent, the origin came back "not stated", and
+    # the sale line fell through to its 'lab_grown' default - so a NATURAL
+    # stone on a mixed invoice was filed as Lab Grown and the two became indistinguishable.
+    'lineType',
     'stoneType', 'stone_type', 'diamondType', 'growthType', 'type',
     'naturalOrLabGrown', 'isLabGrown', 'labGrown',
 )
+
+LGD_ORIGIN_AGNOSTIC_LINE_TYPES = frozenset(('melee', 'parcel'))
 
 #: Values of those keys, normalised (lower-cased, letters only).
 LGD_NATURAL_WORDS = frozenset(('natural', 'naturaldiamond', 'nat', 'earthmined',
@@ -44,6 +57,9 @@ def lgd_stone_type_from_payload(details):
             return 'natural'
         if text in LGD_LAB_GROWN_WORDS:
             return 'lab_grown'
+        if key == 'lineType' and text in LGD_ORIGIN_AGNOSTIC_LINE_TYPES:
+            # Says what kind of line this is, not what the stone is made of.
+            continue
         _logger.warning(
             "   ⚠️  productDetails.%s is %r, which is neither Natural nor "
             "Lab Grown. Leaving the stone's origin unset.", key, raw)
@@ -85,165 +101,46 @@ STATUS_MAP = {
     'Order Completed':   'order_completed',
 }
 
+def lgd_natural_stone_vals(product_details):
+
+    pd = product_details or {}
+    _KEYS = (
+        ('mineOfOrigin',         'mine_of_origin'),
+        ('mineToMarket',         'mine_to_market'),
+        ('sustainability',       'sustainability'),
+        ('inclusionSeverity',    'inclusion_severity'),
+        ('inclusionTable',       'inclusion_table'),
+        ('inclusionSides',       'inclusion_sides'),
+        ('openInclusionTable',   'open_inclusion_table'),
+        ('openInclusionSides',   'open_inclusion_sides'),
+    )
+    vals = {}
+    for src, dest in _KEYS:
+        if src in pd:
+            vals[dest] = pd.get(src)
+
+
+    if 'sustainabilityCerts' in pd:
+        certs = pd.get('sustainabilityCerts')
+        if isinstance(certs, (list, tuple)):
+            certs = ', '.join(str(c) for c in certs if c)
+        vals['sustainability_certs'] = certs or False
+
+    # Both arrive as true/false/null. bool(None) is False, which is the
+    # right reading here: a stone with no Tracr record and one that never said are both "not Tracr-backed".
+    for src, dest in (('isCanadaMarkEligible', 'is_canada_mark_eligible'),
+                      ('hasTracr', 'has_tracr')):
+        if src in pd:
+            vals[dest] = bool(pd.get(src))
+    return vals
+
+
 class PartnerSyncController(http.Controller):
-    
-    @http.route('/api/contact/login', type='json', auth='public', methods=['POST'], csrf=False)
-    def contact_login_or_create(self):
-        
-        data = json.loads(request.httprequest.data)
-        _logger.info(f"Received data: {data}")
-        
-        vals = {}
-        state = None
-        country = None
-        city = None
-        
-        state_name = data.get("address", {}).get("state", {}).get("name")
-        _logger.info(f"Received state: {state_name}")
-        if state_name:
-            state = request.env['res.country.state'].sudo().search([('name', 'ilike', state_name)], limit=1)
-            _logger.info(f"Matched state: {state}")
-            if state:
-                state = state.id
-
-       
-        input_country = data.get("address", {}).get("country", {}).get("name")
-        _logger.info(f"input_country: {input_country}")
-            
-        if input_country:
-            country = request.env['res.country'].sudo().search([
-                ('name', '=', input_country.title())
-            ], limit=1).id
-        _logger.info(f" country: {country}")
-                
-        full_name = f"{data.get('firstName', '').strip()} {data.get('lastName', '').strip()}".strip()
-        _logger.info(f"Full name constructed: {full_name}")
-            
-        businessType = None
-        businessRole = None
-
-        businessType = request.env['custom.category'].sudo().search([
-            ('name', 'ilike', data.get('businessType'))
-        ], limit=1)
-
-        if not businessType:
-            businessType = request.env['custom.category'].sudo().create({
-                'name': data.get('businessType'),
-            })
-
-        businessRole = request.env['custom.category'].sudo().search([
-            ('name', 'ilike', data.get('businessRole'))
-        ], limit=1)
-
-        if not businessRole:
-            businessRole = request.env['custom.category'].sudo().create({
-                'name': data.get('businessRole'),
-            })
-        
-        gst_stage_map = {
-            'verified': 'Verified',
-            'not_verified': 'Not Verified',
-            'pending': 'Pending',
-        }
-        gst_value = data.get("kyc", {}).get('gstinStatus')
-        _logger.info(f"GST value: {gst_value}")
-        
-        ein_value = data.get("kyc", {}).get('einStatus')
-        _logger.info(f"EIN value: {ein_value}")
-                    
-        mapping = { 
-            'name': data.get('companyName'),
-            'first_name':data.get('firstName'),
-            'last_name':data.get('lastName'),
-            'phone' : data.get('mobileNumber'),
-            'email' : data.get('email'),
-            'street' : data.get("address",{}). get("addressLine1"),
-            'street2' : data.get("address",{}). get("addressLine2"),
-            'city': data.get("address", {}).get("city", {}).get("name"),
-            'zip' : data.get("address",{}). get("pincode"),
-            'category_ids': [(6, 0, [businessType.id])],
-            'primary_category_ids': [(6, 0, [businessRole.id])],
-            'state_id' : state,
-            'country_id' : country,
-            'vat' : data.get("kyc",{}). get('gstin'),
-            'ein_number' : data.get("kyc",{}). get('einNumber'),
-            'gst_stages' : gst_value,
-            'ein_status' : ein_value,
-            'l10n_in_pan' : data.get("kyc",{}). get('panNumber')
-            }
-        _logger.info(f"Mapping values: {mapping}")   
-        partner = request.env['res.partner'].sudo().search([('email','=',data.get('email'))],limit=1)
-        _logger.info(f"Partner found: {partner}")
-        
-        for field_name, value in mapping.items():
-            if value:
-                vals[field_name] = value
-        
-        if partner:
-            _logger.info(f"Writing values to partner {partner.id}: {vals}")
-            partner.write(vals)
-            partner.stage_id = 15  
-            _logger.info(f"Updated partner {partner.id} to stage_id  ({partner.stage_id.name})")
-            
-            return {
-                'status': 'Existing Accounts Updated',
-                'name': partner.name,
-                'first_name': partner.first_name,
-                'last_name': partner.last_name,
-                'partner_id': partner.id,
-                'stages': partner.stage_id.name,
-                'country': partner.country_id.name if partner.country_id else '',
-                'Bussiness Type': businessType.name if businessType else '',
-                'Bussiness Role': businessRole.name if businessRole else '',
-                'phone': partner.phone,
-                'email': partner.email,
-                'street': partner.street,
-                'street2': partner.street2,    
-                'city': partner.city,
-                'zip': partner.zip, 
-                'pan_number': partner.l10n_in_pan,
-                'gst_stages': partner.gst_stages,
-                'ein_status': partner.ein_status,
-                'Gst Number': partner.vat,
-                'Ein Number': partner.ein_number,
-            }
-            
-        else:
-            _logger.info(f"Creating new partner with vals: {vals}")
-            new_partner = request.env['res.partner'].sudo().create(vals)
-            _logger.info(f"Created new partner {new_partner.id} with vals: {vals}")
-            return {
-                'status': 'New Accounts Company Created',
-                'name': new_partner.name,
-                'first_name': new_partner.first_name,
-                'last_name': new_partner.last_name,
-                'stages': new_partner.stage_id.name,
-                'partner_id': new_partner.id,
-                'Bussiness Type': businessType.name if businessType else '',
-                'Bussiness Role': businessRole.name if businessRole else '',    
-                'phone': new_partner.phone,
-                'email': new_partner.email, 
-                'street': new_partner.street,
-                'street2': new_partner.street2,
-                'city': new_partner.city,
-                'zip': new_partner.zip,
-                'pan_number': new_partner.l10n_in_pan,
-                'gst_stages': new_partner.gst_stages,
-                'ein_status': new_partner.ein_status,
-                'Gst Number': new_partner.vat,
-                'Ein Number': new_partner.ein_number,
-                'state': new_partner.state_id.name if new_partner.state_id else '',
-                'city': new_partner.city,
-                'zip': new_partner.zip,
-                'country': new_partner.country_id.name if new_partner.country_id else '',
-            }
-            
-    
 
     # Website orders always belong to this company, whichever user sends the
     # request: a call without a logged-in session runs as the Public user,
     # whose own company may differ and would hide the order from Procurement.
-    _WEBSITE_ORDER_COMPANY_NAME = 'AUGMONT ENTERPRISES PVT LTD.'
+    _WEBSITE_ORDER_COMPANY_NAME = 'ANIRATH OVERSEAS LIMITED'
     # Tax historically hardcoded on website stone products.
     _WEBSITE_STONE_TAX_ID = 112
 
@@ -252,18 +149,6 @@ class PartnerSyncController(http.Controller):
     _WEBSITE_ORDER_COMPANY_PARAM = 'lgd_website_order_company'
 
     def _website_order_company(self):
-        """The company a website order is filed under.
-
-        Reads the system parameter first - an id, or a company name. Falling
-        back to request.env.company is what went wrong before: a public call
-        has no session, so it ran as the Public user and inherited THAT
-        user's company. Orders then landed in a company nobody was looking
-        at, and Odoo's own record rules hid them from the Sales list, which
-        made a successfully received order look like it had never arrived.
-
-        The old hardcoded name is still honoured so nothing breaks where it
-        does match, but a miss is now logged rather than silently inherited.
-        """
         Company = request.env['res.company'].sudo()
         configured = (request.env['ir.config_parameter'].sudo()
                       .get_param(self._WEBSITE_ORDER_COMPANY_PARAM) or '').strip()
@@ -309,7 +194,54 @@ class PartnerSyncController(http.Controller):
             ('company_id', '=', company.id),
         ], order='active desc, id', limit=1)
 
-    @http.route('/training/api/order/cart_add', type='json', auth='public', methods=['POST'], csrf=False)
+    def _lgd_vendor_from_order(self, seller, fallback_name):
+        """The vendor named on an order line, through the one partner path.
+
+        Looks up by NAME first, as this route always has: an order must
+        attach to the vendor Procurement already knows, and switching the
+        match to email would split existing suppliers in two. Only when no
+        such vendor exists does it hand the payload to
+        _lgd_upsert_from_website, so a vendor created here gets everything
+        the platform sent - account type, address, GSTIN or EIN - instead of
+        the five fields this route used to write.
+
+        enforce_registration=False: a vendor is incidental to the order, and
+        no order should fail because a supplier record is thin. The vendor
+        simply does not reach Registered until its number arrives.
+        """
+        seller = seller or {}
+        Partner = request.env['res.partner'].sudo()
+        name = (seller.get('companyName') or '').strip() or fallback_name
+        if not name:
+            return Partner.browse()
+        # Match by NAME, as this route always has: an order must attach to the
+        # vendor Procurement already knows, and matching on email instead
+        # would split existing suppliers in two.
+        existing = Partner.search(
+            [('name', '=', name), ('supplier_rank', '>', 0)], limit=1)
+        # An existing vendor is UPDATED, not merely reused. It used to be
+        # returned untouched here, so a vendor was written once and never
+        # again: a GSTIN or address added on the platform never arrived, and
+        # vendors already in Odoo stayed incomplete for ever.
+        payload = dict(seller, partyType='seller')
+        payload.setdefault('companyName', name)
+        # target=existing so the upsert writes to the vendor found by name.
+        # Left to match on email it would create a second vendor whenever the
+        # platform changed a seller's address.
+        result = Partner._lgd_upsert_from_website(
+            payload, enforce_registration=False, target=existing or None)
+        if result.get('status') == 'error':
+            _logger.warning("Vendor %s could not be created: %s",
+                            name, result.get('message'))
+            return existing or Partner.browse()
+        vendor = Partner.browse(result.get('partner_id'))
+        # supplier_rank is what the Vendors views and this lookup filter on.
+        if vendor and not vendor.supplier_rank:
+            vendor.supplier_rank = 1
+        return vendor
+
+    @http.route('/api/lgd/order/cart_add',
+                type='json', auth='public', methods=['POST'], csrf=False)
     def add_to_cart(self):
         GRADE_SHORT_NAMES = {
             'Excellent': 'EX',
@@ -320,15 +252,13 @@ class PartnerSyncController(http.Controller):
             'Poor': 'P'
         }
 
-        # Everything this handler touches is website-originated. Setting it
-        # once here, rather than on each write, is what stops Odoo echoing a
-        # status back for an order the website just told us about - they
-        # already know it, and the echo was being refused anyway. Individual
-        # call sites kept missing the flag; a request-wide context cannot.
         request.update_context(from_website_api=True)
 
         try:
             data = json.loads(request.httprequest.data)
+            log_api(IN, "POST /api/lgd/order/cart_add", data,
+                    headers=dict(request.httprequest.headers),
+                    env=request.env)
             _logger.info("=" * 80)
             _logger.info("📥 CART_ADD REQUEST")
             _logger.info(f"   Invoice: {data.get('invoiceNumber')}")
@@ -349,15 +279,6 @@ class PartnerSyncController(http.Controller):
             order_invoice_number = data.get('invoiceNumber')
 
             # ── Channel ──────────────────────────────────────────────
-            # The aggregator's own traffic is always 'website', so that
-            # stays the default and nothing it sends changes behaviour.
-            # The key exists so an OFFLINE order can be created through
-            # the same endpoint - which is the only way to exercise the
-            # OF- numbering series, and the status push, from outside
-            # Odoo. An unknown value is refused rather than stored:
-            # order_source decides whether this order ever syncs to the
-            # website, and a typo silently becoming 'website' would send
-            # an unknown invoice number to the platform.
             order_source = (data.get('orderSource') or 'website').strip().lower()
             if order_source not in ('website', 'offline'):
                 return {'status': 'error',
@@ -378,13 +299,20 @@ class PartnerSyncController(http.Controller):
             else:
                 ein_number = kyc_info.get('einNumber')
 
-            partner = request.env['res.partner'].sudo().search([('email', '=', email)], limit=1)
+            Partner = request.env['res.partner'].sudo()
+            payload = dict(buyer, partyType='buyer', email=email)
+            payload.setdefault('companyName', customer_name)
+            result = Partner._lgd_upsert_from_website(
+                payload, enforce_registration=False)
+            if result.get('status') == 'error':
+                _logger.warning(
+                    "Order %s: buyer %s could not be onboarded: %s",
+                    data.get('orderInvoiceNumber'), email,
+                    result.get('message'))
+            partner = Partner.search([('email', '=', email)], limit=1)
             if not partner:
-                partner = request.env['res.partner'].sudo().create({
-                    'name': customer_name,
-                    'email': email,
-                    'phone': buyer.get('mobileNumber'),
-                })
+                return {'status': 'error',
+                        'message': "Could not create the buyer for this order."}
 
             # Try to find existing draft sale order
             sale_order = request.env['sale.order'].sudo().search([
@@ -426,6 +354,22 @@ class PartnerSyncController(http.Controller):
                     ship_addr = request.env['res.partner']._lgd_match_or_create_address(
                         partner, shipping_address, order=sale_order)
                     sale_order.sudo().write({'partner_shipping_id': ship_addr.id})
+
+                dest = sale_order.partner_shipping_id or sale_order.partner_id
+                if not (dest.street or dest.city):
+                    request.env['res.partner']._lgd_notify(
+                        sale_order.sudo(),
+                        _("Website order has no usable delivery address"),
+                        _("The platform sent %(sent)s as the delivery "
+                          "address, which has no street or city, so %(who)s "
+                          "was used instead - and it has no address either. "
+                          "This order cannot be confirmed until one is "
+                          "added.",
+                          sent=repr(shipping_address or ''),
+                          who=dest.display_name),
+                        request.env['res.partner']._lgd_responsible_user(
+                            'lgd.sales_responsible_login', GROUP_SALES),
+                    )
 
             # Process each order item
             for order in orders:
@@ -495,6 +439,24 @@ class PartnerSyncController(http.Controller):
 
                     melee_unit_val  = order.get('meleeUnit', 'CARAT')
                     melee_qty_val   = float(order.get('meleeQty') or 0)
+
+                    _mp = order.get('meleePricing') or {}
+
+                    def _melee_num(key):
+                        raw = _mp.get(key)
+                        if raw in (None, '', 'null'):
+                            return None
+                        try:
+                            return float(raw)
+                        except (TypeError, ValueError):
+                            return None
+
+                    melee_carats_val = _melee_num('carats')
+                    melee_pieces_val = _melee_num('pieces')
+                    if melee_carats_val is None and melee_unit_val == 'CARAT':
+                        melee_carats_val = melee_qty_val or None
+                    if melee_pieces_val is None and melee_unit_val == 'PIECE':
+                        melee_pieces_val = melee_qty_val or None
                     melee_order_qty = float(order.get('quantity') or 1)
                     order_number    = order.get('orderUniqueId')
 
@@ -507,19 +469,8 @@ class PartnerSyncController(http.Controller):
                     melee_vendor_name  = melee_vendor_co or melee_vendor_full
                     if not melee_vendor_name:
                         melee_vendor_name = "Anirath"
-                    melee_vendor = request.env['res.partner'].sudo().search([
-                        ('name', '=', melee_vendor_name),
-                        ('supplier_rank', '>', 0),
-                    ], limit=1)
-                    if not melee_vendor and melee_vendor_name:
-                        melee_vendor = request.env['res.partner'].sudo().create({
-                            'name': melee_vendor_name,
-                            'first_name': melee_seller.get('firstName', '').strip(),
-                            'last_name': melee_seller.get('lastName', '').strip(),
-                            'supplier_rank': 1,
-                            'phone': melee_seller.get('mobileNumber'),
-                            'email': melee_seller.get('email'),
-                        })
+                    melee_vendor = self._lgd_vendor_from_order(
+                        melee_seller, melee_vendor_name)
 
                     melee_req_id = (
                         product_details.get('requestNumber')
@@ -543,7 +494,21 @@ class PartnerSyncController(http.Controller):
                         'cut': melee_cutsv,
                         'color': fancy_color,
                         'sdk_is_code_enabled': True,
+                        'melee_unit': melee_unit_val or False,
                     }
+                    # Only when known: a second order for the same parcel
+                    # that omits meleePricing must not blank what the first
+                    # one stored.
+                    if melee_carats_val is not None:
+                        melee_product_vals['melee_carats'] = melee_carats_val
+                    if melee_pieces_val is not None:
+                        melee_product_vals['melee_pieces'] = melee_pieces_val
+
+                    _logger.info(
+                        "   💠 MELEE quantity: %s pieces / %s carats (sold by %s)",
+                        melee_pieces_val if melee_pieces_val is not None else '?',
+                        melee_carats_val if melee_carats_val is not None else '?',
+                        melee_unit_val or '?')
 
                     if not melee_product:
                         melee_product = request.env['product.template'].sudo().create(melee_product_vals)
@@ -579,6 +544,11 @@ class PartnerSyncController(http.Controller):
                                 'order_number': str(order_number) if order_number else request_number,
                                 'vendor_id': melee_vendor.id if melee_vendor else False,
                                 'tax_id': [(6, 0, melee_product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
+                                # The platform just told us its own status for this
+                                # line, so that IS what it holds. Recording it stops
+                                # the next push re-sending it as a no-op, which the
+                                # platform refuses along with the whole batch.
+                                'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(melee_avail_status),
                                 'availability_status': melee_avail_status,
                                 # MELEE-specific fields
                                 'line_type': 'melee',
@@ -587,6 +557,18 @@ class PartnerSyncController(http.Controller):
                                 'melee_summary_title': summary_title,
                                 'melee_unit': melee_unit_val,
                                 'melee_total_qty': melee_qty_val,
+                                # The parcel seen both ways. melee_total_qty
+                                # is only whichever number meleeUnit names,
+                                # so on a CARAT parcel the piece count was
+                                # lost and on a PIECE parcel the weight was.
+                                # meleePricing carries both; keep both here,
+                                # on the LINE, where this parcel's own
+                                # numbers belong - the product is shared.
+                                'melee_parcel_unit_type': melee_unit_val or False,
+                                'melee_parcel_quantity': (
+                                    melee_pieces_val if melee_pieces_val is not None else 0.0),
+                                'melee_parcel_qty_carats': (
+                                    melee_carats_val if melee_carats_val is not None else 0.0),
                                 'melee_quote_id': melee_quote_id,
                                 'melee_treatment': treatment,
                                 'melee_shapes': melee_shapes_v,
@@ -695,6 +677,7 @@ class PartnerSyncController(http.Controller):
                                     'order_number': str(order_number) if order_number else '',
                                     'vendor_id': melee_vendor.id if melee_vendor else False,
                                     'tax_id': [(6, 0, melee_product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
+                                    'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(melee_avail_status),
                                     'availability_status': melee_avail_status,
                                     'line_type': 'melee',
                                     'is_melee_parent': False,
@@ -744,20 +727,7 @@ class PartnerSyncController(http.Controller):
                 name = vendor_company or full_name
                 if not name:
                     name = "Anirath"
-                vendor = request.env['res.partner'].sudo().search([
-                    ('name', '=', name),
-                    ('supplier_rank', '>', 0)
-                ], limit=1)
-
-                if not vendor:
-                    vendor = request.env['res.partner'].sudo().create({
-                        'name': name,
-                        'first_name': seller.get('firstName', '').strip(),
-                        'last_name': seller.get('lastName', '').strip(),
-                        'supplier_rank': 1,
-                        'phone': vendor_phone,
-                        'email': vendor_email,
-                    })
+                vendor = self._lgd_vendor_from_order(seller, name)
 
                 input_country = product_details.get('country')
                 country_id = False
@@ -829,6 +799,7 @@ class PartnerSyncController(http.Controller):
                     'sdk_is_code_enabled': True,
                 }
 
+                product_vals.update(lgd_natural_stone_vals(product_details))
 
                 _lgd_origin = lgd_stone_type_from_payload(product_details)
                 if _lgd_origin:
@@ -882,18 +853,6 @@ class PartnerSyncController(http.Controller):
                     })
                 
 
-                # Now handle sale order line Same reasoning as the product lookup above: only constrain
-                # on lgd_stock_number when the payload actually supplied one,
-                # or an offline re-post duplicates every line.
-                # orderUniqueId first: it is the website's own key for this
-                # line and the only value that survives everything else being
-                # renamed. The certificate/SKU match below cannot be trusted
-                # alone - a line's lgd_stock_number is computed as
-                # `lgd_own_stock_number or the template's SKU`, so once a line
-                # is given its own LGD-OFF- number it stops matching the SKU
-                # the website sent, and every re-post of the same order adds
-                # another copy of the same stone. S00221 ended up with the
-                # same stone twice, both carrying orderUniqueId 530710.
                 existing_line = request.env['sale.order.line']
                 if order_number:
                     existing_line = existing_line.sudo().search([
@@ -932,6 +891,7 @@ class PartnerSyncController(http.Controller):
                             'order_number': order_number,
                             'vendor_id': vendor.id,
                             'tax_id': [(6, 0, product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
+                            'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(lgd_avail_status),
                             'availability_status': lgd_avail_status,
                         })]
                     })
@@ -966,16 +926,12 @@ class PartnerSyncController(http.Controller):
             _logger.exception("Error in /api/order/cart_add: %s", str(e))
             return {'error': str(e)}
 
-    @http.route('/api/sale_order/update_status', type='http', auth='public', methods=['POST'], csrf=False)
+    # Handles a single orderNumber or a bulk 'orders' list, with utr,
+    # courier, tracking and comment - which is why the separate
+    # /api/v1/odoo/order/status/update route was removed rather than kept.
+    @http.route('/api/lgd/order/status',
+                type='http', auth='public', methods=['POST'], csrf=False)
     def update_sale_order_status(self, **kwargs):
-        # Token check removed on request (21 Oct 2026). These endpoints move
-        # money and inventory and are reachable by anyone who knows the URL.
-        # To restore it, put back the two lines below — the helper is still
-        # here, still tested, and website.api.token is still set:
-        #
-        #     denied = lgd_check_api_token(request)
-        #     if denied:
-        #         return denied
 
         STATUS_MAP = {
             'Diamond Booked':    'diamond_booked',
@@ -996,6 +952,9 @@ class PartnerSyncController(http.Controller):
         # ── Parse request body ────────────────────────────────────────────────
         try:
             data = json.loads(request.httprequest.data)
+            log_api(IN, "POST /api/lgd/order/status", data,
+                    headers=dict(request.httprequest.headers),
+                    env=request.env)
         except (json.JSONDecodeError, Exception):
             return Response(
                 json.dumps({'status': 'error',
@@ -1176,7 +1135,12 @@ class PartnerSyncController(http.Controller):
 
                 # ── Write the line status ─────────────────────────────────────
                 order_line.sudo().with_context(from_website_api=True).write({
-                    'availability_status': availability_value
+                    # The platform is telling us its own status, so this is
+                    # what it holds - record it so the next push does not send
+                    # it straight back as a no-op and get the batch refused.
+                    'lgd_last_pushed_status':
+                        LINE_STATUS_TO_AUGMONT.get(availability_value),
+                    'availability_status': availability_value,
                 })
                 _logger.info(
                     "   ✅ Line %s: %s → %s",

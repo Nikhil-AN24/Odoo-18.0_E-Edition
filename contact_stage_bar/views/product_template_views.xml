@@ -46,6 +46,10 @@
                     <field name="website_product_id" readonly="1"/>
                     <field name="url_link" readonly="1" widget="url"/>
      
+                    <field name="melee_unit"/>
+                    <field name="melee_pieces"/>
+                    <field name="melee_carats"/>
+
                     <field name="shapes"/>
                     <field name="weight_carat"/>
                     <field name="clarity"/>
@@ -390,6 +394,16 @@
                             <group>
                                 <field name="labs"/>
                                 <field name="lgd_stock_number"/>
+                                <!-- Melee parcels are sold by the piece or
+                                     the carat and carry both numbers. This
+                                     page REPLACES the standard one, so a
+                                     field added to the main product form
+                                     does not appear here unless it is named
+                                     again - which is why these were missing
+                                     from the (i) dialog on an order line. -->
+                                <field name="melee_unit"/>
+                                <field name="melee_pieces"/>
+                                <field name="melee_carats"/>
                                 <field name="shapes"/>
                                 <field name="weight_carat"/>
                                 <field name="clarity"/>
@@ -458,6 +472,12 @@
                             <group>
                                 <field name="labs"/>
                                 <field name="lgd_stock_number"/>
+                                <!-- Same reason as the dialog above: this
+                                     view is built from scratch, so the melee
+                                     numbers have to be named here as well. -->
+                                <field name="melee_unit"/>
+                                <field name="melee_pieces"/>
+                                <field name="melee_carats"/>
                                 <field name="shapes"/>
                                 <field name="weight_carat"/>
                                 <field name="clarity"/>

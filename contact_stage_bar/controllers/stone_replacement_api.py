@@ -2,6 +2,9 @@
 
 import json
 import logging
+
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 from datetime import datetime
 
 from odoo import http
@@ -59,9 +62,9 @@ def _as_float(value, default=0.0):
 class StoneReplacementAPI(http.Controller):
 
     # ------------------------------------------------------------------
-    # POST /api/v1/odoo/order/stone/replace
+    # POST /api/lgd/order/stone/replace
     # ------------------------------------------------------------------
-    @http.route('/api/v1/odoo/order/stone/replace', type='http',
+    @http.route('/api/lgd/order/stone/replace', type='http',
                 auth='public', methods=['POST'], csrf=False)
     def replace_stone(self, **kwargs):
         """Replace one stone on an existing order, at the customer's request."""
@@ -71,6 +74,9 @@ class StoneReplacementAPI(http.Controller):
 
         try:
             data = json.loads(request.httprequest.data)
+            log_api(IN, "POST /api/lgd/order/stone/replace", data,
+                    headers=dict(request.httprequest.headers),
+                    env=request.env)
         except (json.JSONDecodeError, TypeError) as exc:
             return _json({'status': 'error', 'errorCode': 'INVALID_JSON',
                           'message': 'Invalid JSON: %s' % exc, 'code': 400}, 400)
@@ -348,11 +354,9 @@ class StoneReplacementAPI(http.Controller):
     # ------------------------------------------------------------------
     def _spec_vals(self, details):
         """productDetails as product.template values.
-
-        Same keys as /training/api/order/cart_add writes, so a replacement
+        Same keys as /api/lgd/order/cart_add writes, so a replacement
         stone and an ordered stone are stored identically - the website
-        sends one shape of stone, not two.
-        """
+        sends one shape of stone, not two. """
         country_id = False
         country_name = details.get('country')
         if country_name:

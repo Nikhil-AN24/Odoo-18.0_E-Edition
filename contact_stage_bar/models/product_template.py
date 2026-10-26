@@ -10,6 +10,8 @@ import re
 import tempfile
 
 import logging
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 _logger = logging.getLogger(__name__)
 
 
@@ -108,6 +110,53 @@ class ProductTemplate(models.Model):
     eye_clean = fields.Char(string="Eye Clean")
     fluorescence_color = fields.Char(string="Fluorescence Color")
     fluorescence_intensity = fields.Char(string="Fluorescence Intensity")
+
+    # ------------------------------------------------------------------
+    # Melee quantity
+    # ------------------------------------------------------------------
+    melee_unit = fields.Selection(
+        selection=[('PIECE', 'Piece'), ('CARAT', 'Carat')],
+        string="Melee Sold By",
+        help="Whether this parcel was priced per piece or per carat "
+             "(meleeUnit on the order payload).")
+    melee_carats = fields.Float(
+        string="Melee Carats", digits=(16, 3),
+        help="Total carat weight of the parcel (meleePricing.carats).")
+    melee_pieces = fields.Float(
+        string="Melee Pieces", digits=(16, 0),
+        help="Number of stones in the parcel (meleePricing.pieces).")
+
+    # ------------------------------------------------------------------
+    # Natural-diamond provenance & inclusion detail
+    # ------------------------------------------------------------------
+    mine_of_origin = fields.Char(
+        string="Mine of Origin", help="productDetails.mineOfOrigin")
+    mine_to_market = fields.Char(
+        string="Mine to Market", help="productDetails.mineToMarket")
+    sustainability = fields.Char(
+        string="Sustainability", help="productDetails.sustainability")
+    #: sustainabilityCerts arrives as an array; stored comma-separated,
+    #: because nothing searches or groups on the individual certificates.
+    sustainability_certs = fields.Char(
+        string="Sustainability Certificates",
+        help="productDetails.sustainabilityCerts, comma-separated")
+    is_canada_mark_eligible = fields.Boolean(
+        string="CanadaMark Eligible", help="productDetails.isCanadaMarkEligible")
+    has_tracr = fields.Boolean(
+        string="Has Tracr", help="productDetails.hasTracr")
+
+    inclusion_severity = fields.Char(
+        string="Inclusion Severity", help="productDetails.inclusionSeverity")
+    inclusion_table = fields.Char(
+        string="Inclusion (Table)", help="productDetails.inclusionTable")
+    inclusion_sides = fields.Char(
+        string="Inclusion (Sides)", help="productDetails.inclusionSides")
+    open_inclusion_table = fields.Char(
+        string="Open Inclusion (Table)",
+        help="productDetails.openInclusionTable")
+    open_inclusion_sides = fields.Char(
+        string="Open Inclusion (Sides)",
+        help="productDetails.openInclusionSides")
     
     order_specific = fields.Char(string="Order Specific Notes")
     item_notes = fields.Char(string="General Order Notes")
@@ -180,8 +229,7 @@ class ProductTemplate(models.Model):
     # A stone bought offline never passed through the LGD website, so it
     # arrives with no lgd_stock_number and nothing to quote on a memo slip or
     # label. Odoo mints one from the LGD-OFF- series; see
-    # data/lgd_offline_stock_sequence.xml for why Odoo owns this series and
-    # the website owns its own.
+    # data/lgd_offline_stock_sequence.xml for why Odoo owns this series and the website owns its own.
     @api.model
     def _lgd_next_offline_stock_number(self):
         """Draw the next LGD-OFF-xxxxx, or False if the sequence is missing.
@@ -713,7 +761,12 @@ class ProductTemplate(models.Model):
             _logger.info("Fetching certificate data for product %s | URL: %s", number_id, url)
 
             try:
+                log_api(OUT, "GET %s" % url, None, headers=headers,
+                        env=self.env)
                 response = requests.get(url, headers=headers, timeout=15)
+                log_api(OUT, "GET %s" % url, None, env=self.env,
+                        response=getattr(response, "text", None),
+                        status=getattr(response, "status_code", None))
                 _logger.debug("API Response Code: %s | Text: %s", response.status_code, response.text[:500])
 
                 if response.status_code != 200:

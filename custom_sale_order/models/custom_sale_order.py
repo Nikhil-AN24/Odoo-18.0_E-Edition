@@ -397,6 +397,8 @@ class CustomSaleOrder(models.Model):
                 'discount': line.discount,
                 'name': line.name or line.product_template_id.display_name or '/',
                 'availability_status': line.availability_status,
+                'carat_weight': line.carat_weight,
+                'rfq_size_line_id': line.rfq_size_line_id.id or False,
             }
 
             if line.tax_id:

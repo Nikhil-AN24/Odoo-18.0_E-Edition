@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Odoo ships no states for Bahrain - not one - yet most accounts on the
+        LGD platform are registered there. State is one of the fields gating
+        Registered and Converted, so every Bahraini buyer was stuck in Open
+        however complete its payload was: address.state.name simply had
+        nothing to match against.
+
+        The four governorates below are Bahrain's complete current set, named
+        as the platform sends them ("Capital Governorate") and coded to
+        ISO 3166-2:BH. Nothing else creates them, so they are plain records
+        rather than a migration.
+
+        noupdate="1": once these exist, a later module upgrade must not
+        overwrite a name Sales has corrected, nor resurrect one they archived.
+    -->
+    <data noupdate="1">
+
+        <record id="state_bh_capital" model="res.country.state">
+            <field name="name">Capital Governorate</field>
+            <field name="code">13</field>
+            <field name="country_id" ref="base.bh"/>
+        </record>
+
+        <record id="state_bh_muharraq" model="res.country.state">
+            <field name="name">Muharraq Governorate</field>
+            <field name="code">15</field>
+            <field name="country_id" ref="base.bh"/>
+        </record>
+
+        <record id="state_bh_northern" model="res.country.state">
+            <field name="name">Northern Governorate</field>
+            <field name="code">17</field>
+            <field name="country_id" ref="base.bh"/>
+        </record>
+
+        <record id="state_bh_southern" model="res.country.state">
+            <field name="name">Southern Governorate</field>
+            <field name="code">14</field>
+            <field name="country_id" ref="base.bh"/>
+        </record>
+
+    </data>
+</odoo>

@@ -1,5 +1,7 @@
 import json
 import logging
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 import requests
 
 from markupsafe import Markup
@@ -527,6 +529,7 @@ class SaleOrder(models.Model):
             url, 'yes' if 'Authorization' in headers else 'NO',
             len(payload.get('orders') or []), len(body))
 
+        log_api(OUT, "POST %s" % url, body, headers=headers, env=self.env)
         try:
             response = requests.post(
                 url, headers=headers, data=body,

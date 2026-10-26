@@ -1,6 +1,6 @@
 {
     "name": "Contacts Stage Bar",
-    "version": "18.0.1.7.19",
+    "version": "18.0.1.7.20",
     "sequence": -100,
     "category": "Contacts",
     "summary": "Add status bar stages to Contacts form and Kanban views",
@@ -76,6 +76,7 @@
         'data/augmont_retry_cron.xml',
         'data/igi_config.xml',
         'data/lgd_dispatch_cron.xml',
+        'data/res_country_state_bahrain.xml',
     ],
     'assets': {
         'web.assets_backend': [
