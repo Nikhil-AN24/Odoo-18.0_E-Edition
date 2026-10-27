@@ -227,6 +227,25 @@ class SaleOrder(models.Model):
                 self.sdk_augmont_number or self.name, '; '.join(problems))
         return problems
 
+    def _lgd_warn_missing_lab(self):
+        self.ensure_one()
+        problems = []
+        for line in self._lgd_offline_lines():
+            template = line.product_template_id
+            if not (template.labs or '').strip():
+                problems.append(
+                    _("%(stock)s has no Lab set")
+                    % {'stock': (line.lgd_stock_number
+                                 or template.lgd_stock_number
+                                 or template.display_name)})
+        if problems:
+            _logger.warning(
+                "Offline push %s: the website requires a grading lab on "
+                "every stone and will refuse this order - %s. Set the Lab "
+                "field on the product, then re-send.",
+                self.sdk_augmont_number or self.name, '; '.join(problems))
+        return problems
+
     # The status every stone is expected to hold when the order is punched.
     _LGD_OFFLINE_PUSH_STATUS = 'diamond_booked'
 
@@ -512,6 +531,7 @@ class SaleOrder(models.Model):
                     l.availability_status or '(empty)' for l in unexpected))))
 
         self._lgd_warn_unusable_sellers()
+        self._lgd_warn_missing_lab()
 
         payload = self._lgd_offline_payload()
         headers = {'Content-Type': 'application/json'}
