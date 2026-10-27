@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from odoo.addons.contact_stage_bar.models.lgd_api_log import (
     IN, OUT, log_api)
 import requests
@@ -25,6 +26,12 @@ LGD_OFFLINE_PUSH_CONNECT_TIMEOUT = 5
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+
+    # The last push failure as the website worded it. Kept so the retry cron
+    # can tell a NEW problem from the one already in the chatter: without it
+    # every sweep would post the same paragraph again. Cleared on success.
+    lgd_offline_push_error = fields.Text(
+        string="Last Website Push Error", copy=False, readonly=True)
 
     # ------------------------------------------------------------------
     # Payload
@@ -195,6 +202,8 @@ class SaleOrder(models.Model):
     #: website then refuses the whole order with "Seller profile not found".
     _LGD_PLACEHOLDER_EMAIL_PREFIXES = ('dummy', 'test', 'noreply', 'no-reply')
 
+    _LGD_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
+
     def _lgd_warn_unusable_sellers(self):
         """Name vendors whose email the website cannot match, before sending.
 
@@ -214,6 +223,13 @@ class SaleOrder(models.Model):
             if not email:
                 problems.append(_("%s has no email") % vendor.display_name)
                 continue
+            if not self._LGD_EMAIL_RE.match(email):
+
+                problems.append(
+                    _("%(name)s has an email that is not an address "
+                      "(%(email)s)")
+                    % {'name': vendor.display_name, 'email': email})
+                continue
             local = email.split('@', 1)[0].lower()
             if local.startswith(self._LGD_PLACEHOLDER_EMAIL_PREFIXES):
                 problems.append(
@@ -232,17 +248,24 @@ class SaleOrder(models.Model):
         problems = []
         for line in self._lgd_offline_lines():
             template = line.product_template_id
-            if not (template.labs or '').strip():
+            # An ungraded stone is sent as Non-Cert by _lgd_cert_block and
+            # is accepted. Only a stone that HOLDS a certificate with no Lab
+            # recorded still goes out blank - it gets no fallback, because
+            # calling a certified stone uncertified would be a lie - so that
+            # is the one case left worth raising.
+            if ((template.certificate or '').strip()
+                    and not (template.labs or '').strip()):
                 problems.append(
-                    _("%(stock)s has no Lab set")
+                    _("%(stock)s holds certificate %(cert)s but has no Lab set")
                     % {'stock': (line.lgd_stock_number
                                  or template.lgd_stock_number
-                                 or template.display_name)})
+                                 or template.display_name),
+                       'cert': (template.certificate or '').strip()})
         if problems:
             _logger.warning(
                 "Offline push %s: the website requires a grading lab on "
                 "every stone and will refuse this order - %s. Set the Lab "
-                "field on the product, then re-send.",
+                "field on the product; the sweep will pick it up.",
                 self.sdk_augmont_number or self.name, '; '.join(problems))
         return problems
 
@@ -588,6 +611,18 @@ class SaleOrder(models.Model):
             return False
 
         self._lgd_store_order_unique_ids(data)
+        if self.lgd_offline_push_error:
+            self.sudo().lgd_offline_push_error = False
+            try:
+                self.message_post(
+                    body=Markup("<p style='color:#2E7D32;'><b>%s</b></p>") % (
+                        _("Sent to the website successfully on a later "
+                          "attempt.")),
+                    subject=_("Website push succeeded"))
+            except Exception:
+                _logger.exception(
+                    "Could not post the push recovery to %s's chatter.",
+                    self.name)
         return True
 
     _LGD_ERROR_EXCERPT = 500
@@ -661,8 +696,18 @@ class SaleOrder(models.Model):
         if hint:
             body += Markup("<p><i>%s</i></p>") % hint
         body += Markup("<p style='color:#76838F;font-size:90%%;'>%s</p>") % (
-            _("Endpoint: %s — queued for retry. Use Send to Website to try "
-              "again once the cause is fixed.") % (url or '(not configured)'))
+            _("Endpoint: %s — Odoo will keep trying on its own every 10 "
+              "minutes. Fix the cause and the next attempt goes through; "
+              "nothing needs to be pressed.") % (url or '(not configured)'))
+
+        signature = '%s|%s' % (status_code or '', headline or '')
+        if (self.lgd_offline_push_error or '') == signature:
+            _logger.info(
+                "Offline push %s: same failure as last time, chatter not "
+                "posted again (%s).", self.sdk_augmont_number or self.name,
+                headline or status_code)
+            return
+        self.sudo().lgd_offline_push_error = signature
 
         try:
             self.message_post(body=body, subject=_("Website push failed"))
@@ -693,67 +738,62 @@ class SaleOrder(models.Model):
         })
 
     # ------------------------------------------------------------------
-    # Manual re-send
+    # Automatic re-send
     # ------------------------------------------------------------------
-    def action_lgd_resend_offline_push(self):
-        """Push this offline order to the website again, by hand.
+    _LGD_OFFLINE_RESEND_DAYS = 7
 
-        The automatic push on confirm is the normal route, but it only fires
-        once. If the website was unreachable at that moment the order confirms
-        anyway - correctly - and its lines are left with no orderUniqueId. The
-        retry cron is meant to catch that, but it is not always running, and
-        an operator who can see the gap should be able to close it.
+    @api.model
+    def _cron_lgd_push_offline_orders(self):
+        """Re-send offline orders the website has not accepted yet.
+
+        The push on confirm is the normal route, but it fires once. Anything
+        that made the website refuse it - a stone with no Lab, a vendor whose
+        email is not an address, the host being down - is corrected in Odoo
+        minutes or hours later, and the order must then go on its own.
+
+        The payload is rebuilt from the order on every attempt, which is the
+        whole point: augmont.api.retry replays the JSON that failed, so it
+        can never carry a correction. It also skips 400s entirely, treating
+        them as permanent, which is right for a status transition the website
+        will never accept and wrong for an order waiting on a data fix.
+
+        Idempotent by invoiceNumber on the website's side, and guarded here by
+        _lgd_needs_offline_push, so a stone that already has its id is never
+        sent twice.
         """
-        self.ensure_one()
-        # Everything needed to answer "why did nothing happen?" in one block,
-        # logged BEFORE the guards below so a refusal is explained by the
-        # state printed just above it. The token is never logged - only
-        # whether one is configured and how long it is.
-        token = self.env['ir.config_parameter'].sudo().get_param(
-            'lgd_offline_order_token') or ''
-        lines = self._lgd_offline_lines()
+        cutoff = fields.Datetime.subtract(
+            fields.Datetime.now(), days=self._LGD_OFFLINE_RESEND_DAYS)
+        candidates = self.search([
+            ('order_source', '=', 'offline'),
+            ('state', 'in', ('sale', 'done')),
+            ('date_order', '>=', cutoff),
+        ]).filtered(lambda o: o._lgd_needs_offline_push())
+
+        if not candidates:
+            return True
+
         _logger.info(
-            "[OFFLINE PUSH] ---- manual re-send requested ----\n"
-            "    order            : %s (%s), state=%s, source=%s\n"
-            "    target url       : %s\n"
-            "    auth token       : %s\n"
-            "    sendable stones  : %s (statuses: %s)\n"
-            "    already pushed   : %s of %s\n"
-            "    needs push       : %s",
-            self.name, self.sdk_augmont_number or '-', self.state,
-            self.order_source,
-            self._lgd_offline_push_url() or '(base_augmont_url NOT SET)',
-            ('set, %d chars' % len(token)) if token
-            else 'NOT SET - the website will answer 401',
-            len(lines),
-            ', '.join(sorted(set(l.availability_status or '(empty)'
-                                 for l in lines))) or '-',
-            len(lines.filtered('order_number')), len(lines),
-            self._lgd_needs_offline_push())
+            "[OFFLINE PUSH] sweep: %s order(s) still unsent - %s",
+            len(candidates),
+            ', '.join(o.sdk_augmont_number or o.name for o in candidates))
 
-        if self.order_source != 'offline':
-            raise UserError(_("Only offline orders are pushed to the website."))
-        if not self._lgd_needs_offline_push():
-            raise UserError(_(
-                "%s already has a website reference on every stone - there is "
-                "nothing left to collect.")
-                % (self.sdk_augmont_number or self.name))
-        if not self._lgd_offline_push_url():
-            raise UserError(_(
-                "base_augmont_url is not set, so there is nowhere to send "
-                "this order."))
-
-        if not self._lgd_push_offline_order():
-            raise UserError(_(
-                "The website could not be reached. The order is queued for "
-                "retry; see Augmont Failed API Calls."))
-
-        # Clear the stale queued rows this push has just made unnecessary.
-        self.env['augmont.api.retry'].sudo().search([
-            ('order_id', '=', self.id),
-            ('state', '=', 'pending'),
-            ('lgd_endpoint_url', '!=', False),
-        ]).write({'state': 'success'})
+        for order in candidates:
+            try:
+                order._lgd_push_offline_order()
+            except Exception:
+                # One bad order must not stop the sweep reaching the rest.
+                _logger.exception(
+                    "[OFFLINE PUSH] sweep: %s raised; continuing with the "
+                    "others.", order.sdk_augmont_number or order.name)
+                continue
+            # A push that worked makes the queued rows pointless; left
+            # pending they would be retried against the status endpoint.
+            if not order._lgd_needs_offline_push():
+                self.env['augmont.api.retry'].sudo().search([
+                    ('order_id', '=', order.id),
+                    ('state', '=', 'pending'),
+                    ('lgd_endpoint_url', '!=', False),
+                ]).write({'state': 'success'})
         return True
 
     # ------------------------------------------------------------------

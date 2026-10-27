@@ -1,0 +1,16 @@
+<odoo>
+    <data>
+        <!-- Re-sends offline orders the website has not accepted yet.
+             Ten minutes: slow enough to cost nothing, quick enough that a
+             fix made at a desk lands before anyone goes looking for it. -->
+        <record id="ir_cron_lgd_push_offline_orders" model="ir.cron">
+            <field name="name">LGD: re-send unsent offline orders</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_lgd_push_offline_orders()</field>
+            <field name="interval_number">10</field>
+            <field name="interval_type">minutes</field>
+            <field name="active">True</field>
+        </record>
+    </data>
+</odoo>
