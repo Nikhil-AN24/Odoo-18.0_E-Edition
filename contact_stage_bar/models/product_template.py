@@ -32,17 +32,10 @@ class ProductTemplate(models.Model):
 
     def _lgd_cert_block(self):
         self.ensure_one()
-        cert = (self.certificate or '').strip()
-        lab = (self.labs or '').strip()
-        if lab and not cert:
-            _logger.info(
-                "[CERT] %s carries lab %r with no certificate number, so it "
-                "is sent to the website as uncertified (lab and certType "
-                "blank).", self.lgd_stock_number or self.display_name, lab)
         return {
-            'certNumber': cert,
-            'lab': lab if cert else '',
-            'certType': (self.certificate_type or '').strip() if cert else '',
+            'certNumber': (self.certificate or '').strip(),
+            'lab': (self.labs or '').strip(),
+            'certType': (self.certificate_type or '').strip(),
         }
     purchase_ok = fields.Boolean(default=False)
     is_non_certified_source = fields.Boolean(
