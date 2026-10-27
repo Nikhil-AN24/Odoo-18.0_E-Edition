@@ -2000,9 +2000,11 @@ class SaleOrder(models.Model):
             "user": self._lgd_status_user_block(user),
         }
 
-        entry["certNumber"] = (
+        cert_number = (
             line.product_template_id._lgd_cert_block()['certNumber']
             if line else '')
+        if cert_number:
+            entry["certNumber"] = cert_number
 
         # ── Replacement chain ────────────────────────────────────────────
         # Without these two the website receives a stone going "Replaced" and

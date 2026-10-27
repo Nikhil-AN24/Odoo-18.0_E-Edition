@@ -74,6 +74,7 @@
         "report/augmont_tax_invoice.xml",
         "report/augmont_move_tax_invoice.xml",
         'data/augmont_retry_cron.xml',
+        'data/lgd_offline_push_cron.xml',
         'data/igi_config.xml',
         'data/lgd_dispatch_cron.xml',
         'data/res_country_state_bahrain.xml',

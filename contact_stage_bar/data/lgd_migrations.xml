@@ -42,5 +42,8 @@
         <function model="sale.order.line"
                   name="_lgd_reclassify_certification"/>
 
+        <delete model="ir.ui.view"
+                search="[('name', '=', 'sale.order.form.lgd.resend.offline.push')]"/>
+
     </data>
 </odoo>

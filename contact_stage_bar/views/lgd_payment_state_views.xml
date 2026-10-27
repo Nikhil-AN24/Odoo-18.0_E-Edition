@@ -30,24 +30,6 @@
         </field>
     </record>
 
-    <!-- Re-send an offline order the website never received. Shown only when
-         there is actually something missing, so it is not a button people
-         press out of habit. -->
-    <record id="view_order_form_lgd_resend_push" model="ir.ui.view">
-        <field name="name">sale.order.form.lgd.resend.offline.push</field>
-        <field name="model">sale.order</field>
-        <field name="inherit_id" ref="sale.view_order_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//header" position="inside">
-                <button name="action_lgd_resend_offline_push" type="object"
-                        string="Send to Website"
-                        invisible="order_source != 'offline' or state not in ('sale', 'done')"
-                        help="Push this offline order to the LGD website again
-                              and collect the order numbers it allocates."/>
-            </xpath>
-        </field>
-    </record>
-
     <!-- Payment Status on the Sales list, and a filter + group-by for it. -->
     <record id="view_order_tree_lgd_payment_state" model="ir.ui.view">
         <field name="name">sale.order.list.lgd.payment.state</field>

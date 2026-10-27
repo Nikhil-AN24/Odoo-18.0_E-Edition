@@ -30,11 +30,39 @@ class ProductTemplate(models.Model):
     certificate = fields.Char(string="Certificate Number")
     certificate_type = fields.Char(string="Certificate Type")
 
+    # What the website is told when a stone was never graded. Their `lab`
+    # is mandatory, so something has to go there; this is the one value that
+    # is true of an ungraded stone.
+    _LGD_UNCERTIFIED_LAB = 'Non-Cert'
+
     def _lgd_cert_block(self):
         self.ensure_one()
+        cert = (self.certificate or '').strip()
+        lab = (self.labs or '').strip()
+
+        if not lab and not cert:
+            # Nothing graded this stone, so there is no lab to name - and the
+            # website refuses the whole order over a blank one
+            # ("orders.*.product.lab is required"). Non-Cert says exactly what
+            # the stone is instead of inventing a grader, and it is a value
+            # Augmont already uses in this very field.
+            lab = self._LGD_UNCERTIFIED_LAB
+        elif not lab:
+            # Certified but nobody recorded WHICH lab. Deliberately not
+            # answered with Non-Cert: the stone holds a real certificate, and
+            # calling it uncertified on the website would be a plain untruth
+            # that then drives how the stone is sold. Left blank for the
+            # website to reject, loudly, with the stock number in the log.
+            _logger.warning(
+                "[CERT] %s holds certificate %s but no lab, so `lab` goes "
+                "out empty and the website will refuse the order. Set the "
+                "Lab field on the product - it cannot be guessed from the "
+                "certificate number.",
+                self.lgd_stock_number or self.display_name, cert)
+
         return {
-            'certNumber': (self.certificate or '').strip(),
-            'lab': (self.labs or '').strip(),
+            'certNumber': cert,
+            'lab': lab,
             'certType': (self.certificate_type or '').strip(),
         }
     purchase_ok = fields.Boolean(default=False)
