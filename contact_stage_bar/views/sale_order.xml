@@ -38,7 +38,8 @@
                 <field name="stone_list_names" optional="show"/>
             </xpath>
             <xpath expr="//field[@name='name']" position="after">
-                <field name="sdk_augmont_number"/>
+
+                <field name="sdk_augmont_number" width="125px"/>
                 <field name="order_source" widget="badge" optional="show"
                        decoration-info="order_source == 'website'"
                        decoration-warning="order_source == 'offline'"/>
