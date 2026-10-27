@@ -202,8 +202,11 @@ class SaleOrder(models.Model):
             # Not in their published manualStone sample, but asked for: a
             # replacement sourced from an IGI report has a certificate, and
             # without it the stone lands on the website uncertified.
-            'certNumber': template.certificate or '',
-            'lab': template.labs or '',
+            # certNumber / lab as one unit - see
+            # product.template._lgd_cert_block. certType is dropped: their
+            # manualStone contract has no field for it.
+            **{k: v for k, v in template._lgd_cert_block().items()
+               if k != 'certType'},
             'shape': template.shapes or '',
             'cut': template.cut or '',
             'color': template.color or '',
