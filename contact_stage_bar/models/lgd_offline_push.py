@@ -133,17 +133,14 @@ class SaleOrder(models.Model):
         template = line.product_template_id
         return {
             'title': template.name or line.name or '',
-            # Fall back to our own LGD-OFF- series. stock_number is the
-            # vendor's reference and an offline stone rarely has one, but
-            # every stone has an lgd_stock_number, and the website refuses a
-            # blank stockNum outright.
-            'stockNum': template.stock_number or template.lgd_stock_number or '',
+            'stockNum': (line.lgd_stock_number or template.stock_number
+                         or template.lgd_stock_number or ''),
             # From the LINE, not the template: a non-certified parcel shares
             # its product with other lines, so the template's SKU would name all of them identically.
             'lgdStockNum': line.lgd_stock_number or '',
-            'certNumber': template.certificate or '',
-            'certType': template.certificate_type or '',
-            'lab': template.labs or '',
+            # certNumber / lab / certType, built as one unit - see
+            # product.template._lgd_cert_block.
+            **template._lgd_cert_block(),
             # Natural vs Lab Grown. Without it the website has nothing to
             # file the stone under and shows every offline stone as Lab
             # Grown - which is right for its own catalogue and wrong for a

@@ -1,4 +1,6 @@
 from odoo import models, fields,api,_
+from odoo.addons.contact_stage_bar.models.lgd_api_log import (
+    IN, OUT, log_api)
 from markupsafe import Markup
 from datetime import datetime, timedelta
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -1998,13 +2000,9 @@ class SaleOrder(models.Model):
             "user": self._lgd_status_user_block(user),
         }
 
-        # The certificate. For a spec-based order no stone is chosen when the
-        # order is placed, so this is genuinely absent at creation and only
-        # becomes real once procurement sources it - which is why it travels
-        # on the status update rather than only on the order.
-        certificate = (line.certificate or '').strip() if line else ''
-        if certificate:
-            entry["certNumber"] = certificate
+        entry["certNumber"] = (
+            line.product_template_id._lgd_cert_block()['certNumber']
+            if line else '')
 
         # ── Replacement chain ────────────────────────────────────────────
         # Without these two the website receives a stone going "Replaced" and
