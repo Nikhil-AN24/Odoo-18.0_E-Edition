@@ -187,6 +187,19 @@ class StoneReplacement(models.TransientModel):
                     'sticky': False,
                 },
             }
+        clash = self._igi_clash_with_original(result)
+        if clash:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _("This report cannot replace this stone"),
+                    'message': clash,
+                    'type': 'danger',
+                    'sticky': True,
+                },
+            }
+
         self.write({
             'shape_id': self._resolve_shape(result.get('shape')).id or False,
             'weight_carat': str(result.get('carat_value')) if result.get('carat_value') else False,
@@ -217,6 +230,36 @@ class StoneReplacement(models.TransientModel):
             'target': 'new',
             'name': _("Replace Stone"),
         }
+
+    def _igi_clash_with_original(self, result):
+        self.ensure_one()
+        line = self.sale_line_id
+        labels = {'lab_grown': _("Lab Grown"), 'natural': _("Natural")}
+        report = result.get('report_number') or self.igi_report_no
+
+        new_origin = 'lab_grown' if result.get('is_lab_grown') else 'natural'
+        orig_origin = line._replacement_origin(line)
+        if orig_origin and new_origin != orig_origin:
+            return _(
+                "IGI report %(report)s is a %(new)s diamond, and the stone it "
+                "would replace is %(orig)s. A %(new)s stone cannot replace a "
+                "%(orig)s one, so nothing has been filled in. Use a %(orig)s "
+                "report number, or switch Source to Manual and type the spec.",
+                report=report, new=labels.get(new_origin, new_origin),
+                orig=labels.get(orig_origin, orig_origin))
+
+        # Shape is only enforced on a certified original, so only warned  about on one - same condition as the hard rules.
+        if line.stone_certification_type == 'certified':
+            orig_shape = line._normalize_shape(line.shapes)
+            new_shape = line._normalize_shape(result.get('shape'))
+            if orig_shape and new_shape and orig_shape != new_shape:
+                return _(
+                    "IGI report %(report)s is a %(new)s and the stone it "
+                    "would replace is a %(orig)s. The shape has to match, so "
+                    "nothing has been filled in.",
+                    report=report,
+                    new=(result.get('shape') or '').title(), orig=line.shapes)
+        return False
 
     @staticmethod
     def _igi_treatment_from_result(result):
