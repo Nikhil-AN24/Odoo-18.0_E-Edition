@@ -67,9 +67,14 @@
         <field name="model">res.partner</field>
         <field name="inherit_id" ref="base.view_partner_tree"/>
         <field name="arch" type="xml">
+
+            <xpath expr="//field[@name='vat']" position="attributes">
+                <attribute name="string">GSTIN</attribute>
+                <attribute name="optional">show</attribute>
+                <attribute name="readonly">0</attribute>
+            </xpath>
             <xpath expr="//list" position="inside">
-                <!-- Vendor identity columns + GSTIN, shown by default. -->
-                <field name="vat" string="GSTIN" optional="show"/>
+                <!-- Vendor identity columns, shown by default. -->
                 <field name="first_name" optional="show"/>
                 <field name="last_name" optional="show"/>
                 <!-- Accounts (buyer) list only: GST status, hidden from Procurement roles -->
