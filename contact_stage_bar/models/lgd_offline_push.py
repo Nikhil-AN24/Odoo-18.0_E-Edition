@@ -332,6 +332,34 @@ class SaleOrder(models.Model):
             return 'Diamond Booked'
         return word
 
+    def _lgd_offline_line_type(self, line):
+        """LGD / MELEE / NATURAL - the word the website files the stone under.
+
+        NOT line.line_type. That field answers "single stone or parcel?" and
+        has only two values, so a natural stone went out as "LGD" and the
+        website filed it as lab grown - the same payload carries
+        product.stoneType = "Natural", but lineType is what the website goes
+        by. Odoo reads it the same way coming the other direction:
+        lgd_stone_type_from_payload checks lineType first and maps "LGD" to
+        lab_grown.
+
+        The agreed mapping, as documented on
+        sale.order.line._lgd_is_non_certified:
+
+            LGD     -> LabGrown Certified
+            MELEE   -> LabGrown Melle
+            NATURAL -> Natural Certified
+
+        A parcel stays MELEE whatever it is made of: Natural Melle has no
+        lineType of its own yet, and MELEE is the only word the website has
+        for a parcel.
+        """
+        if line.line_type == 'melee':
+            return 'MELEE'
+        if line.stone_type == 'natural':
+            return 'NATURAL'
+        return 'LGD'
+
     def _lgd_offline_payload(self):
         """Build the POST body for /odoo/order/offline.
 
@@ -355,7 +383,7 @@ class SaleOrder(models.Model):
                 # certNumber and an lgdStockNum and cannot be told apart.
                 'lineRef': line.id,
                 'orderUniqueId': self._lgd_offline_unique_id(line),
-                'lineType': (line.line_type or 'lgd').upper(),
+                'lineType': self._lgd_offline_line_type(line),
                 'status': self._lgd_offline_line_status(line),
                 'quantity': int(line.product_uom_qty or 1),
                 'productPrice': float(line.price_unit or 0.0),
