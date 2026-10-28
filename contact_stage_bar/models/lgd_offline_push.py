@@ -658,8 +658,9 @@ class SaleOrder(models.Model):
             'seller': _("The website matches sellers by email address and "
                         "has no seller registered under the one we sent. "
                         "Open the vendor in Contacts and set the email their "
-                        "seller profile uses, then use Send to Website. A "
-                        "placeholder address will always be refused."),
+                        "seller profile uses; the re-send sweep picks it "
+                        "up on its next pass. A placeholder address will "
+                        "always be refused."),
             '404': _("The endpoint was not found. Check base_augmont_url "
                      "and lgd_offline_order_path."),
             '500': _("The website hit an error of its own. Worth sending "

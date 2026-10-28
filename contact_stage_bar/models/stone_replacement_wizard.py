@@ -62,10 +62,10 @@ class StoneReplacement(models.TransientModel):
 
     # ── Resolving IGI's wording onto the pickers ────────────────────────
     def _resolve_grade(self, category, value):
-        """IGI shouts its grades ("EXCELLENT"); the master is title case."""
-        if not value:
-            return False
+
         Grade = self.env['customer.rfq.grade']
+        if not value:
+            return Grade
         match = Grade.search([
             ('category', '=', category),
             ('name', '=ilike', str(value).strip()),
@@ -77,10 +77,10 @@ class StoneReplacement(models.TransientModel):
         return match
 
     def _resolve_shape(self, value):
-        """IGI says "ROUND BRILLIANT"; the master says "Round"."""
-        if not value:
-            return False
+
         Shape = self.env['customer.rfq.shape']
+        if not value:
+            return Shape
         text = str(value).strip()
         match = Shape.search([('name', '=ilike', text)], limit=1)
         if not match and text.split():
@@ -268,6 +268,49 @@ class StoneReplacement(models.TransientModel):
             problems.append(_("Enter the gross buying price per carat."))
         elif self.gross_price_per_carat < 0.0:
             problems.append(_("Vendor price per carat cannot be negative."))
+
+        if self.lab and not (self.certificate or '').strip():
+            problems.append(_(
+                "Enter the Certificate Number, or clear the Lab. The website "
+                "treats the two as one unit and refuses a stone that names a "
+                "lab without a number "
+                "(\"certNumber is required when lab is provided\")."))
+        if (self.certificate or '').strip() and not self.lab:
+            problems.append(_(
+                "Select the Lab that issued this certificate. It cannot be "
+                "guessed from the number."))
+        if not self.shape_id:
+            problems.append(_("Select the Shape."))
+        if not self.cut_id:
+            problems.append(_("Select the Cut."))
+        if not (self.clarity or '').strip():
+            problems.append(_("Enter the Clarity."))
+        if not (self.weight_carat or '').strip():
+            problems.append(_("Enter the Carat Weight."))
+        if not self.polish_id:
+            problems.append(_("Select the Polish."))
+        if not self.symmetry_id:
+            problems.append(_("Select the Symmetry."))
+        # The three dimensions reach the website out of this one box - the
+        # wizard never collects them separately - so it has to parse.
+        if not self.env['sale.order']._lgd_dimensions_from_measurements(
+                self.measurements):
+            problems.append(_(
+                "Enter the Measurements as three numbers, for example "
+                "\"7.34 - 7.38 x 4.52\". The website wants the stone's "
+                "length, width and height, and they are read back out of "
+                "this box."))
+        if not self.table_pct:
+            problems.append(_("Enter the Table %."))
+        if not self.depth_pct:
+            problems.append(_("Enter the Depth %."))
+        if self.vendor_id and not (self.vendor_id.country_id
+                                   or self.env.company.country_id):
+            problems.append(_(
+                "Set a Country on vendor %s. The website is told where the "
+                "stone is, and that is where it is read from.",
+                self.vendor_id.display_name))
+
         if problems:
             raise UserError('\n'.join(problems))
 

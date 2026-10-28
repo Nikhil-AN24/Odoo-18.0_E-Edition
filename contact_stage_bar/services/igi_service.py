@@ -1,7 +1,13 @@
 import logging
 import re
+import time
 import requests
+
+from ..models.lgd_api_log import log_api
+
 _logger = logging.getLogger(__name__)
+
+_DIRECTION = 'ODOO -> IGI'
 
 _ENDPOINT = 'https://api.igi.org/ReportDetail.php'
 _DEFAULT_TIMEOUT = 30  # seconds
@@ -49,17 +55,32 @@ def fetch_by_report_number(env, report_no):
     except (TypeError, ValueError):
         timeout = _DEFAULT_TIMEOUT
 
+    params = {'Printno': str(report_no).strip()}
+    label = 'GET %s' % _ENDPOINT
+    log_headers = {_HEADER_KEY: '***', 'Accept': 'application/json'}
+
+    _logger.info("[IGI LOOKUP] GET %s | report=%s | timeout=%ss",
+                 _ENDPOINT, params['Printno'], timeout)
+    started = time.time()
     try:
         resp = requests.get(
             _ENDPOINT,
-            params={'Printno': str(report_no).strip()},
+            params=params,
             headers={_HEADER_KEY: token, 'Accept': 'application/json'},
             timeout=timeout,
             allow_redirects=True,
         )
     except requests.RequestException as exc:
+        log_api(_DIRECTION, label, body=params, headers=log_headers, env=env,
+                response='transport error: %s' % exc, status='no response')
         _logger.warning("IGI: transport error for %s: %s", report_no, exc)
         return {'error': 'unavailable'}
+
+    log_api(_DIRECTION, label, body=params, headers=log_headers, env=env,
+            response=resp.text, status=resp.status_code)
+    _logger.info("[IGI LOOKUP] report=%s | HTTP %s in %.2fs | %d bytes",
+                 params['Printno'], resp.status_code,
+                 time.time() - started, len(resp.content or b''))
 
     # 400, 404 and — in IGI's case — 502 all mean "no such report".
     # 502 is not a typo. 

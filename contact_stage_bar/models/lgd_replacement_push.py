@@ -17,9 +17,8 @@ import logging
 from odoo.addons.contact_stage_bar.models.lgd_api_log import (
     IN, OUT, log_api)
 import re
-
 import requests
-
+from markupsafe import Markup
 from odoo import models, fields, _
 
 _logger = logging.getLogger(__name__)
@@ -67,6 +66,29 @@ LGD_MANUAL_STONE_REQUIRED = (
     'pricePerCarat', 'length', 'width', 'height', 'tableDepth',
     'depthPercentage', 'location',
 )
+
+#: What to go and fill for each of those, named as the Replace Stone wizard
+#: names it. The chatter is read by whoever has to fix this, and
+#: "manualStone.depthPercentage is required" tells them nothing about which
+#: box to type in. length/width/height deliberately share one entry: all
+#: three are read back out of the single Measurements box, so listing them
+#: separately would send somebody hunting for two fields that do not exist.
+LGD_MANUAL_STONE_LABELS = {
+    'vendor': "Vendor",
+    'shape': "Shape",
+    'cut': "Cut",
+    'clarity': "Clarity",
+    'carat': "Carat Weight",
+    'polish': "Polish",
+    'symmetry': "Symmetry",
+    'pricePerCarat': "Vendor Price / Carat",
+    'length': "Measurements",
+    'width': "Measurements",
+    'height': "Measurements",
+    'tableDepth': "Table %",
+    'depthPercentage': "Depth %",
+    'location': "Country (on the vendor or the company)",
+}
 
 
 class SaleOrder(models.Model):
@@ -278,6 +300,15 @@ class SaleOrder(models.Model):
                 "website cannot be told about this replacement. The new stone "
                 "is reporting under the original's order id.",
                 self.sdk_augmont_number or self.name)
+            # In the chatter too, for the same reason as every other failure
+            # below: nothing was sent, and without a line on the record the
+            # order looks as though the website was told.
+            self._lgd_post_replacement_failure(
+                new_line, None,
+                _("base_augmont_url is not set on this database, so there is "
+                  "nowhere to send the replacement. Set it in Settings > "
+                  "Technical > System Parameters."),
+                False, url, queued=False)
             return False
 
         payload = self._lgd_replacement_payload(original, new_line)
@@ -451,6 +482,103 @@ class SaleOrder(models.Model):
     # ------------------------------------------------------------------
     # Failure
     # ------------------------------------------------------------------
+    def _lgd_replacement_missing_labels(self, payload):
+        """Which required manualStone fields went out blank, named for a human.
+
+        Read off the payload that was actually sent rather than back off the
+        product, so the list can never disagree with what the website saw.
+        """
+        stone = (payload or {}).get('manualStone')
+        if not isinstance(stone, dict):
+            # productIdentifier mode - the website already holds this stone
+            # and no spec was sent, so there is nothing to list.
+            return []
+        labels = []
+        for name in LGD_MANUAL_STONE_REQUIRED:
+            if stone.get(name):
+                continue
+            label = LGD_MANUAL_STONE_LABELS.get(name, name)
+            if label not in labels:
+                labels.append(label)
+        return labels
+
+    def _lgd_post_replacement_failure(self, new_line, payload, error,
+                                      status_code, url, queued=True):
+        """Put the refusal in the chatter, in the website's own words.
+
+        The old message said only that "the website could not be told", which
+        left the one fact that matters - WHY - in the server log, where the
+        person who has to fix it cannot reach it. It also promised a retry
+        that does not happen: augmont.api.retry treats every 4xx as permanent
+        and replays the stored payload verbatim, so a replacement refused for
+        a blank field would sit as `failed` for ever while the chatter said
+        it was on its way.
+        """
+        self.ensure_one()
+        headline, fields_hit, hint = self._lgd_explain_push_error(
+            error, status_code)
+        missing = self._lgd_replacement_missing_labels(payload)
+        if not queued:
+            # Nothing was sent, so the generic "the request never reached
+            # them" guess would argue with the reason already in `error`.
+            hint = False
+        if str(status_code or '') == '404':
+            # _lgd_explain_push_error is worded for the offline push and
+            # names its path parameter. A replacement goes somewhere else.
+            hint = _("The endpoint was not found. Check base_augmont_url "
+                     "and the %s system parameter.")  % LGD_REPLACEMENT_PATH_PARAM
+
+        body = Markup("<p style='color:#A8322B;'><b>%s</b></p><p>%s</p>") % (
+            _("Could not send the replacement stone to the website (%s)")
+            % (_("HTTP %s") % status_code if status_code
+               else _("no response")),
+            headline or _("No message returned."))
+
+        if missing:
+            # Their message names only the first field it tripped over
+            # ("manualStone.cut is required"), so fixing one at a time would
+            # mean one round trip per blank field. The whole list goes in.
+            body += Markup("<p>%s</p><ul>%s</ul>") % (
+                _("These are blank on the replacement stone and the website "
+                  "requires every one of them:"),
+                Markup('').join(Markup("<li>%s</li>") % m for m in missing))
+            body += Markup("<p><i>%s</i></p>") % _(
+                "Fill them in and run Replace Stone again. IGI mode fills "
+                "all of them from the report number, so a stone entered that "
+                "way does not run into this.")
+        elif fields_hit:
+            body += Markup("<p>%s</p><ul>%s</ul>") % (
+                _("Fields the website refused:"),
+                Markup('').join(Markup("<li>%s</li>") % f for f in fields_hit))
+        elif hint:
+            body += Markup("<p><i>%s</i></p>") % hint
+
+        if not queued:
+            tail = _("The replacement is saved in Odoo, but nothing was sent "
+                     "and nothing is waiting to be sent. Fix the cause above "
+                     "and run Replace Stone again. Until then, the new stone "
+                     "has no order id of its own on the website.")
+        elif self.env['augmont.api.retry']._is_permanent_failure(
+                error, str(status_code or '')):
+            tail = _("The replacement is saved in Odoo, but it will NOT be "
+                     "sent again on its own: the website refused it outright, "
+                     "and the retry job replays a request exactly as it was "
+                     "first built. Until it goes through, the new stone has "
+                     "no order id of its own on the website.")
+        else:
+            tail = _("The replacement is saved in Odoo and the retry job will "
+                     "send it again. Until it succeeds, the new stone has no "
+                     "order id of its own on the website.")
+        body += Markup("<p style='color:#76838F;font-size:90%%;'>%s<br/>%s</p>") % (
+            tail, _("Endpoint: %s") % (url or '(not configured)'))
+
+        try:
+            self.message_post(body=body, subject=_("Replacement push failed"))
+        except Exception:
+            _logger.exception(
+                "Could not post the replacement failure to %s's chatter.",
+                self.name)
+
     def _lgd_queue_replacement_retry(self, new_line, payload, headers,
                                      error, status_code):
         """Hand a failed replacement push to the augmont.api.retry cron."""
@@ -459,13 +587,8 @@ class SaleOrder(models.Model):
         _logger.warning("[REPLACEMENT PUSH] failed for %s (%s): %s",
                         self.sdk_augmont_number or self.name,
                         status_code, error)
-        self.message_post(
-            body=_("The website could not be told about this stone "
-                   "replacement (%(code)s). The replacement itself is saved; "
-                   "the retry job will send it again. Until it succeeds the "
-                   "new stone has no order id of its own on the website.",
-                   code=status_code or 'no response'),
-            subject=_("Replacement push failed"))
+        self._lgd_post_replacement_failure(
+            new_line, payload, error, status_code, url)
         self.env['augmont.api.retry'].sudo().create({
             'order_id': self.id,
             'order_line_id': new_line.id,
