@@ -219,16 +219,20 @@ class SaleOrder(models.Model):
                     "measurements %r -> %s x %s x %s.",
                     self.sdk_augmont_number or self.name,
                     template.measurements, length, width, height)
+
+        # certNumber / lab, built as one unit by product.template.
+        # _lgd_cert_block. certType is dropped: their manualStone contract has no field for it.
+        cert = {k: v for k, v in template._lgd_cert_block().items()
+                if k != 'certType'}
+        if not (cert.get('certNumber') or '').strip():
+            cert.pop('lab', None)
+
         return {
             'vendor': new_line.vendor_id.name or '',
             # Not in their published manualStone sample, but asked for: a
             # replacement sourced from an IGI report has a certificate, and
             # without it the stone lands on the website uncertified.
-            # certNumber / lab as one unit - see
-            # product.template._lgd_cert_block. certType is dropped: their
-            # manualStone contract has no field for it.
-            **{k: v for k, v in template._lgd_cert_block().items()
-               if k != 'certType'},
+            **cert,
             'shape': template.shapes or '',
             'cut': template.cut or '',
             'color': template.color or '',
