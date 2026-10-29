@@ -62,29 +62,35 @@
                         <field name="orig_certificate"/>
                     </group>
                     <group string="Replacement Stone">
-                        <!-- Not view-required: these are filled by Fetch from
-                             IGI, and marking them required would block that
-                             button (it saves first). action_submit enforces
-                             them server-side instead. -->
-                        <field name="stone_type" required="1"/>
-                        <field name="lab"/>
-                        <field name="shape_id" options="{'no_create': True}"/>
-                        <field name="weight_carat"/>
+                        <field name="stone_type" required="mode == 'manual'"/>
+                        <field name="lab" required="certificate"/>
+                        <field name="certificate" required="lab"/>
+                        <div colspan="2" class="text-muted"
+                             invisible="lab or certificate">
+                            Leave Lab and Certificate Number both blank for a
+                            non-certified stone.
+                        </div>
+                        <field name="shape_id" options="{'no_create': True}"
+                               required="mode == 'manual'"/>
+                        <field name="weight_carat" required="mode == 'manual'"/>
+                        <!-- Colour is not on the website's required list, so
+                             it is not marked. -->
                         <field name="color"/>
-                        <field name="clarity"/>
-                        <field name="cut_id" options="{'no_create': True}"/>
-                        <field name="polish_id" options="{'no_create': True}"/>
-                        <field name="symmetry_id" options="{'no_create': True}"/>
+                        <field name="clarity" required="mode == 'manual'"/>
+                        <field name="cut_id" options="{'no_create': True}"
+                               required="mode == 'manual'"/>
+                        <field name="polish_id" options="{'no_create': True}"
+                               required="mode == 'manual'"/>
+                        <field name="symmetry_id" options="{'no_create': True}"
+                               required="mode == 'manual'"/>
                         <field name="fluorescence_id" options="{'no_create': True}"/>
                         <field name="fluorescence_color"/>
                         <field name="treatments"/>
-                        <field name="measurements"/>
-                        <!-- The LGD website requires both on a replacement
-                             it has not seen before. IGI fills them; type
-                             them by hand for a manual stone. -->
-                        <field name="table_pct"/>
-                        <field name="depth_pct"/>
-                        <field name="certificate"/>
+
+                        <field name="measurements" required="mode == 'manual'"
+                               placeholder="e.g. 7.34 - 7.38 x 4.52"/>
+                        <field name="table_pct" required="mode == 'manual'"/>
+                        <field name="depth_pct" required="mode == 'manual'"/>
                     </group>
                 </group>
 
