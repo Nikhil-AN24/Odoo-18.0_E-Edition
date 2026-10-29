@@ -230,6 +230,10 @@
         <!-- Older replaced lines were stored as 'cancelled'; move them to the dedicated 'replaced' status so they read "Replaced". -->
         <function model="sale.order.line" name="_lgd_backfill_replaced_status"/>
 
+        <!-- Cancelled/replaced lines that kept their "pending Sales confirmation"
+             flag, and so kept offering Confirm / Reject on a dead row. -->
+        <function model="sale.order.line" name="_lgd_clear_dead_replacement_pending"/>
+
         <function name="write" model="ir.model.data">
             <function name="search" model="ir.model.data">
                 <value eval="[('module', '=', 'sale'), ('name', 'in', ['sale_order_personal_rule', 'sale_order_line_personal_rule'])]"/>

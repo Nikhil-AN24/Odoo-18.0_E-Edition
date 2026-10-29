@@ -110,6 +110,16 @@ class SaleOrder(models.Model):
                 break
         return sgst, cgst, igst
 
+    def _lgd_offline_carat(self, line):
+
+        match = re.search(r'([\d.]+)', str(line.carat_weight or ''))
+        if match:
+            try:
+                return float(match.group(1))
+            except (TypeError, ValueError):
+                pass
+        return float(line.product_template_id.carat_value or 0.0)
+
     def _lgd_offline_price_block(self, line):
         """The four price fields, never left at zero when the line knows better.
 
@@ -119,7 +129,7 @@ class SaleOrder(models.Model):
         way to get them when nothing recorded them directly.
         """
         template = line.product_template_id
-        carat = float(template.carat_value or 0.0)
+        carat = self._lgd_offline_carat(line)
 
         final_margin = float(line.price_unit or 0.0)
         final_base = float(template.final_price or 0.0) or final_margin
@@ -158,7 +168,7 @@ class SaleOrder(models.Model):
                 line._fields['stone_type'].selection
             ).get(line.stone_type, '') if line.stone_type else '',
             'shape': template.shapes or '',
-            'weight': float(template.carat_value or 0.0),
+            'weight': self._lgd_offline_carat(line),
             'color': template.color or '',
             'clarity': template.clarity or '',
             'cut': template.cut or '',

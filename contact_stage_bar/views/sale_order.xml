@@ -501,15 +501,19 @@
                         icon="fa-exchange" title="Replace Stone"
                         invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                         groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
-                <!-- Sales confirm / reject a pending replacement. -->
+                <!-- Sales confirm / reject a pending replacement.
+                     Hidden on a dead line as well as on an unflagged one:
+                     write() clears the flag when the status goes dead, but
+                     the status is what the user is looking at, so the row
+                     and the buttons can never disagree. -->
                 <field name="replacement_pending_sales" column_invisible="True"/>
                 <button name="action_replacement_confirm" type="object"
                         string="Confirm" class="btn-link"
-                        invisible="not replacement_pending_sales"
+                        invisible="not replacement_pending_sales or availability_status in ('cancelled', 'replaced', 'not_available', 'qc_fail')"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <button name="action_replacement_reject" type="object"
                         string="Reject" class="btn-link text-danger"
-                        invisible="not replacement_pending_sales"
+                        invisible="not replacement_pending_sales or availability_status in ('cancelled', 'replaced', 'not_available', 'qc_fail')"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
                 <field name="certificate" readonly="1"/>
                 <field name="lgd_ship_address_id" string="Deliver to"
