@@ -3246,6 +3246,21 @@ class SaleOrderLine(models.Model):
                 {'availability_status': 'replaced'})
         return len(lines)
 
+    @api.model
+    def _lgd_clear_dead_replacement_pending(self):
+
+        lines = self.sudo().search([
+            ('replacement_pending_sales', '=', True),
+            ('availability_status', 'in',
+             list(self._LGD_REPLACEMENT_DEAD_STATUSES)),
+        ])
+        if lines:
+            _logger.info(
+                "[REPLACEMENT] clearing stale pending-confirmation flag on "
+                "%d dead line(s): %s", len(lines), lines.ids)
+            lines.write({'replacement_pending_sales': False})
+        return len(lines)
+
     # Availability shown in lists: a replaced line stays 'cancelled' underneath
     # (so order-status/amount logic is unchanged) but reads "Replaced" for the
     # user. Non-replaced lines show their normal availability label.
@@ -3783,6 +3798,15 @@ class SaleOrderLine(models.Model):
         compute='_compute_lgd_can_edit_stone_classification')
 
     _LGD_CLOSED_LINE_STATUSES = ('not_available', 'cancelled', 'qc_fail')
+
+    # Statuses that make a pending Sales confirmation moot. Confirm / Reject
+    # asks "do you accept this replacement stone?" - once the stone has been
+    # cancelled, replaced again, or has gone back on the unavailable pile,
+    # there is nothing left to accept. Reject is the dangerous half: it
+    # reverts the ORIGINAL line to Not available, which on a cancelled order
+    # resurrects a dead stone inside it.
+    _LGD_REPLACEMENT_DEAD_STATUSES = (
+        'cancelled', 'replaced', 'not_available', 'qc_fail')
 
     lgd_line_closed = fields.Boolean(
         compute='_compute_lgd_line_closed', string="Line closed")
@@ -4631,6 +4655,33 @@ class SaleOrderLine(models.Model):
                     line.order_number or 'N/A', line.order_id.name, old_status, new_status,
                     from_quality_module, from_pack_wizard
                 )
+
+            # ── A dead line cannot be pending Sales confirmation ──────────
+            # Confirm and Reject were the only two things that ever cleared
+            # this flag, so a replacement the website later cancelled kept it
+            # and the list view kept offering both buttons on a Cancelled
+            # row. Clear it here, where every status change passes. sudo
+            # because the flag is not on the Procurement write allowlist and
+            # the status change that kills it is usually theirs.
+            dead = self.filtered(
+                lambda l: l.replacement_pending_sales
+                and l.availability_status
+                in self._LGD_REPLACEMENT_DEAD_STATUSES)
+            if dead:
+                dead.sudo().write({'replacement_pending_sales': False})
+                labels = dict(self._fields['availability_status'].selection)
+                for order in dead.order_id:
+                    if order.order_line.filtered('replacement_pending_sales'):
+                        # Another replacement on the same order is still
+                        # waiting. The activity is order-scoped, not
+                        # line-scoped, so closing it now would answer for
+                        # that one too.
+                        continue
+                    here = dead.filtered(lambda l: l.order_id == order)
+                    here[:1].sudo()._replacement_close_activity(
+                        feedback=_("Replacement line closed as %s - no "
+                                   "confirmation needed.")
+                        % labels.get(here[0].availability_status, ''))
 
             # ── Zero out qty for cancelled/not_available (mirrors onchange for API calls) ──
             for line in self:
