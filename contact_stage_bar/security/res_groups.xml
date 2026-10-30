@@ -231,6 +231,18 @@
              the stone so existing melee parcels show it in the (i) dialog. -->
         <function model="product.template" name="_lgd_backfill_sieve_size"/>
 
+        <!-- Treatment (HPHT / CVD) is new on the product; fill it from the
+             RFQ that raised the stone so existing lab-grown offline orders
+             stop sending an empty treatment to the website. -->
+        <function model="product.template"
+                  name="_lgd_backfill_treatments_from_growth_method"/>
+
+        <!-- Offline parcels were filed as certified single stones, which is
+             what put Replace Stone on them and made the website render them
+             with the wrong card. -->
+        <function model="sale.order.line"
+                  name="_lgd_backfill_offline_line_type"/>
+
         <!-- Older replaced lines were stored as 'cancelled'; move them to the dedicated 'replaced' status so they read "Replaced". -->
         <function model="sale.order.line" name="_lgd_backfill_replaced_status"/>
 

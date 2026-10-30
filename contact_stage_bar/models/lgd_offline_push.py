@@ -81,6 +81,13 @@ class SaleOrder(models.Model):
         first, last = self._lgd_offline_name_parts(partner)
         fallback = partner.parent_id
         return {
+            # Shown as "Company Name" on the website's Order Details page.
+            # It reads the same key on the way in (the buyer/seller upsert in
+            # website_api_route), so this is the name the two sides already
+            # agree on - it was simply never sent outbound, which is why the
+            # page printed "-" for every offline order.
+            'companyName': (partner.commercial_company_name
+                            or partner.company_name or ''),
             'firstName': first,
             'lastName': last,
             'mobileNumber': (partner.mobile or partner.phone
@@ -93,6 +100,23 @@ class SaleOrder(models.Model):
             'countryIsoCode': self._lgd_offline_country_code(partner, 'buyer'),
         }
 
+    def _lgd_offline_leaf_taxes(self, taxes):
+        """Every leaf tax behind `taxes`, with group taxes expanded.
+
+        A group tax carries amount 0.0 itself - the rates live on its
+        children, so "1.5% GST" reads 0.0 while the 0.75 SGST and 0.75 CGST
+        under it read 0.75 each. Reading the group's own amount is what sent
+        sgst/cgst out as 0.00 on every grouped order and put "GST (0%)" on
+        the website's order summary.
+        """
+        leaves = self.env['account.tax']
+        for tax in taxes:
+            if tax.amount_type == 'group':
+                leaves |= self._lgd_offline_leaf_taxes(tax.children_tax_ids)
+            else:
+                leaves |= tax
+        return leaves
+
     def _lgd_offline_tax_rates(self):
         """Tax RATES, not amounts - matching what the website already receives
         from the KYC/GST update call. Read from the tax definitions rather than
@@ -100,15 +124,55 @@ class SaleOrder(models.Model):
         """
         sgst = cgst = igst = 0.0
         for line in self.order_line:
-            for tax in line.tax_id:
-                description = (tax.description or tax.name or '').upper()
-                if 'IGST' in description:
+            for tax in self._lgd_offline_leaf_taxes(line.tax_id):
+                # Descriptions are rich text on a tax created through the UI,
+                # so strip the markup before matching. SGST/CGST/IGST are
+                # tested before the bare "GST" because each one contains it.
+                label = re.sub(
+                    r'<[^>]+>', ' ',
+                    tax.description or tax.name or '').upper()
+                if 'IGST' in label:
                     igst = tax.amount
-                elif 'GST' in description:
+                elif 'SGST' in label:
+                    sgst = tax.amount
+                elif 'CGST' in label:
+                    cgst = tax.amount
+                elif 'GST' in label:
+                    # An ungrouped "1.5% GST" is both halves in one tax.
                     sgst = cgst = tax.amount / 2
             if sgst or cgst or igst:
                 break
         return sgst, cgst, igst
+
+    def _lgd_offline_inr_rate(self):
+        """How many rupees one unit of the order currency is worth.
+
+        Offline orders are priced in USD and the website shows a rupee figure
+        beside the dollar one. Nothing in the payload carried a rate, so it
+        was printing the dollar amount unchanged - Rs 10.20 against $10.20.
+        1.0 when the order is already in INR.
+        """
+        inr = self.env.ref('base.INR', raise_if_not_found=False)
+        if not inr or not self.currency_id or self.currency_id == inr:
+            return 1.0
+        company = self.company_id or self.env.company
+        rate = self.currency_id._convert(
+            1.0, inr, company,
+            self.date_order or fields.Date.context_today(self), round=False)
+        if rate == 1.0:
+            # Rates are per company, and a company with no rate row of its own
+            # converts everything at 1.0. For two currencies that are not the
+            # same that is not a rate, it is the absence of one - and sending
+            # it would assert 1 USD = 1 INR, which is the very thing that puts
+            # a rupee sign on the dollar figure. Return nothing so the key is
+            # left out and the website can fall back to its own rate.
+            _logger.warning(
+                "Offline push %s: no %s->INR rate on %s, so no conversion "
+                "rate is being sent. Set the rate on that company.",
+                self.sdk_augmont_number or self.name,
+                self.currency_id.name, company.display_name)
+            return None
+        return rate
 
     def _lgd_offline_carat(self, line):
 
@@ -143,6 +207,27 @@ class SaleOrder(models.Model):
             'pricePerCaratMargin': per_carat_margin,
             'finalPrice': final_base,
             'finalPriceMargin': final_margin,
+        }
+
+    def _lgd_offline_melee_block(self, line):
+        """meleeUnit / meleeQty / meleePricing for one parcel line.
+
+        The key names are the website's own: they are what it sends Odoo for
+        an ONLINE melee order (the MELEE branch of website_api_route), so a
+        parcel is described the same way in both directions. Without them the
+        website has no piece or carat count to put on its melee card.
+
+        Offline expands a parcel into one line per stone, so pieces is that
+        line's quantity and carats is that stone's weight - not the whole
+        parcel's. A Natural melee RFQ records only a sieve Size and no piece
+        count, so its single line reports the one row it has.
+        """
+        carats = self._lgd_offline_carat(line)
+        pieces = int(line.product_uom_qty or 1)
+        return {
+            'meleeUnit': 'CARAT',
+            'meleeQty': carats,
+            'meleePricing': {'carats': carats, 'pieces': pieces},
         }
 
     def _lgd_offline_product_block(self, line):
@@ -360,12 +445,18 @@ class SaleOrder(models.Model):
             MELEE   -> LabGrown Melle
             NATURAL -> Natural Certified
 
-        A parcel stays MELEE whatever it is made of: Natural Melle has no
-        lineType of its own yet, and MELEE is the only word the website has
-        for a parcel.
+        MELEE is NOT sent here, even for a parcel. That mapping holds on the
+        route the website uses to send Odoo its own orders, but this endpoint
+        has a narrower enum and refuses the whole order:
+
+            400 | lineType must be LGD or NATURAL   (AUG-OFF-00053)
+
+        So a parcel goes out under the stone it is made of, and the fact that
+        it IS a parcel travels in the meleeUnit / meleePricing block instead.
+        Odoo keeps calling it 'melee' internally - that is what stops Replace
+        Stone appearing on a parcel - and this is only how it is spelled on
+        the wire. Change it back the day the offline endpoint accepts MELEE.
         """
-        if line.line_type == 'melee':
-            return 'MELEE'
         if line.stone_type == 'natural':
             return 'NATURAL'
         return 'LGD'
@@ -385,7 +476,7 @@ class SaleOrder(models.Model):
 
         orders = []
         for line in self._lgd_offline_lines():
-            orders.append({
+            entry = {
                 # Odoo's own line id, echoed back by the website so each
                 # orderUniqueId lands on the line it belongs to. Product
                 # identity is NOT sufficient: a non-certified order can carry
@@ -404,9 +495,15 @@ class SaleOrder(models.Model):
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
                 'seller': self._lgd_offline_seller_block(line),
                 'product': self._lgd_offline_product_block(line),
-            })
+            }
+            # Only on a parcel: these keys mean nothing on a single certified
+            # stone. Keyed off the LINE, not off lineType, which can no
+            # longer say MELEE - see _lgd_offline_line_type.
+            if line.line_type == 'melee':
+                entry.update(self._lgd_offline_melee_block(line))
+            orders.append(entry)
 
-        return {
+        payload = {
             'orderSource': 'offline',
             'invoiceNumber': self.sdk_augmont_number or '',
             'invoiceDate': fields.Datetime.to_string(
@@ -424,6 +521,14 @@ class SaleOrder(models.Model):
                 'kyc': {
                     'type': 'GSTIN' if self.vat else 'EIN',
                     'number': self.vat or self.ein_number or '',
+                    # The website reads its own inbound orders as kyc.gstin /
+                    # kyc.einNumber - see the buyer KYC block in
+                    # website_api_route - and was never taught type/number,
+                    # which is why Order Details printed "-" for GST Number.
+                    # Both shapes go out so neither side has to change in the
+                    # same deploy.
+                    'gstin': self.vat or '',
+                    'einNumber': self.ein_number or '',
                 },
             },
             'billingAddress': self._lgd_offline_address(
@@ -432,6 +537,14 @@ class SaleOrder(models.Model):
                 self.partner_shipping_id or partner),
             'orders': orders,
         }
+        # Rupees per unit of `currency`, so the website can show the INR
+        # figure it displays beside the dollar one instead of repeating the
+        # dollar amount. Omitted entirely when Odoo has no rate - see
+        # _lgd_offline_inr_rate.
+        rate = self._lgd_offline_inr_rate()
+        if rate is not None:
+            payload['conversionRate'] = rate
+        return payload
 
     # ------------------------------------------------------------------
     # Response

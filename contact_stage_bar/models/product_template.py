@@ -519,6 +519,43 @@ class ProductTemplate(models.Model):
             self.invalidate_model(['labs'])
 
     @api.model
+    def _lgd_backfill_treatments_from_growth_method(self):
+        """One-time: fill treatments on lab-grown products raised from an RFQ
+        that recorded a growth method.
+
+        The offline payload sends product.treatments as `treatment`, and the
+        website shows it under Diamond Details. Nothing ever copied the RFQ's
+        growth method onto the stone, so it went out empty on every offline
+        order. Natural RFQs are skipped: growth_method carries its 'hpht'
+        default on those too, and copying it would label a mined stone as
+        grown. Runs on upgrade; idempotent - it never overwrites a value
+        already there.
+        """
+        cr = self.env.cr
+        # custom_sale_order is not a dependency of this module, so its tables
+        # may simply not be there. Nothing to backfill from if so.
+        if not (table_exists(cr, 'custom_sale_order_line')
+                and table_exists(cr, 'custom_sale_order')):
+            return 0
+        cr.execute("""
+            UPDATE product_template pt
+               SET treatments = UPPER(rfq.growth_method)
+              FROM custom_sale_order_line csol
+              JOIN custom_sale_order cso ON cso.id = csol.order_id
+              JOIN customer_rfq rfq ON rfq.id = cso.customer_rfq_id
+             WHERE csol.product_template_id = pt.id
+               AND rfq.stone_type = 'lab_grown'
+               AND COALESCE(rfq.growth_method, '') <> ''
+               AND COALESCE(pt.treatments, '') = ''
+        """)
+        if cr.rowcount:
+            _logger.info(
+                "[TREATMENT] copied the RFQ growth method onto %s product(s)",
+                cr.rowcount)
+            self.invalidate_model(['treatments'])
+        return cr.rowcount
+
+    @api.model
     def _lgd_backfill_sieve_size(self):
         cr = self.env.cr
         # custom_sale_order is not a dependency of this module, so its tables
