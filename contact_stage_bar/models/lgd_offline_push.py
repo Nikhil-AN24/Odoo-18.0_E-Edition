@@ -156,23 +156,47 @@ class SaleOrder(models.Model):
         if not inr or not self.currency_id or self.currency_id == inr:
             return 1.0
         company = self.company_id or self.env.company
-        rate = self.currency_id._convert(
-            1.0, inr, company,
-            self.date_order or fields.Date.context_today(self), round=False)
-        if rate == 1.0:
-            # Rates are per company, and a company with no rate row of its own
-            # converts everything at 1.0. For two currencies that are not the
-            # same that is not a rate, it is the absence of one - and sending
-            # it would assert 1 USD = 1 INR, which is the very thing that puts
-            # a rupee sign on the dollar figure. Return nothing so the key is
-            # left out and the website can fall back to its own rate.
-            _logger.warning(
-                "Offline push %s: no %s->INR rate on %s, so no conversion "
-                "rate is being sent. Set the rate on that company.",
-                self.sdk_augmont_number or self.name,
-                self.currency_id.name, company.display_name)
-            return None
-        return rate
+        date = self.date_order or fields.Date.context_today(self)
+        rate = self.currency_id._convert(1.0, inr, company, date, round=False)
+        if rate != 1.0:
+            return rate
+
+
+        for other in self._lgd_offline_rate_companies(company):
+            rate = self.currency_id._convert(1.0, inr, other, date,
+                                             round=False)
+            if rate != 1.0:
+                _logger.info(
+                    "Offline push %s: %s has no %s->INR rate, using %s's "
+                    "rate of %s.",
+                    self.sdk_augmont_number or self.name,
+                    company.display_name, self.currency_id.name,
+                    other.display_name, rate)
+                return rate
+
+        _logger.warning(
+            "Offline push %s: no %s->INR rate on %s or on any other "
+            "company, so no conversion rate is being sent. Set the rate "
+            "under Accounting > Currencies.",
+            self.sdk_augmont_number or self.name,
+            self.currency_id.name, company.display_name)
+        return None
+
+    def _lgd_offline_rate_companies(self, company):
+        """Every other company that might hold a rate, nearest kin first.
+
+        The parent chain comes before the rest because a subsidiary with no
+        rates of its own is far likelier to be meant to follow its parent's
+        than some unrelated company's.
+        """
+        seen = company
+        ordered = self.env['res.company']
+        parent = company.parent_id
+        while parent and parent not in seen:
+            ordered |= parent
+            seen |= parent
+            parent = parent.parent_id
+        return ordered | (self.env['res.company'].sudo().search([]) - seen)
 
     def _lgd_offline_carat(self, line):
 
@@ -445,20 +469,30 @@ class SaleOrder(models.Model):
             MELEE   -> LabGrown Melle
             NATURAL -> Natural Certified
 
-        MELEE is NOT sent here, even for a parcel. That mapping holds on the
-        route the website uses to send Odoo its own orders, but this endpoint
-        has a narrower enum and refuses the whole order:
+        A parcel goes out as MELEE. It is the only thing that makes the
+        website render it the way it renders the same parcel ordered online:
+        the "Lab Grown Melee" heading, the Type / Shape / Colour / Clarity /
+        Cut / Parcels panel instead of the certified Measurement / Depth% /
+        Table / Ratio / Girdle one, and no Replace Stone button. The
+        meleeUnit / meleePricing block alone did not do it - the website
+        switches the card on lineType.
+
+        One build of the offline endpoint had a narrower enum and refused
+        the whole order over it:
 
             400 | lineType must be LGD or NATURAL   (AUG-OFF-00053)
 
-        So a parcel goes out under the stone it is made of, and the fact that
-        it IS a parcel travels in the meleeUnit / meleePricing block instead.
-        Odoo keeps calling it 'melee' internally - that is what stops Replace
-        Stone appearing on a parcel - and this is only how it is spelled on
-        the wire. Change it back the day the offline endpoint accepts MELEE.
+        So this is sent optimistically and _lgd_push_offline_order retries
+        once with LGD if that is what comes back - see
+        _lgd_offline_melee_rejected. A parcel still reaches the website
+        either way, and the day every deployment knows the word the display
+        corrects itself with no redeploy here.
         """
         if line.stone_type == 'natural':
             return 'NATURAL'
+        if (line.line_type == 'melee'
+                and not self.env.context.get('lgd_offline_no_melee_type')):
+            return 'MELEE'
         return 'LGD'
 
     def _lgd_offline_payload(self):
@@ -496,9 +530,10 @@ class SaleOrder(models.Model):
                 'seller': self._lgd_offline_seller_block(line),
                 'product': self._lgd_offline_product_block(line),
             }
-            # Only on a parcel: these keys mean nothing on a single certified
-            # stone. Keyed off the LINE, not off lineType, which can no
-            # longer say MELEE - see _lgd_offline_line_type.
+            # Only on a parcel: these keys mean nothing on a single
+            # certified stone. Keyed off the LINE, not off lineType, which
+            # falls back to LGD on a website that does not know the word
+            # yet - see _lgd_offline_line_type.
             if line.line_type == 'melee':
                 entry.update(self._lgd_offline_melee_block(line))
             orders.append(entry)
@@ -671,6 +706,50 @@ class SaleOrder(models.Model):
             return False
         return not all(line.order_number for line in lines)
 
+    def _lgd_offline_send(self, url, headers, payload):
+        """POST one payload and hand back the response.
+
+        None means the request never reached the server, and the order has
+        already been queued for retry - the caller only has to stop.
+        """
+        body = json.dumps(payload)
+        _logger.info(
+            "[OFFLINE PUSH] POST %s | auth=%s | %s line(s) | %d bytes",
+            url, 'yes' if 'Authorization' in headers else 'NO',
+            len(payload.get('orders') or []), len(body))
+
+        log_api(OUT, "POST %s" % url, body, headers=headers, env=self.env)
+        try:
+            response = requests.post(
+                url, headers=headers, data=body,
+                timeout=(LGD_OFFLINE_PUSH_CONNECT_TIMEOUT,
+                         LGD_OFFLINE_PUSH_TIMEOUT))
+        except requests.exceptions.RequestException as error:
+            # Never reached the server at all: DNS gone, tunnel down,
+            # connection refused, or slower than the timeout.
+            _logger.error(
+                "[OFFLINE PUSH] %s: no response from %s - %s. Queued for "
+                "retry.", self.sdk_augmont_number or self.name, url, error)
+            self._lgd_queue_offline_retry(payload, headers, str(error), False)
+            return None
+
+        _logger.info(
+            "[OFFLINE PUSH] <- HTTP %s from %s | body: %s",
+            response.status_code, url, (response.text or '')[:600])
+        return response
+
+    def _lgd_offline_melee_rejected(self, body, payload):
+        """Did this 400 come from the MELEE lineType and nothing else?
+
+        Narrow on purpose. A 400 that names some other field is a real
+        validation failure and must be queued and surfaced, not quietly
+        resent under a different lineType.
+        """
+        if not any(entry.get('lineType') == 'MELEE'
+                   for entry in (payload.get('orders') or [])):
+            return False
+        return 'linetype' in (body or '').lower()
+
     def _lgd_push_offline_order(self):
         """POST this offline order to the website and store the ids it returns.
 
@@ -714,30 +793,29 @@ class SaleOrder(models.Model):
         if token:
             headers['Authorization'] = 'Bearer %s' % token
 
-        body = json.dumps(payload)
-        _logger.info(
-            "[OFFLINE PUSH] POST %s | auth=%s | %s line(s) | %d bytes",
-            url, 'yes' if 'Authorization' in headers else 'NO',
-            len(payload.get('orders') or []), len(body))
-
-        log_api(OUT, "POST %s" % url, body, headers=headers, env=self.env)
-        try:
-            response = requests.post(
-                url, headers=headers, data=body,
-                timeout=(LGD_OFFLINE_PUSH_CONNECT_TIMEOUT,
-                         LGD_OFFLINE_PUSH_TIMEOUT))
-        except requests.exceptions.RequestException as error:
-            # Never reached the server at all: DNS gone, tunnel down,
-            # connection refused, or slower than the timeout.
-            _logger.error(
-                "[OFFLINE PUSH] %s: no response from %s - %s. Queued for "
-                "retry.", self.sdk_augmont_number or self.name, url, error)
-            self._lgd_queue_offline_retry(payload, headers, str(error), False)
+        response = self._lgd_offline_send(url, headers, payload)
+        if response is None:
             return False
 
-        _logger.info(
-            "[OFFLINE PUSH] <- HTTP %s from %s | body: %s",
-            response.status_code, url, (response.text or '')[:600])
+        if (response.status_code == 400
+                and self._lgd_offline_melee_rejected(response.text, payload)):
+            # This deployment of the endpoint does not know the MELEE
+            # lineType. Send the parcel again as LGD rather than lose the
+            # order over a display word: it will show under the certified
+            # card until the website is taught MELEE, which is exactly
+            # where it stood before, and the parcel still arrives.
+            _logger.warning(
+                "[OFFLINE PUSH] %s: the website refused lineType MELEE "
+                "(%s). Resending the parcel as LGD - it will render under "
+                "the certified card until /odoo/order/offline accepts "
+                "MELEE.",
+                self.sdk_augmont_number or self.name,
+                (response.text or '').strip()[:200])
+            payload = self.with_context(
+                lgd_offline_no_melee_type=True)._lgd_offline_payload()
+            response = self._lgd_offline_send(url, headers, payload)
+            if response is None:
+                return False
 
         if response.status_code != 200:
             _logger.error(
