@@ -382,6 +382,7 @@
                                            invisible="not is_melee_parent"/>
                                     <field name="melee_parcel_carats_text"
                                            invisible="not is_melee_parent"/>
+                                    <field name="sieve_size" invisible="not sieve_size"/>
                                     <field name="shapes"/>
                                     <field name="carat_weight" string="Carat"/>
                                     <field name="clarity"/>
@@ -453,6 +454,7 @@
                                 <group>
                                     <field name="labs"/>
                                     <field name="lgd_stock_number"/>
+                                    <field name="sieve_size" invisible="not sieve_size"/>
                                     <field name="shapes"/>
                                     <field name="carat_weight" string="Carat"/>
                                     <field name="clarity"/>

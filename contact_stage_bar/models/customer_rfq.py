@@ -986,6 +986,7 @@ class CustomerRfq(models.Model):
             # copying it here the stone reached the website with an empty
             # `lab` and the order was refused.
             'labs': self._lgd_lab_name() or False,
+            'sieve_size': self.size or False,
         }
 
         product = self.env['product.template'].sudo().with_context(

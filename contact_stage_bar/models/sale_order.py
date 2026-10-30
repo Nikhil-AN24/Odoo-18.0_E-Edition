@@ -3946,6 +3946,8 @@ class SaleOrderLine(models.Model):
     customer_reference_note = fields.Char(string="Customer Reference Note", related='product_template_id.customer_reference_note', readonly=False)
     popup_item_notes = fields.Char(string="General Order Notes", related='product_template_id.item_notes', readonly=False)
     popup_default_qc_requirements = fields.Char(string="Default Qc Requirements", related='product_template_id.default_qc_requirements', readonly=False)
+    sieve_size = fields.Char(
+        string="Size", related='product_template_id.sieve_size')
     # ── Added for the Order Lines CSV export column reorder ──
     vendor_sku = fields.Char(string="Vendor SKU", related='product_template_id.stock_number')
     vendor_per_carat_price = fields.Float(string="Vendor Per Carat Price", related='product_template_id.price_per_carat')
