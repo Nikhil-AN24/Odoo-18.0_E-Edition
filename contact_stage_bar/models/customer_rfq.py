@@ -992,6 +992,17 @@ class CustomerRfq(models.Model):
             'shapes': ', '.join(self.shape_ids.mapped('name')),
             'color': self.color,
             'clarity': self.clarity,
+            # Free-text Cut, the one the Non-Certified RFQ actually records.
+            # Colour and clarity were copied and this was not, so the stone
+            # reached the website with an empty `cut` - a blank in the Cut
+            # column of the melee card that the same parcel ordered online
+            # fills in. Only where the form offers the field: a certified
+            # RFQ grades the cut through cut_grade_ids, and feeding a stray
+            # value in here would also rewrite the composed product name.
+            'cut': (self.cut or False) if (
+                self.stone_type == 'lab_grown'
+                and self.stone_certification_type == 'non_certified'
+            ) else False,
             'weight_carat': str(self.carat) if self.carat else False,
             'list_price': unit_price,
             'name': self.name,
