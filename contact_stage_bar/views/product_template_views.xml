@@ -49,6 +49,7 @@
                     <field name="melee_unit"/>
                     <field name="melee_pieces"/>
                     <field name="melee_carats"/>
+                    <field name="sieve_size"/>
 
                     <field name="shapes"/>
                     <field name="weight_carat"/>
@@ -404,6 +405,7 @@
                                 <field name="melee_unit"/>
                                 <field name="melee_pieces"/>
                                 <field name="melee_carats"/>
+                                <field name="sieve_size"/>
                                 <field name="shapes"/>
                                 <field name="weight_carat"/>
                                 <field name="clarity"/>
@@ -478,6 +480,7 @@
                                 <field name="melee_unit"/>
                                 <field name="melee_pieces"/>
                                 <field name="melee_carats"/>
+                                <field name="sieve_size"/>
                                 <field name="shapes"/>
                                 <field name="weight_carat"/>
                                 <field name="clarity"/>

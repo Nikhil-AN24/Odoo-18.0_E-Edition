@@ -399,6 +399,11 @@ class CustomSaleOrder(models.Model):
                 'availability_status': line.availability_status,
                 'carat_weight': line.carat_weight,
                 'rfq_size_line_id': line.rfq_size_line_id.id or False,
+                'line_type': (
+                    'melee'
+                    if self.customer_rfq_id.stone_certification_type
+                    == 'non_certified'
+                    else 'lgd'),
             }
 
             if line.tax_id:

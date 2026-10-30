@@ -1,7 +1,7 @@
 import email
 from odoo import models, fields, api
 from odoo.exceptions import ValidationError,UserError
-from odoo.tools.sql import column_exists
+from odoo.tools.sql import column_exists, table_exists
 from odoo.http import request
 import requests
 from odoo import _
@@ -161,6 +161,14 @@ class ProductTemplate(models.Model):
     melee_pieces = fields.Float(
         string="Melee Pieces", digits=(16, 0),
         help="Number of stones in the parcel (meleePricing.pieces).")
+    sieve_size = fields.Char(
+        string="Size",
+        help="Sieve size: the mesh grade the parcel was sorted to, e.g. "
+             "+11-13 or 1.20-1.25mm. Copied from customer.rfq.size when the "
+             "stone is raised from an RFQ. A melee parcel carries no "
+             "Carat/Stone, so this is the only record of how big the stones "
+             "are; it stays blank on a single certified stone, which has its "
+             "own carat weight and measurements instead.")
 
     # ------------------------------------------------------------------
     # Natural-diamond provenance & inclusion detail
@@ -509,6 +517,68 @@ class ProductTemplate(models.Model):
         if cr.rowcount:
             _logger.info("Copied lab_id into labs on %s product(s)", cr.rowcount)
             self.invalidate_model(['labs'])
+
+    @api.model
+    def _lgd_backfill_treatments_from_growth_method(self):
+        """One-time: fill treatments on lab-grown products raised from an RFQ
+        that recorded a growth method.
+
+        The offline payload sends product.treatments as `treatment`, and the
+        website shows it under Diamond Details. Nothing ever copied the RFQ's
+        growth method onto the stone, so it went out empty on every offline
+        order. Natural RFQs are skipped: growth_method carries its 'hpht'
+        default on those too, and copying it would label a mined stone as
+        grown. Runs on upgrade; idempotent - it never overwrites a value
+        already there.
+        """
+        cr = self.env.cr
+        # custom_sale_order is not a dependency of this module, so its tables
+        # may simply not be there. Nothing to backfill from if so.
+        if not (table_exists(cr, 'custom_sale_order_line')
+                and table_exists(cr, 'custom_sale_order')):
+            return 0
+        cr.execute("""
+            UPDATE product_template pt
+               SET treatments = UPPER(rfq.growth_method)
+              FROM custom_sale_order_line csol
+              JOIN custom_sale_order cso ON cso.id = csol.order_id
+              JOIN customer_rfq rfq ON rfq.id = cso.customer_rfq_id
+             WHERE csol.product_template_id = pt.id
+               AND rfq.stone_type = 'lab_grown'
+               AND COALESCE(rfq.growth_method, '') <> ''
+               AND COALESCE(pt.treatments, '') = ''
+        """)
+        if cr.rowcount:
+            _logger.info(
+                "[TREATMENT] copied the RFQ growth method onto %s product(s)",
+                cr.rowcount)
+            self.invalidate_model(['treatments'])
+        return cr.rowcount
+
+    @api.model
+    def _lgd_backfill_sieve_size(self):
+        cr = self.env.cr
+        # custom_sale_order is not a dependency of this module, so its tables
+        # may simply not be there. Nothing to backfill from if so.
+        if not (table_exists(cr, 'custom_sale_order_line')
+                and table_exists(cr, 'custom_sale_order')):
+            return 0
+        cr.execute("""
+            UPDATE product_template pt
+               SET sieve_size = rfq.size
+              FROM custom_sale_order_line csol
+              JOIN custom_sale_order cso ON cso.id = csol.order_id
+              JOIN customer_rfq rfq ON rfq.id = cso.customer_rfq_id
+             WHERE csol.product_template_id = pt.id
+               AND COALESCE(rfq.size, '') <> ''
+               AND COALESCE(pt.sieve_size, '') = ''
+        """)
+        if cr.rowcount:
+            _logger.info(
+                "[SIEVE SIZE] copied the RFQ Size onto %s product(s)",
+                cr.rowcount)
+            self.invalidate_model(['sieve_size'])
+        return cr.rowcount
 
     @api.onchange('certificate')
     def _onchange_certificate_autofetch(self):

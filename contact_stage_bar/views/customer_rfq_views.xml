@@ -19,7 +19,12 @@
                 <field name="carat"/>
                 <field name="color"/>
                 <field name="clarity"/>
-                <field name="size"/>
+                <!-- Sieve size. Only Natural + Non-Certified RFQs (melee
+                     parcels) carry one - it is hidden and blank on every
+                     other kind, which is most of the list - so the column is
+                     off by default and stays available in the column picker
+                     for whoever works those parcels. -->
+                <field name="size" optional="hide"/>
                 <!-- Procurement cost: never shown to Sales or Sales Managers. -->
                 <field name="price" groups="!contact_stage_bar.group_lgd_sales"/>
                 <field name="state" widget="badge"

@@ -966,6 +966,19 @@ class CustomerRfq(models.Model):
             return (self.lab_type_other or '').strip()
         return self._LGD_LAB_LABELS.get(self.lab_type, (self.lab_type or '').upper())
 
+    def _lgd_growth_treatment(self):
+        """HPHT / CVD, the word the website shows under Treatment.
+
+        Empty for a natural stone. growth_method defaults to 'hpht' and is
+        stored on every RFQ including the mined ones, so copying it
+        unconditionally would label a natural stone as grown.
+        """
+        self.ensure_one()
+        if self.stone_type != 'lab_grown' or not self.growth_method:
+            return ''
+        return dict(self._fields['growth_method'].selection).get(
+            self.growth_method, '')
+
     def _create_requested_stone(self, unit_price):
         vals = {
             'sale_ok': True,
@@ -986,6 +999,13 @@ class CustomerRfq(models.Model):
             # copying it here the stone reached the website with an empty
             # `lab` and the order was refused.
             'labs': self._lgd_lab_name() or False,
+            'sieve_size': self.size or False,
+            # The growth method is what the trade - and the website's Diamond
+            # Details panel - calls the stone's treatment. Without copying it
+            # here the product had none, so the offline payload sent
+            # treatment: "" and the website showed a blank where an online
+            # order of the same stone shows CVD or HPHT.
+            'treatments': self._lgd_growth_treatment() or False,
         }
 
         product = self.env['product.template'].sudo().with_context(

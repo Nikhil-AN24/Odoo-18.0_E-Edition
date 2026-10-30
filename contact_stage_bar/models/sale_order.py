@@ -2514,20 +2514,15 @@ class SaleOrder(models.Model):
         if self.order_source == 'offline':
             incomplete = self.order_line.filtered(
                 lambda l: not l.display_type
-                and l.line_type == 'lgd'
+                and not l.is_melee_parent
                 and l.availability_status == 'confirmed'
                 and (not l.vendor_id
                      or not getattr(l, 'procurement_price_per_carat', 0.0))
             )
             if incomplete:
-                nums = ', '.join(
-                    l.order_number or '(no number)' for l in incomplete
-                )
                 raise UserError(
                     f"Cannot confirm order {self.name}.\n\n"
-                    f"Vendor Company and Procurement Price/carat are required "
-                    f"on every confirmed stone line. Please fill them for:\n"
-                    f"{nums}"
+                    f"Vendor Company required on every confirmed stone line."
                 )
         # Sanctioned action. Procurement has only availability write access, so
         # the confirm cascade (state change, PO creation, reads on system models)
@@ -3247,6 +3242,21 @@ class SaleOrderLine(models.Model):
         return len(lines)
 
     @api.model
+    def _lgd_backfill_offline_line_type(self):
+        lines = self.sudo().search([
+            ('line_type', '=', 'lgd'),
+            ('stone_certification_type', '=', 'non_certified'),
+            ('order_id.order_source', '=', 'offline'),
+        ])
+        if lines:
+            _logger.info(
+                "[MELEE] filing %d offline non-certified line(s) as MELEE: "
+                "%s%s", len(lines), lines.ids[:20],
+                ' ...' if len(lines) > 20 else '')
+            lines.write({'line_type': 'melee'})
+        return len(lines)
+
+    @api.model
     def _lgd_clear_dead_replacement_pending(self):
 
         lines = self.sudo().search([
@@ -3946,6 +3956,8 @@ class SaleOrderLine(models.Model):
     customer_reference_note = fields.Char(string="Customer Reference Note", related='product_template_id.customer_reference_note', readonly=False)
     popup_item_notes = fields.Char(string="General Order Notes", related='product_template_id.item_notes', readonly=False)
     popup_default_qc_requirements = fields.Char(string="Default Qc Requirements", related='product_template_id.default_qc_requirements', readonly=False)
+    sieve_size = fields.Char(
+        string="Size", related='product_template_id.sieve_size')
     # ── Added for the Order Lines CSV export column reorder ──
     vendor_sku = fields.Char(string="Vendor SKU", related='product_template_id.stock_number')
     vendor_per_carat_price = fields.Float(string="Vendor Per Carat Price", related='product_template_id.price_per_carat')
