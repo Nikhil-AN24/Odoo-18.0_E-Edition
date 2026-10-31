@@ -108,15 +108,19 @@ class SaleOrderLine(models.Model):
     order_total = fields.Monetary(
         string='Order Total', readonly=True, currency_field='rfq_currency_id',
         related='order_id.custom_sale_order_id.customer_rfq_id.order_total')
-    # Vendor Total Price = Procurement Price/carat × Carat/Stone (the stone's
-    # own carat weight). carat_weight is a Char, so it is parsed to a number.
     vendor_total_price = fields.Monetary(
-        string='Vendor Total Price', readonly=True, currency_field='rfq_currency_id',
-        compute='_compute_vendor_total_price')
+        string='Vendor Total Price', currency_field='rfq_currency_id',
+        compute='_compute_vendor_total_price',
+        store=True, readonly=False)
 
-    @api.depends('procurement_price_per_carat', 'carat_weight')
+    @api.depends('procurement_price_per_carat', 'carat_weight', 'final_price')
     def _compute_vendor_total_price(self):
         for line in self:
+            rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
+            if not rfq:
+                line.vendor_total_price = (
+                    line.vendor_total_price or line.final_price or 0.0)
+                continue
             try:
                 carat = float(line.carat_weight) if line.carat_weight else 0.0
             except (TypeError, ValueError):
