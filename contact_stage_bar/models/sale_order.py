@@ -2532,6 +2532,12 @@ class SaleOrder(models.Model):
                     f"Cannot confirm order {self.name}.\n\n"
                     f"Vendor Company required on every confirmed stone line."
                 )
+
+        if self.lgd_show_usd_rate and not self.lgd_usd_rate:
+            raise UserError(
+                f"Cannot confirm order {self.name}.\n\n"
+                f"Current $ Rate is required on an order priced in dollars."
+            )
         # Sanctioned action. Procurement has only availability write access, so
         # the confirm cascade (state change, PO creation, reads on system models)
         # is run elevated for them; Sales/admin keep their normal (attributed) run.

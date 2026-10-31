@@ -482,31 +482,45 @@ class SaleOrder(models.Model):
             MELEE   -> LabGrown Melle
             NATURAL -> Natural Certified
 
-        A parcel goes out as MELEE. It is the only thing that makes the
-        website render it the way it renders the same parcel ordered online:
-        the "Lab Grown Melee" heading, the Type / Shape / Colour / Clarity /
-        Cut / Parcels panel instead of the certified Measurement / Depth% /
-        Table / Ratio / Girdle one, and no Replace Stone button. The
-        meleeUnit / meleePricing block alone did not do it - the website
-        switches the card on lineType.
+        A parcel wants to go out as MELEE. It is the only thing that makes
+        the website render it the way it renders the same parcel ordered
+        online: the "Lab Grown Melee" heading, the Type / Shape / Colour /
+        Clarity / Cut / Parcels panel instead of the certified Measurement /
+        Depth% / Table / Ratio / Girdle one, and no Replace Stone button.
+        The meleeUnit / meleePricing block alone does not do it - the
+        website switches the card on lineType.
 
-        One build of the offline endpoint had a narrower enum and refused
-        the whole order over it:
+        But only when `lgd_offline_send_melee` says this deployment's
+        website knows the word. An endpoint that does not answers:
 
-            400 | lineType must be LGD or NATURAL   (AUG-OFF-00053)
+            400 | lineType must be LGD or NATURAL
 
-        So this is sent optimistically and _lgd_push_offline_order retries
-        once with LGD if that is what comes back - see
-        _lgd_offline_melee_rejected. A parcel still reaches the website
-        either way, and the day every deployment knows the word the display
-        corrects itself with no redeploy here.
+        This was once sent optimistically and retried as LGD on that 400.
+        That is WRONG and must not come back: the refused request still
+        registered its orderUniqueIds, so the second POST was refused in
+        turn with
+
+            400 | orderUniqueId 90013041 already exists   (AUG-OFF-00107)
+
+        and the order could never land, on that attempt or any retry after
+        it. orderUniqueId is derived from the line id precisely so it never
+        drifts, so a second POST can only ever carry the same ids. One
+        order, one POST.
+
+        Flip the parameter to 1 the day /odoo/order/offline accepts MELEE -
+        no redeploy needed.
         """
         if line.stone_type == 'natural':
             return 'NATURAL'
-        if (line.line_type == 'melee'
-                and not self.env.context.get('lgd_offline_no_melee_type')):
+        if line.line_type == 'melee' and self._lgd_offline_melee_enabled():
             return 'MELEE'
         return 'LGD'
+
+    def _lgd_offline_melee_enabled(self):
+
+        value = self.env['ir.config_parameter'].sudo().get_param(
+            'lgd_offline_send_melee', '')
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
     def _lgd_offline_payload(self):
         """Build the POST body for /odoo/order/offline.
@@ -545,8 +559,9 @@ class SaleOrder(models.Model):
             }
             # Only on a parcel: these keys mean nothing on a single
             # certified stone. Keyed off the LINE, not off lineType, which
-            # falls back to LGD on a website that does not know the word
-            # yet - see _lgd_offline_line_type.
+            # still says LGD wherever the website cannot take MELEE - see
+            # _lgd_offline_line_type. No build has ever objected to these
+            # keys, so a parcel is at least described as one either way.
             if line.line_type == 'melee':
                 entry.update(self._lgd_offline_melee_block(line))
             orders.append(entry)
@@ -751,18 +766,6 @@ class SaleOrder(models.Model):
             response.status_code, url, (response.text or '')[:600])
         return response
 
-    def _lgd_offline_melee_rejected(self, body, payload):
-        """Did this 400 come from the MELEE lineType and nothing else?
-
-        Narrow on purpose. A 400 that names some other field is a real
-        validation failure and must be queued and surfaced, not quietly
-        resent under a different lineType.
-        """
-        if not any(entry.get('lineType') == 'MELEE'
-                   for entry in (payload.get('orders') or [])):
-            return False
-        return 'linetype' in (body or '').lower()
-
     def _lgd_push_offline_order(self):
         """POST this offline order to the website and store the ids it returns.
 
@@ -809,26 +812,6 @@ class SaleOrder(models.Model):
         response = self._lgd_offline_send(url, headers, payload)
         if response is None:
             return False
-
-        if (response.status_code == 400
-                and self._lgd_offline_melee_rejected(response.text, payload)):
-            # This deployment of the endpoint does not know the MELEE
-            # lineType. Send the parcel again as LGD rather than lose the
-            # order over a display word: it will show under the certified
-            # card until the website is taught MELEE, which is exactly
-            # where it stood before, and the parcel still arrives.
-            _logger.warning(
-                "[OFFLINE PUSH] %s: the website refused lineType MELEE "
-                "(%s). Resending the parcel as LGD - it will render under "
-                "the certified card until /odoo/order/offline accepts "
-                "MELEE.",
-                self.sdk_augmont_number or self.name,
-                (response.text or '').strip()[:200])
-            payload = self.with_context(
-                lgd_offline_no_melee_type=True)._lgd_offline_payload()
-            response = self._lgd_offline_send(url, headers, payload)
-            if response is None:
-                return False
 
         if response.status_code != 200:
             _logger.error(
