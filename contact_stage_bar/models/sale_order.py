@@ -18,6 +18,14 @@ _logger = logging.getLogger(__name__)
 from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
+# Which line types Replace Stone is offered on. A parcel is in here as well
+# as a single certified stone: when one is not available or fails QC,
+# Procurement still has to source a substitute, and the wizard already copes
+# with a non-certified original - it enforces the shape rule only when
+# stone_certification_type is 'certified'. The rule used to read
+# line_type == 'lgd', which covered offline parcels only by accident, because
+# nothing on the offline path set line_type and they defaulted to 'lgd'.
+LGD_REPLACEABLE_LINE_TYPES = ('lgd', 'melee')
 _LGD_DEAD_LINE_STATUSES = (
     'cancelled', 'not_available', 'replaced', 'memo_returned')
 
@@ -59,7 +67,7 @@ class SaleOrder(models.Model):
     def _compute_replacement_alert_count(self):
         for order in self:
             order.replacement_alert_count = len(order.order_line.filtered(
-                lambda l: l.line_type == 'lgd'
+                lambda l: l.line_type in LGD_REPLACEABLE_LINE_TYPES
                 and l.availability_status in LGD_REPLACEABLE_STATUSES))
 
     # True when any line has been replaced used to show the "Replaced"
@@ -3689,10 +3697,10 @@ class SaleOrderLine(models.Model):
         Operations roles only — enforced by the
         wizard's ACL and by the button's group on the view."""
         self.ensure_one()
-        if (self.line_type != 'lgd'
+        if (self.line_type not in LGD_REPLACEABLE_LINE_TYPES
                 or self.availability_status not in LGD_REPLACEABLE_STATUSES):
             raise UserError(_(
-                "Replace Stone applies only to a certified (LGD) line whose "
+                "Replace Stone applies only to a stone line whose "
                 "availability is Not available or QC Fail."))
         return {
             'type': 'ir.actions.act_window',
