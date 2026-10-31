@@ -881,6 +881,23 @@ class PartnerSyncController(http.Controller):
                     _lgd_status_name = _lgd_status_raw.get('statusName', '')
                     lgd_avail_status = STATUS_MAP.get(_lgd_status_name, False)
 
+                    vendor_ppc = product_details.get('pricePerCarat')
+                    if vendor_ppc in (None, ''):
+                        vendor_ppc = product_details.get('pricePerCaratMargin')
+                    try:
+                        vendor_ppc = float(vendor_ppc or 0.0)
+                    except (TypeError, ValueError):
+                        vendor_ppc = 0.0
+                    _logger.info(
+                        "   💰 Vendor rate for %s: using %s | "
+                        "pricePerCarat=%r pricePerCaratMargin=%r "
+                        "finalPrice=%r finalPriceMargin=%r",
+                        order_number, vendor_ppc,
+                        product_details.get('pricePerCarat'),
+                        product_details.get('pricePerCaratMargin'),
+                        product_details.get('finalPrice'),
+                        product_details.get('finalPriceMargin'))
+
                     sale_order.sudo().write({
                         'order_line': [(0, 0, {
                             'product_id': variant.id,
@@ -890,6 +907,7 @@ class PartnerSyncController(http.Controller):
                             'name': product.name,
                             'order_number': order_number,
                             'vendor_id': vendor.id,
+                            'procurement_price_per_carat': vendor_ppc,
                             'tax_id': [(6, 0, product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
                             'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(lgd_avail_status),
                             'availability_status': lgd_avail_status,
