@@ -211,7 +211,8 @@ class SaleOrderLine(models.Model):
         for line in self:
             rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
             if not rfq:
-                line.procurement_price_per_carat = 0.0
+                line.procurement_price_per_carat = (
+                    line.procurement_price_per_carat or 0.0)
                 continue
             size_line = line.rfq_size_line_id
             if rfq.different_prices and size_line:

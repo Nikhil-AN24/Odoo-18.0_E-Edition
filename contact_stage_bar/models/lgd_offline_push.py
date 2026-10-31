@@ -239,6 +239,36 @@ class SaleOrder(models.Model):
             'finalPriceMargin': final_margin,
         }
 
+    def _lgd_offline_line_description(self, line):
+        """What Sales typed in the RFQ's Description column for this stone.
+
+        It reaches the order line only inside its composed name -
+        "CRFQ00130 - Testing 3103" - and was on no key of the payload, so
+        the website had no way to show it. The raw description is preferred
+        over that name; the name is the fallback for a line with no size
+        row behind it.
+        """
+        size_line = line.rfq_size_line_id
+        if size_line and size_line.description:
+            return size_line.description
+        return line.name or ''
+
+    def _lgd_offline_order_note(self, line):
+        """orderNote, with the line description as a fallback.
+
+        orderNote carries Order Specific Notes, which is a field on the
+        PRODUCT and is empty on every offline order unless somebody types
+        into the (i) popup. "Added Note" on the website's Order Details is
+        the box the description belongs in, and orderNote is the likeliest
+        key behind it - so where nothing else claims orderNote the
+        description rides there rather than printing "-".
+
+        Nothing is overwritten: a real Order Specific Note always wins. If
+        the website reads some other key for Added Note, drop this and keep
+        lineDescription, which carries the same text on a key of its own.
+        """
+        return line.order_specific or self._lgd_offline_line_description(line)
+
     def _lgd_offline_melee_block(self, line):
         """meleeUnit / meleeQty / meleePricing for one parcel line.
 
@@ -550,7 +580,8 @@ class SaleOrder(models.Model):
                 'quantity': int(line.product_uom_qty or 1),
                 'productPrice': float(line.price_unit or 0.0),
                 'invoiceAmount': float(line.price_total or 0.0),
-                'orderNote': line.order_specific or '',
+                'orderNote': self._lgd_offline_order_note(line),
+                'lineDescription': self._lgd_offline_line_description(line),
                 'generalNotes': line.popup_item_notes or '',
                 'customerReference': line.customer_reference_note or '',
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
