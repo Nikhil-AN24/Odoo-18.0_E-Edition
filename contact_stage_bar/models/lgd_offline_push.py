@@ -157,6 +157,11 @@ class SaleOrder(models.Model):
             return 1.0
         company = self.company_id or self.env.company
         date = self.date_order or fields.Date.context_today(self)
+
+        if (self.lgd_show_usd_rate and self.lgd_usd_rate
+                and company.currency_id == inr):
+            return float(self.lgd_usd_rate)
+
         rate = self.currency_id._convert(1.0, inr, company, date, round=False)
         if rate != 1.0:
             return rate
@@ -176,8 +181,9 @@ class SaleOrder(models.Model):
 
         _logger.warning(
             "Offline push %s: no %s->INR rate on %s or on any other "
-            "company, so no conversion rate is being sent. Set the rate "
-            "under Accounting > Currencies.",
+            "company, so no conversion rate is being sent. Fill in "
+            "\"Current $ Rate\" on the order, or set the rate under "
+            "Accounting > Currencies.",
             self.sdk_augmont_number or self.name,
             self.currency_id.name, company.display_name)
         return None
@@ -254,11 +260,18 @@ class SaleOrder(models.Model):
             'meleePricing': {'carats': carats, 'pieces': pieces},
         }
 
+    def _lgd_offline_title(self, line, template):
+        """What the website prints as the stone's heading."""
+        if (line.stone_certification_type == 'non_certified'
+                and template.shapes):
+            return template.shapes
+        return template.name or line.name or ''
+
     def _lgd_offline_product_block(self, line):
         """The `product` block for one stone."""
         template = line.product_template_id
         return {
-            'title': template.name or line.name or '',
+            'title': self._lgd_offline_title(line, template),
             'stockNum': (line.lgd_stock_number or template.stock_number
                          or template.lgd_stock_number or ''),
             # From the LINE, not the template: a non-certified parcel shares

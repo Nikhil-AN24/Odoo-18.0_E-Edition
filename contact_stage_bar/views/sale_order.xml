@@ -434,10 +434,11 @@
                         <field name="order_number" readonly="1"/>
                         <field name="product_template_id" readonly="1"/>
                         <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
-                        <!-- Replace Stone: certified line that is Not available. -->
+                        <!-- Replace Stone: a stone line - single stone or parcel - that is
+                             Not available or has failed QC. -->
                         <button name="action_open_replace_stone" type="object"
                                 icon="fa-exchange" title="Replace Stone"
-                                invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
+                                invisible="line_type not in ('lgd', 'melee') or availability_status not in ('not_available', 'qc_fail')"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
                         <field name="lgd_ship_address_id" string="Deliver to"
@@ -495,11 +496,11 @@
 
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="after">
                 <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
-                <!-- Replace Stone: Operations only, on a certified
-                     line that is Not available. -->
+                <!-- Replace Stone: Operations only, on a stone line -
+                     single stone or parcel - that is Not available. -->
                 <button name="action_open_replace_stone" type="object"
                         icon="fa-exchange" title="Replace Stone"
-                        invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
+                        invisible="line_type not in ('lgd', 'melee') or availability_status not in ('not_available', 'qc_fail')"
                         groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                 <!-- Sales confirm / reject a pending replacement.
                      Hidden on a dead line as well as on an unflagged one:
