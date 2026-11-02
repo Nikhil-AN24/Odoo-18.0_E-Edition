@@ -3040,9 +3040,9 @@ class SaleOrder(models.Model):
     }
     _PROCUREMENT_ORDER_SEGMENT_LABELS = {
         'lab_grown_certified': 'LabGrown Certified',
-        'lab_grown_melee': 'LabGrown Melle',
+        'lab_grown_melee': 'LabGrown Melee',
         'natural_certified': 'Natural Certified',
-        'natural_melee': 'Natural Melle',
+        'natural_melee': 'Natural Melee',
     }
 
     stone_list_names = fields.Char(
@@ -4003,15 +4003,6 @@ class SaleOrderLine(models.Model):
         string="Certification", compute='_compute_stone_classification',
         store=True, index=True)
 
-    #: How the website spells "this stone has no lab certificate" in the
-    #: `lab` field. Compared with punctuation and case removed, so
-    #: "Non-Cert", "non cert" and "NONCERTIFIED" all match.
-    # Stone Type carries only the origin half of the category and
-    # Certification the other, so a MELEE line reads "Lab Grown" +
-    # "Non-Certified" and you have to combine two columns by eye to see that
-    # it is LabGrown Melle. This is that combination, named exactly as the
-    # four Procurement lists are. Not stored: it is two stored fields
-    # concatenated, so there is nothing to keep in step.
     stone_list_name = fields.Char(
         string="Stone List", compute='_compute_stone_list_name')
 
@@ -4032,23 +4023,22 @@ class SaleOrderLine(models.Model):
     # Without it every push re-sent the status of every line on the order,
     # changed or not. The platform refuses a no-op ("Status transition from
     # 'Confirmed' to 'Confirmed' is not allowed") and refuses the WHOLE
-    # payload with it, so one unchanged line silently destroyed the genuine
-    # updates batched alongside it.
+    # payload with it, so one unchanged line silently destroyed the genuine updates batched alongside it.
     lgd_last_pushed_status = fields.Char(
         string="Status on website", copy=False, readonly=True)
 
     def _lgd_is_non_certified(self):
-        """True when this line belongs in one of the Melle lists.
+        """True when this line belongs in one of the Melee lists.
 
         The platform has three line types and Odoo has four Procurement
         lists, and the agreed mapping between them runs on lineType alone:
 
             LGD     -> LabGrown Certified
-            MELEE   -> LabGrown Melle
+            MELEE   -> LabGrown Melee
             NATURAL -> Natural Certified
 
-        (Natural Melle has no lineType yet; the list stays for when it
-        does.) So MELEE is the only inbound signal that means Melle.
+        (Natural Melee has no lineType yet; the list stays for when it
+        does.) So MELEE is the only inbound signal that means Melee.
 
         A middle period also treated lab "Non-Cert" on an ordinary LGD line
         as non-certified, because a replacement was once refused with "the
@@ -4057,7 +4047,7 @@ class SaleOrderLine(models.Model):
         method's job to prevent: the replacement check tests the
         certificate the original ACTUALLY holds rather than its
         classification, so a Non-Cert LGD stone passes it on its own. Were
-        the clause kept, those stones would sit in LabGrown Melle, which is
+        the clause kept, those stones would sit in LabGrown Melee, which is
         a parcel list they do not belong to.
 
         is_non_certified_source stays: it is set only from a Customer RFQ,

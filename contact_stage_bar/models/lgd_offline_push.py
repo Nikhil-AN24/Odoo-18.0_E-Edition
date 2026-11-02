@@ -40,9 +40,20 @@ class SaleOrder(models.Model):
         source = ((partner.contact_person_name or '').strip()
                   if 'contact_person_name' in partner._fields else '')
         source = (source or (partner.name or '').strip()
-                  or (partner.parent_id.name or '').strip())
+                  or (partner.parent_id.name or '').strip()
+                  # Last resort: the company name. The website rejects an
+                  # empty lastName outright and takes the whole invoice down
+                  # with it, so a repeated company name beats nothing.
+                  or (partner.commercial_company_name or '').strip()
+                  or (partner.company_name or '').strip())
         parts = source.split()
         if not parts:
+            _logger.warning(
+                "Offline push %s: contact %s has no name of any kind. The "
+                "website rejects an empty lastName, so this order will be "
+                "refused until one is set.",
+                self.sdk_augmont_number or self.name,
+                partner.display_name or partner.id)
             return '', ''
         if len(parts) == 1:
             _logger.warning(
@@ -145,13 +156,6 @@ class SaleOrder(models.Model):
         return sgst, cgst, igst
 
     def _lgd_offline_inr_rate(self):
-        """How many rupees one unit of the order currency is worth.
-
-        Offline orders are priced in USD and the website shows a rupee figure
-        beside the dollar one. Nothing in the payload carried a rate, so it
-        was printing the dollar amount unchanged - Rs 10.20 against $10.20.
-        1.0 when the order is already in INR.
-        """
         inr = self.env.ref('base.INR', raise_if_not_found=False)
         if not inr or not self.currency_id or self.currency_id == inr:
             return 1.0
@@ -165,7 +169,6 @@ class SaleOrder(models.Model):
         rate = self.currency_id._convert(1.0, inr, company, date, round=False)
         if rate != 1.0:
             return rate
-
 
         for other in self._lgd_offline_rate_companies(company):
             rate = self.currency_id._convert(1.0, inr, other, date,
@@ -269,25 +272,66 @@ class SaleOrder(models.Model):
         """
         return line.order_specific or self._lgd_offline_line_description(line)
 
+    def _lgd_offline_melee_rfq(self, line):
+        """The Customer RFQ behind a parcel line, or an empty recordset."""
+        size_line = line.rfq_size_line_id
+        if size_line and size_line.rfq_id:
+            return size_line.rfq_id
+        return line.order_id.custom_sale_order_id.sudo().customer_rfq_id
+
     def _lgd_offline_melee_block(self, line):
         """meleeUnit / meleeQty / meleePricing for one parcel line.
 
-        The key names are the website's own: they are what it sends Odoo for
-        an ONLINE melee order (the MELEE branch of website_api_route), so a
-        parcel is described the same way in both directions. Without them the
-        website has no piece or carat count to put on its melee card.
+        Sent ONLY on a MELEE line - the spec lists these three keys as
+        "Ignored" on LGD and Natural lines, and they went out on every line
+        until now.
 
-        Offline expands a parcel into one line per stone, so pieces is that
-        line's quantity and carats is that stone's weight - not the whole
-        parcel's. A Natural melee RFQ records only a sieve Size and no piece
-        count, so its single line reports the one row it has.
+        Offline expands a parcel into one line per unit ordered, so this
+        line's share is one row: its own carat weight and its own quantity,
+        not the whole parcel's. meleeUnit follows the RFQ's own Unit toggle,
+        because that is the unit the buyer actually ordered in - a Pieces RFQ
+        counting carats would reduce the parcel's stock by the wrong amount.
         """
         carats = self._lgd_offline_carat(line)
         pieces = int(line.product_uom_qty or 1)
+        rfq = self._lgd_offline_melee_rfq(line)
+        by_piece = (rfq.unit_type or 'carats') == 'pieces' if rfq else False
         return {
-            'meleeUnit': 'CARAT',
-            'meleeQty': carats,
+            'meleeUnit': 'PIECE' if by_piece else 'CARAT',
+            'meleeQty': pieces if by_piece else carats,
             'meleePricing': {'carats': carats, 'pieces': pieces},
+        }
+
+    def _lgd_offline_melee_product_block(self, line):
+        template = line.product_template_id
+        carats = self._lgd_offline_carat(line)
+        pieces = int(line.product_uom_qty or 1)
+        prices = self._lgd_offline_price_block(line)
+        return {
+            'skuId': (line.lgd_stock_number or template.lgd_stock_number
+                      or template.stock_number or ''),
+            'title': self._lgd_offline_title(line, template),
+            'shape': template.shapes or '',
+            'colorRange': template.color or '',
+            'clarityRange': template.clarity or '',
+            # Odoo records a sieve Size for a parcel, never a millimetre
+            # span, and the spec asks for "" rather than a guessed number.
+            'mmMin': '',
+            'mmMax': '',
+            'mmRange': '',
+            'sieveSize': template.sieve_size or '',
+            # Carats per stone. An offline parcel is expanded one unit per
+            # line, so this is that line's own weight over its own count.
+            'avgCaratPerStone': (carats / pieces) if pieces else carats,
+            'pricePerCarat': prices['pricePerCarat'],
+            'pricePerCaratMargin': prices['pricePerCaratMargin'],
+            'cutGrade': template.cut or '',
+            'treatment': template.treatments or '',
+            'lab': template._lgd_cert_block().get('lab') or '',
+            'qualityGrade': '',
+            'location': '',
+            'country': template.country_id.name or '',
+            'imageUrl': template.image_augmont or '',
         }
 
     def _lgd_offline_title(self, line, template):
@@ -481,8 +525,24 @@ class SaleOrder(models.Model):
                 self.name, line.id, unique_id, self._LGD_OFFLINE_UNIQUE_ID_MAX)
         return unique_id
 
-    def _lgd_offline_line_status(self, line):
+    _LGD_OFFLINE_CREATE_STATUSES = ('Diamond Booked', 'Confirmed')
 
+    def _lgd_offline_line_status(self, line):
+        """The line's status, narrowed to what order creation accepts.
+
+        An offline order is pushed when it is confirmed, so its lines read
+        Confirmed and nothing here applies. A RETRY is the dangerous case:
+        _lgd_needs_offline_push keeps re-pushing until every line has an
+        order_number back, and by then a line may well have moved on to QC
+        Fail or Payment Pending. Sending one of those would be refused for
+        the WHOLE invoice - and a refused invoice still reserves its
+        orderUniqueIds, which is how AUG-OFF-00107 became unsendable for
+        good.
+
+        So anything outside the pair falls back to the spec's own default.
+        It is corrected within seconds: the real status follows on
+        orderStatusUpdate, which does take the full vocabulary.
+        """
         status = line.availability_status or ''
         word = LINE_STATUS_TO_AUGMONT.get(status)
         if not word:
@@ -491,6 +551,13 @@ class SaleOrder(models.Model):
                 "equivalent. Sending 'Diamond Booked'. Add it to "
                 "LINE_STATUS_TO_AUGMONT.",
                 self.sdk_augmont_number or self.name, line.id, status)
+            return 'Diamond Booked'
+        if word not in self._LGD_OFFLINE_CREATE_STATUSES:
+            _logger.info(
+                "Offline push %s: line %s is %r, which order creation does "
+                "not take. Sending 'Diamond Booked'; the real status follows "
+                "on the next status update.",
+                self.sdk_augmont_number or self.name, line.id, word)
             return 'Diamond Booked'
         return word
 
@@ -509,7 +576,7 @@ class SaleOrder(models.Model):
         sale.order.line._lgd_is_non_certified:
 
             LGD     -> LabGrown Certified
-            MELEE   -> LabGrown Melle
+            MELEE   -> LabGrown Melee
             NATURAL -> Natural Certified
 
         A parcel wants to go out as MELEE. It is the only thing that makes
@@ -547,10 +614,18 @@ class SaleOrder(models.Model):
         return 'LGD'
 
     def _lgd_offline_melee_enabled(self):
+        """Whether a parcel may go out as MELEE. On unless switched off.
 
+        It was the other way round while /odoo/order/offline answered
+        "lineType must be LGD or NATURAL" to the word. 
+
+        `lgd_offline_send_melee` survives as the off-switch: set it to 0 and
+        parcels go out as LGD again, with no redeploy, if a deployment turns
+        out to be running an endpoint that predates the spec.
+        """
         value = self.env['ir.config_parameter'].sudo().get_param(
             'lgd_offline_send_melee', '')
-        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+        return str(value).strip().lower() not in ('0', 'false', 'no', 'off')
 
     def _lgd_offline_payload(self):
         """Build the POST body for /odoo/order/offline.
@@ -567,6 +642,8 @@ class SaleOrder(models.Model):
 
         orders = []
         for line in self._lgd_offline_lines():
+            line_type = self._lgd_offline_line_type(line)
+            is_melee = line_type == 'MELEE'
             entry = {
                 # Odoo's own line id, echoed back by the website so each
                 # orderUniqueId lands on the line it belongs to. Product
@@ -575,25 +652,27 @@ class SaleOrder(models.Model):
                 # certNumber and an lgdStockNum and cannot be told apart.
                 'lineRef': line.id,
                 'orderUniqueId': self._lgd_offline_unique_id(line),
-                'lineType': self._lgd_offline_line_type(line),
+                'lineType': line_type,
                 'status': self._lgd_offline_line_status(line),
-                'quantity': int(line.product_uom_qty or 1),
+                # Always 1 on a parcel: what was sold is in meleeQty, and a
+                # quantity repeated in both places is counted twice.
+                'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
                 'productPrice': float(line.price_unit or 0.0),
                 'invoiceAmount': float(line.price_total or 0.0),
                 'orderNote': self._lgd_offline_order_note(line),
-                'lineDescription': self._lgd_offline_line_description(line),
                 'generalNotes': line.popup_item_notes or '',
                 'customerReference': line.customer_reference_note or '',
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
                 'seller': self._lgd_offline_seller_block(line),
-                'product': self._lgd_offline_product_block(line),
+                'product': (self._lgd_offline_melee_product_block(line)
+                            if is_melee
+                            else self._lgd_offline_product_block(line)),
             }
-            # Only on a parcel: these keys mean nothing on a single
-            # certified stone. Keyed off the LINE, not off lineType, which
-            # still says LGD wherever the website cannot take MELEE - see
-            # _lgd_offline_line_type. No build has ever objected to these
-            # keys, so a parcel is at least described as one either way.
-            if line.line_type == 'melee':
+            # Keyed off lineType, not off line.line_type: with the MELEE
+            # off-switch thrown a parcel goes out as LGD, and these three
+            # keys are ignored on an LGD line, so sending them there is
+            # noise the spec asks us to stop making.
+            if is_melee:
                 entry.update(self._lgd_offline_melee_block(line))
             orders.append(entry)
 
@@ -631,13 +710,6 @@ class SaleOrder(models.Model):
                 self.partner_shipping_id or partner),
             'orders': orders,
         }
-        # Rupees per unit of `currency`, so the website can show the INR
-        # figure it displays beside the dollar one instead of repeating the
-        # dollar amount. Omitted entirely when Odoo has no rate - see
-        # _lgd_offline_inr_rate.
-        rate = self._lgd_offline_inr_rate()
-        if rate is not None:
-            payload['conversionRate'] = rate
         return payload
 
     # ------------------------------------------------------------------
