@@ -219,6 +219,20 @@
                                    options="{'no_create': True}"
                                    readonly="state != 'draft'"
                                    groups="!contact_stage_bar.group_lgd_procurement,!contact_stage_bar.group_lgd_procurement_manager"/>
+
+                            <!-- The USD rate this quote was struck at, carried
+                                 onto the Offline Order when one is created.
+                                 Deliberately NOT restricted by group: it is the
+                                 rate the whole order is priced at, so everyone
+                                 who can see the order should be able to see it.
+                                 Locked once the Offline Order exists - write()
+                                 on customer.rfq enforces the same rule for
+                                 every group, because this readonly only binds
+                                 the form. -->
+                            <field name="lgd_show_usd_rate" invisible="1"/>
+                            <field name="lgd_usd_rate" string="Current $ Rate"
+                                   invisible="not lgd_show_usd_rate"
+                                   readonly="state in ('offline_order_created', 'cancel')"/>
                         </group>
                     </group>
 
