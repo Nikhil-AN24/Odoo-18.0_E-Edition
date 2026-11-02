@@ -350,10 +350,10 @@
             <t t-foreach="docs" t-as="doc">
 
                 <!-- ── Data preparation ─────────────────────────────────── -->
-
-                <!-- Cancelled / unavailable lines never appear on the invoice. -->
+                <t t-set="dead_statuses"
+                   t-value="('cancelled', 'not_available', 'replaced', 'qc_fail', 'memo_returned')"/>
                 <t t-set="lines"
-                   t-value="doc.order_line.filtered(lambda l: l.availability_status not in ('cancelled', 'not_available') and not l.display_type)"/>
+                   t-value="doc.order_line.filtered(lambda l: l.availability_status not in dead_statuses and not l.display_type)"/>
 
                 <!-- Printing from a dispatch parcel ("Print invoice slip")
                      narrows the slip to that parcel: a split order has one
@@ -398,14 +398,22 @@
                      The halves are derived, not rounded independently: rounding
                      each half loses a paisa on odd tax amounts and the totals
                      column then fails to foot against TOTAL PAYABLE. -->
-                <!-- Totals. On a parcel slip the order's own amount_* would
-                     foot against stones the slip does not list, so they are
-                     summed from `lines` instead. The whole-order print keeps
-                     reading doc.amount_* unchanged - those carry the order's
-                     own rounding, which a re-sum would not reproduce. -->
-                <t t-set="amt_untaxed" t-value="sum(lines.mapped('price_subtotal')) if parcel_line_ids else doc.amount_untaxed"/>
-                <t t-set="amt_tax" t-value="sum(lines.mapped('price_tax')) if parcel_line_ids else doc.amount_tax"/>
-                <t t-set="amt_total" t-value="(amt_untaxed + amt_tax) if parcel_line_ids else doc.amount_total"/>
+                <!-- Totals are summed from `lines` - the stones the slip
+                     actually lists - and never from doc.amount_*.
+                     doc.amount_untaxed is the whole order including its dead
+                     stones, so a slip with a QC Fail line on the order used
+                     to hide the stone and keep its money: the column did not
+                     foot against what was printed above it.
+                     The same sum already served the parcel slip, which has
+                     the identical problem for a different reason, so there is
+                     now one rule rather than two.
+                     shipping_charges is added back because the order's own
+                     amount_untaxed carries it (see sale.order._compute_amounts)
+                     and a plain re-sum of the lines would drop it. -->
+                <t t-set="amt_untaxed"
+                   t-value="sum(lines.mapped('price_subtotal')) + (doc.shipping_charges or 0.0)"/>
+                <t t-set="amt_tax" t-value="sum(lines.mapped('price_tax'))"/>
+                <t t-set="amt_total" t-value="amt_untaxed + amt_tax"/>
 
                 <t t-set="intra" t-value="doc.gst_treatment == 'within_maharashtra'"/>
                 <t t-set="cgst" t-value="round(amt_tax / 2.0, 2) if intra else 0.0"/>
@@ -442,7 +450,7 @@
                 <t t-set="aug_doc_number" t-value="doc.lgd_oc_number or doc.sdk_augmont_number or doc.name"/>
                 <t t-set="aug_doc_ref" t-value="doc.sdk_augmont_number if doc.lgd_oc_number else False"/>
                 <t t-set="aug_doc_date" t-value="doc.date_order"/>
-                <t t-set="aug_payment_terms" t-value="doc.payment_term_id.name"/>
+                <t t-set="aug_payment_terms" t-value="doc._lgd_payment_terms_label()"/>
                 <t t-call="contact_stage_bar.report_augmont_band_header"/>
 
                 <!-- RUNNING FOOTER, same mechanism in the bottom margin. -->

@@ -234,6 +234,8 @@
                             <field name="lgd_usd_rate" string="Current $ Rate"
                                    invisible="not lgd_show_usd_rate"
                                    readonly="state in ('offline_order_created', 'cancel')"/>
+                            <field name="lgd_payment_terms"
+                                   readonly="state in ('offline_order_created', 'cancel')"/>
                         </group>
                     </group>
 

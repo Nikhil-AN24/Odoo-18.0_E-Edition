@@ -1,6 +1,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import float_compare
+from .sale_order import LGD_PAYMENT_TERMS
 from markupsafe import Markup
 import json
 import logging
@@ -209,6 +210,13 @@ class CustomerRfq(models.Model):
             ])
             rec.lgd_usd_rate = usd.sudo()._convert(
                 1.0, target, company, today, round=False) if has_rate else 0.0
+
+    lgd_payment_terms = fields.Selection(
+        LGD_PAYMENT_TERMS, string="Payment Terms",
+        default='advance', required=True, tracking=True,
+        help="The payment term agreed for this quote. Carried onto the "
+             "Offline Order when one is created, and printed on the Order "
+             "Slip and every later document.")
 
     customer_phone = fields.Char(
         string='Customer Phone',
@@ -1265,6 +1273,7 @@ class CustomerRfq(models.Model):
         order.action_confirm_offline_order()
 
         self._apply_rfq_usd_rate(order)
+        self._apply_rfq_payment_terms(order)
 
         self.message_post(body=_(
             "Offline Order %(order)s created with %(count)d line(s) "
@@ -1305,6 +1314,17 @@ class CustomerRfq(models.Model):
         _logger.info(
             "[RFQ RATE] %s: Current $ Rate %.4f carried onto %s.",
             self.name, self.lgd_usd_rate, sale_order.name)
+        return True
+
+    def _apply_rfq_payment_terms(self, order):
+        self.ensure_one()
+        sale_order = order.sale_order_id
+        if not (sale_order and self.lgd_payment_terms):
+            return False
+        sale_order.sudo().write({'lgd_payment_terms': self.lgd_payment_terms})
+        _logger.info(
+            "[RFQ TERMS] %s: Payment Terms '%s' carried onto %s.",
+            self.name, self.lgd_payment_terms, sale_order.name)
         return True
 
     def _build_offline_order_lines(self, base_vals):

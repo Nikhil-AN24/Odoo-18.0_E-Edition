@@ -277,6 +277,8 @@
                 <field name="lgd_show_usd_rate" invisible="1"/>
                 <field name="lgd_usd_rate" readonly="1"
                        invisible="not lgd_show_usd_rate"/>
+                <field name="lgd_payment_terms"
+                       readonly="state not in ('draft', 'sent')"/>
                 <!-- Shipping Charges hidden for everyone (not required for now). -->
                 <field name="shipping_charges" invisible="1" readonly="state != 'draft'" groups="!contact_stage_bar.group_lgd_procurement"/>
 
@@ -308,6 +310,7 @@
 
             <xpath expr="//field[@name='payment_term_id']" position="attributes">
                 <attribute name="readonly">state != 'draft'</attribute>
+                <attribute name="invisible">1</attribute>
             </xpath>
             
             <!-- Core locks Order Lines only on cancel/locked. This used to

@@ -27,6 +27,12 @@ LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # line_type == 'lgd', which covered offline parcels only by accident, because
 # nothing on the offline path set line_type and they defaulted to 'lgd'.
 LGD_REPLACEABLE_LINE_TYPES = ('lgd', 'melee')
+
+LGD_PAYMENT_TERMS = [
+    ('advance', 'Advance'),
+    ('upon_delivery', 'Upon Delivery'),
+    ('7_days', '7 Days'),
+]
 _LGD_DEAD_LINE_STATUSES = (
     'cancelled', 'not_available', 'replaced', 'memo_returned')
 
@@ -315,6 +321,27 @@ class SaleOrder(models.Model):
     billing_address = fields.Text(string="Billing Address")
     default_qc_requirements = fields.Char(string="Default QC Requirements")
     item_notes = fields.Char(string="General Order Notes")
+
+    # ── Payment Terms, as printed ─────────────────────────────────────
+    lgd_payment_terms = fields.Selection(
+        LGD_PAYMENT_TERMS, string="Payment Terms",
+        default='advance', required=True, tracking=True,
+        help="The payment term printed on the Order Slip and every later "
+             "document. Defaults to Advance on every order, website or "
+             "offline. Separate from the accounting Payment Terms, which "
+             "drives invoice due dates.")
+
+    def _lgd_payment_terms_label(self):
+        """The Payment Terms as the documents print it ("Upon Delivery").
+
+        The reports need the label, not the stored key, and a QWeb template
+        is the wrong place to unpack a selection - so it is done once here
+        and both templates call this.
+        """
+        self.ensure_one()
+        labels = dict(
+            self._fields['lgd_payment_terms']._description_selection(self.env))
+        return labels.get(self.lgd_payment_terms) or ''
 
     is_website = fields.Boolean(string="Is Website Order", default=False)
     order_source = fields.Selection(

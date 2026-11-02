@@ -67,7 +67,8 @@
                 <t t-set="aug_sale_order" t-value="lines.sale_line_ids.order_id[:1]"/>
                 <t t-set="aug_doc_ref" t-value="aug_sale_order.lgd_oc_number or aug_sale_order.sdk_augmont_number or False"/>
                 <t t-set="aug_doc_date" t-value="doc.invoice_date or doc.date"/>
-                <t t-set="aug_payment_terms" t-value="doc.invoice_payment_term_id.name"/>
+                <t t-set="aug_payment_terms"
+                   t-value="aug_sale_order._lgd_payment_terms_label() if aug_sale_order else ''"/>
                 <t t-call="contact_stage_bar.report_augmont_band_header"/>
                 <t t-set="aug_footer_show_address" t-value="False"/>
                 <t t-call="contact_stage_bar.report_augmont_band_footer"/>
