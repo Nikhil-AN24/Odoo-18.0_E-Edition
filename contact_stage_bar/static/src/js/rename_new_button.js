@@ -41,9 +41,9 @@
         var keepOwnTitle = [
             "All Orders",
             "LabGrown Certified",
-            "LabGrown Melle",
+            "LabGrown Melee",
             "Natural Certified",
-            "Natural Melle",
+            "Natural Melee",
         ];
 
         if (appName) {

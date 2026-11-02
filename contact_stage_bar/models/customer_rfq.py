@@ -1034,7 +1034,43 @@ class CustomerRfq(models.Model):
             # Number field and the "Fetch from IGI" button for 'Non-Certified'.
             product.certificate_type = 'Non-Certified'
             product.is_non_certified_source = True
+        self._apply_rfq_grades(product)
         return product
+
+    def _apply_rfq_grades(self, product):
+        """Carry the RFQ's Cut / Polish / Symmetry / Fluorescence pills over.
+
+        A Certified RFQ records these as grade selections rather than free
+        text, and nothing copied them onto the stone - so those four columns
+        of the Order Lines page, and the (i) product popup behind them, were
+        blank on every offline order raised from one, although Sales had
+        filled them in.
+
+        Written AFTER action_combine_sdk_fields deliberately. That method
+        appends a short code for each of cut, polish and symmetry it finds,
+        so composing the name from a request that lists two acceptable
+        grades would produce a trade name for a stone nobody ordered. The
+        name stays as composed; only the columns gain their values.
+
+        A value already on the product wins: the free-text Cut of a
+        Non-Certified RFQ is set in the vals above and must not be replaced
+        by an empty pill list - or by a pill list, where a form somehow
+        offers both.
+        """
+        self.ensure_one()
+        graded = {
+            'cut': ', '.join(self.cut_grade_ids.mapped('name')),
+            'polish': ', '.join(self.polish_grade_ids.mapped('name')),
+            'symmetry': ', '.join(self.symmetry_grade_ids.mapped('name')),
+            'fluorescence_intensity': ', '.join(
+                self.fluorescence_grade_ids.mapped('name')),
+        }
+        vals = {key: value for key, value in graded.items()
+                if value and not product[key]}
+        if vals:
+            vals['name'] = product.name
+            product.sudo().write(vals)
+        return vals
 
     def action_open_cancel_wizard(self):
         """Open the reason prompt. Cancelling always goes through it, so an RFQ can never end up cancelled with no explanation recorded."""

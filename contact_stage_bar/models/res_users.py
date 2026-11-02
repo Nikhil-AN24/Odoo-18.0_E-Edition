@@ -14,7 +14,6 @@ _LGD_PROCUREMENT_STONE_GROUPS = {
     'lgd_access_natural_melee': 'contact_stage_bar.group_lgd_procurement_natural_melee',
 }
 
-
 class ResGroups(models.Model):
     _inherit = "res.groups"
 
@@ -51,7 +50,7 @@ class ResUsers(models.Model):
         compute='_compute_lgd_access_lab_grown_certified',
         inverse='_inverse_lgd_procurement_stone_access')
     lgd_access_lab_grown_melee = fields.Boolean(
-        string="LabGrown Melle",
+        string="LabGrown Melee",
         compute='_compute_lgd_access_lab_grown_melee',
         inverse='_inverse_lgd_procurement_stone_access')
     lgd_access_natural_certified = fields.Boolean(
@@ -59,7 +58,7 @@ class ResUsers(models.Model):
         compute='_compute_lgd_access_natural_certified',
         inverse='_inverse_lgd_procurement_stone_access')
     lgd_access_natural_melee = fields.Boolean(
-        string="Natural Melle",
+        string="Natural Melee",
         compute='_compute_lgd_access_natural_melee',
         inverse='_inverse_lgd_procurement_stone_access')
 
@@ -188,4 +187,3 @@ class ResUsers(models.Model):
             _logger.info(
                 "sale.order Actions dropdown restricted to admins: %s",
                 ", ".join(sorted(gated)))
-

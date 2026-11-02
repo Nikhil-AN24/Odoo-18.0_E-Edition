@@ -908,6 +908,7 @@ class PartnerSyncController(http.Controller):
                             'order_number': order_number,
                             'vendor_id': vendor.id,
                             'procurement_price_per_carat': vendor_ppc,
+                            'vendor_total_price': product.final_price,
                             'tax_id': [(6, 0, product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
                             'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(lgd_avail_status),
                             'availability_status': lgd_avail_status,

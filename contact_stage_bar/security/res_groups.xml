@@ -95,7 +95,7 @@
         </record>
 
         <record id="group_lgd_procurement_lab_grown_melee" model="res.groups">
-            <field name="name">LGD Procurement: LabGrown Melle</field>
+            <field name="name">LGD Procurement: LabGrown Melee</field>
             <field name="category_id" ref="base.module_category_hidden"/>
         </record>
 
@@ -105,7 +105,7 @@
         </record>
 
         <record id="group_lgd_procurement_natural_melee" model="res.groups">
-            <field name="name">LGD Procurement: Natural Melle</field>
+            <field name="name">LGD Procurement: Natural Melee</field>
             <field name="category_id" ref="base.module_category_hidden"/>
         </record>
 
