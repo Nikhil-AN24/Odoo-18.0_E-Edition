@@ -9,6 +9,7 @@ from odoo.addons.contact_stage_bar.models.lgd_api_log import (
     IN, OUT, log_api)
 from datetime import datetime
 from odoo import models, fields, api, _
+from odoo.tools import float_compare
 from ..models.lgd_ship_address import GROUP_SALES
 from ..models.lgd_inventory_sale_line import LINE_STATUS_TO_AUGMONT
 
@@ -177,6 +178,71 @@ class PartnerSyncController(http.Controller):
             self._WEBSITE_ORDER_COMPANY_PARAM)
         return fallback
 
+    def _website_conversion_rate(self, data, company):
+
+        raw = data.get('conversionRate')
+        if raw in (None, ''):
+            _logger.info(
+                "[RATE] Order %s: the platform sent no conversionRate, so "
+                "Odoo will use its own currency table. The rupee figures on "
+                "the two systems may not match.",
+                data.get('invoiceNumber') or '(no invoice number)')
+            return 0.0
+
+        try:
+            rate = float(raw)
+        except (TypeError, ValueError):
+            _logger.warning(
+                "[RATE] Order %s: conversionRate %r is not a number, so it "
+                "was ignored and Odoo's own rate used instead.",
+                data.get('invoiceNumber') or '(none)', raw)
+            return 0.0
+
+        if rate <= 0:
+            _logger.warning(
+                "[RATE] Order %s: conversionRate %s is not positive, so it "
+                "was ignored and Odoo's own rate used instead.",
+                data.get('invoiceNumber') or '(none)', rate)
+            return 0.0
+
+        if rate < 1.0:
+            _logger.error(
+                "[RATE] Order %s: conversionRate %s is less than 1, which "
+                "looks like the inverse rate (USD per unit, not units per "
+                "USD). REFUSED - Odoo's own rate was used instead. The "
+                "platform should send rupees per dollar, e.g. 94.8400.",
+                data.get('invoiceNumber') or '(none)', rate)
+            return 0.0
+
+        # Advisory only: a mismatch here means their labels disagree with what
+        # the number is being used for, which is worth seeing in the log, but
+        # the rate itself is still the best figure available.
+        sent_currency = (data.get('currency') or '').strip().upper()
+        if sent_currency and sent_currency != 'USD':
+            _logger.warning(
+                "[RATE] Order %s: prices are labelled %s, not USD, but the "
+                "rate is being stored in the USD rate field. Check with the "
+                "platform before trusting the rupee figures.",
+                data.get('invoiceNumber') or '(none)', sent_currency)
+
+        rate_currency = (data.get('conversionRateCurrency') or '').strip().upper()
+        company_currency = (company.currency_id.name or '').upper()
+        if rate_currency and company_currency and rate_currency != company_currency:
+            _logger.warning(
+                "[RATE] Order %s: conversionRateCurrency is %s but this "
+                "company reports in %s. Storing the rate as sent; it will be "
+                "read as %s per USD.",
+                data.get('invoiceNumber') or '(none)',
+                rate_currency, company_currency, company_currency)
+
+        _logger.info(
+            "[RATE] Order %s: using the platform's rate, 1 USD = %.4f %s "
+            "(as of %s).",
+            data.get('invoiceNumber') or '(none)', rate,
+            company_currency or '?',
+            data.get('conversionRateAt') or 'unspecified')
+        return rate
+
     def _website_stone_tax(self, company):
         """Tax for website stone products, taken from the order's company.
 
@@ -314,6 +380,8 @@ class PartnerSyncController(http.Controller):
                 return {'status': 'error',
                         'message': "Could not create the buyer for this order."}
 
+            website_rate = self._website_conversion_rate(data, company)
+
             # Try to find existing draft sale order
             sale_order = request.env['sale.order'].sudo().search([
                 ('partner_id', '=', partner.id),
@@ -333,7 +401,7 @@ class PartnerSyncController(http.Controller):
                     billing_address = addr.get('billingAddress', '')
                     shipping_address = addr.get('shippingAddress', '')
 
-                sale_order = request.env['sale.order'].sudo().create({
+                order_vals = {
                     'partner_id': partner.id,
                     'state': 'draft',
                     'sdk_augmont_status': order_status,
@@ -348,7 +416,12 @@ class PartnerSyncController(http.Controller):
                     'company_id': company.id,
                     'vat': gst_number,
                     'ein_number': ein_number,
-                })
+                }
+
+                if website_rate:
+                    order_vals['lgd_usd_rate'] = website_rate
+
+                sale_order = request.env['sale.order'].sudo().create(order_vals)
 
                 if shipping_address:
                     ship_addr = request.env['res.partner']._lgd_match_or_create_address(
@@ -927,6 +1000,12 @@ class PartnerSyncController(http.Controller):
             _logger.info(f"   Status: {sale_order.sdk_augmont_status}")
             _logger.info("=" * 80)
 
+            stored_rate = sale_order.lgd_usd_rate or 0.0
+            rate_source = (
+                'website' if website_rate and float_compare(
+                    stored_rate, website_rate, precision_digits=4) == 0
+                else 'odoo')
+
             return {
                 'status': 'success',
                 'message': 'Order created/updated successfully',
@@ -937,7 +1016,10 @@ class PartnerSyncController(http.Controller):
                     'customer': partner.name,
                     'order_count': len(orders),
                     'line_count': len(sale_order.order_line),
-                    'invoice_status': sale_order.sdk_augmont_status
+                    'invoice_status': sale_order.sdk_augmont_status,
+                    'currency': sale_order.currency_id.name or '',
+                    'conversion_rate': stored_rate,
+                    'conversion_rate_source': rate_source,
                 }
             }
 

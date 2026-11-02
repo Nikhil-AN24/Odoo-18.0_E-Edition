@@ -75,9 +75,9 @@
                      the very list it was created from. Invisible: the menu the
                      user is in decides it, never the user. -->
                 <field name="partner_kind" invisible="1"/>
-                <field name="first_name" invisible="not id"/>
-                <field name="last_name" invisible="not id"/>
-                <field name="contact_person_name" required="1"/>
+                <field name="first_name" required="1"/>
+                <field name="last_name" required="1"/>
+                <field name="contact_person_name" readonly="1"/>
                 <field name="job_position"/>
             </xpath>
             <xpath expr="//field[@name='category_id']" position="after">

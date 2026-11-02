@@ -5,6 +5,7 @@ from markupsafe import Markup
 from datetime import datetime, timedelta
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.osv import expression
+from odoo.tools import float_compare
 import requests
 import json
 import re
@@ -26,6 +27,12 @@ LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # line_type == 'lgd', which covered offline parcels only by accident, because
 # nothing on the offline path set line_type and they defaulted to 'lgd'.
 LGD_REPLACEABLE_LINE_TYPES = ('lgd', 'melee')
+
+LGD_PAYMENT_TERMS = [
+    ('advance', 'Advance'),
+    ('upon_delivery', 'Upon Delivery'),
+    ('7_days', '7 Days'),
+]
 _LGD_DEAD_LINE_STATUSES = (
     'cancelled', 'not_available', 'replaced', 'memo_returned')
 
@@ -314,6 +321,27 @@ class SaleOrder(models.Model):
     billing_address = fields.Text(string="Billing Address")
     default_qc_requirements = fields.Char(string="Default QC Requirements")
     item_notes = fields.Char(string="General Order Notes")
+
+    # ── Payment Terms, as printed ─────────────────────────────────────
+    lgd_payment_terms = fields.Selection(
+        LGD_PAYMENT_TERMS, string="Payment Terms",
+        default='advance', required=True, tracking=True,
+        help="The payment term printed on the Order Slip and every later "
+             "document. Defaults to Advance on every order, website or "
+             "offline. Separate from the accounting Payment Terms, which "
+             "drives invoice due dates.")
+
+    def _lgd_payment_terms_label(self):
+        """The Payment Terms as the documents print it ("Upon Delivery").
+
+        The reports need the label, not the stored key, and a QWeb template
+        is the wrong place to unpack a selection - so it is done once here
+        and both templates call this.
+        """
+        self.ensure_one()
+        labels = dict(
+            self._fields['lgd_payment_terms']._description_selection(self.env))
+        return labels.get(self.lgd_payment_terms) or ''
 
     is_website = fields.Boolean(string="Is Website Order", default=False)
     order_source = fields.Selection(
@@ -2798,12 +2826,6 @@ class SaleOrder(models.Model):
                         order.name, _old, new_status, _api_err
                     )
 
-    # 'procurement_line_ids' is the restricted one2many the Procurement form
-    # saves availability edits through; the individual line writes still pass the
-    # line-level guard (_LGD_PROC_SOL_WRITE_ALLOWLIST), so allowing it here is safe.
-    # lgd_usd_rate is here because the field is shown to Procurement on the
-    # order form and is meant to be typed into: without it the guard below
-    # refused the save with "Blocked fields: lgd_usd_rate".
     _LGD_PROC_SO_WRITE_ALLOWLIST = {
         'order_line', 'procurement_line_ids', 'sdk_augmont_status',
         'lgd_usd_rate'}
@@ -2825,6 +2847,25 @@ class SaleOrder(models.Model):
                     "Procurement users may only update availability-related fields "
                     "on a Sale Order. Blocked fields: %s"
                 ) % ', '.join(sorted(bad)))
+
+        # ── Current $ Rate is a record, not an input ──────────────────────────
+        if 'lgd_usd_rate' in vals:
+            new_rate = float(vals.get('lgd_usd_rate') or 0.0)
+            for order in self:
+                current = order.lgd_usd_rate or 0.0
+                if not current:
+                    continue
+                if float_compare(current, new_rate, precision_digits=4) != 0:
+                    raise UserError(_(
+                        "The Current $ Rate on %(order)s cannot be changed: "
+                        "this order is priced at %(rate).4f.\n\n"
+                        "It is locked for every user group, because the order, "
+                        "its invoice and the value reported to the website were "
+                        "all derived from that rate. The rate is set once - "
+                        "from the Customer RFQ for an offline order, or from "
+                        "the platform for a website order - and not edited "
+                        "afterwards."
+                    ) % {'order': order.name, 'rate': current})
 
         in_compute_ctx = self.env.context.get('_in_compute_augmont_status', False)
         if in_compute_ctx:

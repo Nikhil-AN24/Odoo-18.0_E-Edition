@@ -35,6 +35,20 @@ class ResPartner(models.Model):
     first_name = fields.Char(string="First Name")
     last_name = fields.Char(string="Last Name")
     contact_person_name = fields.Char(string="Contact Person Name", tracking=True)
+
+    @staticmethod
+    def _lgd_compose_contact_person_name(first, last):
+        """"First Last", from whichever halves are present."""
+        return ' '.join(part.strip() for part in (first or '', last or '')
+                        if part and part.strip())
+
+    @api.onchange('first_name', 'last_name')
+    def _onchange_contact_name_parts(self):
+        for partner in self:
+            composed = self._lgd_compose_contact_person_name(
+                partner.first_name, partner.last_name)
+            if composed:
+                partner.contact_person_name = composed
     job_position = fields.Char(string="Job Position")
     billing_address = fields.Text(string="Billing Address")
     shipping_address_differs = fields.Boolean(
@@ -594,6 +608,11 @@ class ResPartner(models.Model):
                 kind = self._infer_partner_kind(vals)
                 if kind:
                     vals['partner_kind'] = kind
+            if not (vals.get('contact_person_name') or '').strip():
+                composed = self._lgd_compose_contact_person_name(
+                    vals.get('first_name'), vals.get('last_name'))
+                if composed:
+                    vals['contact_person_name'] = composed
         partners = super(ResPartner, self.sudo()).create(vals_list)
         partners.filtered(lambda p: not p.shipping_address_differs) \
                 ._sync_shipping_from_billing()
@@ -613,6 +632,16 @@ class ResPartner(models.Model):
                 gate_candidates = self.filtered(
                     lambda p: p.stage_id.id != vals['stage_id'])
         res = super().write(vals)
+
+        if ({'first_name', 'last_name'} & set(vals)
+                and 'contact_person_name' not in vals):
+            for partner in self:
+                composed = self._lgd_compose_contact_person_name(
+                    partner.first_name, partner.last_name)
+                if composed and composed != partner.contact_person_name:
+                    super(ResPartner, partner).write(
+                        {'contact_person_name': composed})
+
         if gate_candidates:
             gate_candidates._lgd_validate_stage_gate()
         # A caller that sets shipping values explicitly is left alone.

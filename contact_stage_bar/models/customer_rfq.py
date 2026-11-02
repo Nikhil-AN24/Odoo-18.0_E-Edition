@@ -1,5 +1,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_compare
+from .sale_order import LGD_PAYMENT_TERMS
 from markupsafe import Markup
 import json
 import logging
@@ -150,6 +152,71 @@ class CustomerRfq(models.Model):
         'res.users', string='Owner', tracking=True,
         default=lambda self: self.env.uid,
     )
+
+    # ── Current $ Rate ────────────────────────────────────────────────────────
+    lgd_usd_rate = fields.Float(
+        string="Current $ Rate", digits=(12, 4),
+        compute='_compute_lgd_usd_rate', store=True, readonly=False,
+        tracking=True,
+        help="Rate for 1 USD in the company currency, as struck for this "
+             "quote. Seeded from Accounting's currency rates and then "
+             "editable - override it with the rate actually agreed. It is "
+             "carried onto the Offline Order when one is created, and locked "
+             "from that point on for every user. Zero means no rate is "
+             "configured for this company yet: type the rate in.")
+    lgd_show_usd_rate = fields.Boolean(compute='_compute_lgd_show_usd_rate')
+
+    @api.depends('currency_id')
+    def _compute_lgd_show_usd_rate(self):
+        """Shown exactly when the quote is priced in dollars, and never otherwise.
+
+        Keyed on this RFQ's own Currency alone - the ₹/$ toggle Procurement
+        sets - and deliberately NOT on what the company reports in. A quote in
+        rupees has no dollar figure to convert and the field would only
+        confuse; a quote in dollars always needs the rate, whatever the
+        company's own currency happens to be.
+        """
+        usd = self.env.ref('base.USD', raise_if_not_found=False)
+        for rec in self:
+            rec.lgd_show_usd_rate = bool(usd and rec.currency_id == usd)
+
+    @api.depends('currency_id')
+    def _compute_lgd_usd_rate(self):
+        usd = self.env.ref('base.USD', raise_if_not_found=False)
+        company = self.env.company
+        target = company.currency_id
+        today = fields.Date.context_today(self)
+        for rec in self:
+            # Must agree with _compute_lgd_show_usd_rate above: a rate left at
+            # zero on a visible field is what action_create_offline_order
+            # refuses, so the two conditions being out of step would block the
+            # button on a quote that never needed a rate at all.
+            if not (usd and rec.currency_id == usd):
+                rec.lgd_usd_rate = 0.0
+                continue
+
+            if not target or target == usd:
+                # The company reports in dollars too, so there is nothing to
+                # convert: 1 USD is 1 USD. Seeded rather than left at zero, or
+                # the Offline Order guard would refuse an order that is
+                # perfectly well priced.
+                rec.lgd_usd_rate = 1.0
+                continue
+
+            has_rate = self.env['res.currency.rate'].sudo().search_count([
+                ('currency_id', '=', target.id),
+                ('company_id', 'in', [False, company.id]),
+                ('name', '<=', today),
+            ])
+            rec.lgd_usd_rate = usd.sudo()._convert(
+                1.0, target, company, today, round=False) if has_rate else 0.0
+
+    lgd_payment_terms = fields.Selection(
+        LGD_PAYMENT_TERMS, string="Payment Terms",
+        default='advance', required=True, tracking=True,
+        help="The payment term agreed for this quote. Carried onto the "
+             "Offline Order when one is created, and printed on the Order "
+             "Slip and every later document.")
 
     customer_phone = fields.Char(
         string='Customer Phone',
@@ -906,6 +973,23 @@ class CustomerRfq(models.Model):
         return super(CustomerRfq, self.sudo()).create(vals_list)
 
     def write(self, vals):
+        if 'lgd_usd_rate' in vals:
+            new_rate = float(vals.get('lgd_usd_rate') or 0.0)
+            for rec in self:
+                if rec.state != 'offline_order_created':
+                    continue
+                if float_compare(rec.lgd_usd_rate or 0.0, new_rate,
+                                 precision_digits=4) != 0:
+                    raise UserError(_(
+                        "The Current $ Rate on %(rfq)s cannot be changed: the "
+                        "Offline Order has already been created at "
+                        "%(rate).4f.\n\n"
+                        "The order and its invoice were priced at that rate, "
+                        "so it is locked for every user group. If the rate "
+                        "itself was wrong, the order has to be corrected - "
+                        "not the quote it came from."
+                    ) % {'rfq': rec.name, 'rate': rec.lgd_usd_rate or 0.0})
+
         result = super(CustomerRfq, self.sudo()).write(vals)
 
         if 'price' in vals or 'different_prices' in vals:
@@ -1144,6 +1228,18 @@ class CustomerRfq(models.Model):
                 "priced."
             ))
 
+        if self.lgd_show_usd_rate and not self.lgd_usd_rate:
+            raise UserError(_(
+                "Current $ Rate is 0.0000, so this RFQ cannot be turned into "
+                "an Offline Order.\n\n"
+                "This quote is priced in dollars, so the order has to carry "
+                "the USD rate it was struck at. Enter the rate agreed with "
+                "the customer in Current $ Rate, save, and create the Offline "
+                "Order again.\n\n"
+                "The rate is locked once the Offline Order exists, so it is "
+                "worth getting right now."
+            ))
+
         unit_price = self.total_price if self.total_price else self.price
         product = self._create_requested_stone(unit_price)
 
@@ -1176,6 +1272,9 @@ class CustomerRfq(models.Model):
 
         order.action_confirm_offline_order()
 
+        self._apply_rfq_usd_rate(order)
+        self._apply_rfq_payment_terms(order)
+
         self.message_post(body=_(
             "Offline Order %(order)s created with %(count)d line(s) "
             "and confirmed (Sale Order %(so)s)."
@@ -1193,6 +1292,39 @@ class CustomerRfq(models.Model):
         # confirmed) offline order. Returning nothing makes the web client reload
         # this record, so the RFQ refreshes to the "Offline Order Created" stage;
         # the Sale Order / Offline Orders smart buttons remain for navigation.
+        return True
+
+    def _apply_rfq_usd_rate(self, order):
+        self.ensure_one()
+        sale_order = order.sale_order_id
+        if not sale_order:
+            _logger.warning(
+                "[RFQ RATE] %s: the offline order has no Sale Order yet, so "
+                "the Current $ Rate %.4f was not carried over.",
+                self.name, self.lgd_usd_rate or 0.0)
+            return False
+        if not self.lgd_usd_rate:
+            _logger.info(
+                "[RFQ RATE] %s: no Current $ Rate on the quote, so %s keeps "
+                "the rate it seeded from Accounting.",
+                self.name, sale_order.name)
+            return False
+
+        sale_order.sudo().write({'lgd_usd_rate': self.lgd_usd_rate})
+        _logger.info(
+            "[RFQ RATE] %s: Current $ Rate %.4f carried onto %s.",
+            self.name, self.lgd_usd_rate, sale_order.name)
+        return True
+
+    def _apply_rfq_payment_terms(self, order):
+        self.ensure_one()
+        sale_order = order.sale_order_id
+        if not (sale_order and self.lgd_payment_terms):
+            return False
+        sale_order.sudo().write({'lgd_payment_terms': self.lgd_payment_terms})
+        _logger.info(
+            "[RFQ TERMS] %s: Payment Terms '%s' carried onto %s.",
+            self.name, self.lgd_payment_terms, sale_order.name)
         return True
 
     def _build_offline_order_lines(self, base_vals):
