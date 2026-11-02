@@ -558,113 +558,114 @@
                        string="Request #"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_summary_title"
                        string="MELEE Summary"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_treatment"
                        string="Treatment"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_shapes"
                        string="Shapes (MELEE)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_clarities"
                        string="Clarities (MELEE)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_cuts"
                        string="Cuts (MELEE)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_fancy_color"
                        string="Fancy Color (MELEE)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_total_qty"
                        string="Total Qty (Carats)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or not is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or not is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <!-- MELEE child parcel columns -->
                 <field name="melee_parcel_sort_order"
                        string="Parcel #"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_quantity"
                        string="Pieces"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_length_mm"
                        string="L (mm)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_width_mm"
                        string="W (mm)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_depth_mm"
                        string="D (mm)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_avg_carat"
                        string="Avg ct/Stone"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_qty_carats"
                        string="Qty (Carats)"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
-
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
 
                 <field name="melee_parcel_price_per_carat"
                        string="Price/Carat"
                        readonly="1"
                        optional="hide"
-                       column_invisible="line_type != 'melee' or is_melee_parent"/>
+                       invisible="line_type != 'melee' or is_melee_parent"
+                       groups="!contact_stage_bar.group_lgd_sales"/>
             </xpath>
 
             <xpath expr="//field[@name='order_line']/list/field[@name='product_uom_qty']" position="replace">
