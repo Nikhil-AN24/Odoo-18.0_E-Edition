@@ -833,6 +833,8 @@ class SaleOrder(models.Model):
              ('Not available') AND the chatter records this as its own stage.
           2. Not available -> Cancelled for every line, then flush + commit,
              firing the Augmont API ('Cancelled') and a second chatter stage.
+          3. Cancel the order itself, so state becomes 'cancel' and the
+             statusbar reads Cancelled rather than staying on Draft Order.
 
         Race handling: because each cr.commit() releases row locks, we (re)take
         a FOR UPDATE lock on the lines and (re)validate their statuses from the
@@ -848,14 +850,21 @@ class SaleOrder(models.Model):
         # ── Lock + validate the starting state ──
         self._lock_order_lines_or_raise()
         lines = self._relevant_status_lines()
+        # 'cancelled' belongs here too: a line the user has already set to
+        # Cancelled is ALREADY at the destination, and refusing it left the
+        # only route to cancelling the order closed - the order sat in draft
+        # for ever with Order Status reading Cancelled. The step-1 re-check
+        # below has always tolerated 'cancelled'; this guard simply never agreed with it.
         if not lines or any(
-            l.availability_status not in ('diamond_booked', 'not_available')
+            l.availability_status not in
+            ('diamond_booked', 'not_available', 'cancelled')
             for l in lines
         ):
             raise UserError(_(
                 "Cancel is only allowed when ALL order lines are "
-                "'Diamond Booked' or 'Not available'.\n\nThis order has "
-                "line(s) in another status, so it cannot be cancelled."
+                "'Diamond Booked', 'Not available' or already 'Cancelled'."
+                "\n\nThis order has line(s) in another status, so it cannot "
+                "be cancelled."
             ))
 
         # ── Step 1: Diamond Booked -> Not available (a transition Augmont accepts) ──
@@ -898,7 +907,18 @@ class SaleOrder(models.Model):
             self.invalidate_recordset(['sdk_augmont_status'])
             self._call_augmont_status_api(self.sdk_augmont_status)
             self.env.cr.commit()
-        return True
+
+        # ── Step 3: cancel the ORDER itself ──
+        # Steps 1 and 2 only move the LINES. Odoo's own state is a separate
+        # thing and nothing here touched it, so the order stayed in draft:
+        # the statusbar still read "Draft Order", the Confirm button was
+        # still live, and the only sign of the cancellation was the ribbon.
+        # action_cancel is the existing override - it writes state='cancel'
+        # through super() and pins sdk_augmont_status - so this reuses it
+        # rather than writing the state by hand. Its result is returned
+        # because Odoo answers with a wizard action when the order has a
+        # posted invoice, and that has to reach the user.
+        return self.action_cancel()
 
     def _lgd_check_destinations(self):
         """Refuse to confirm when a live stone's effective
@@ -2564,6 +2584,25 @@ class SaleOrder(models.Model):
                 f"Please update each order number to [Confirmed] or "
                 f"[Cancelled] and click {{Save}} before confirming."
             )
+        # Nothing left to confirm. The view hides the button once Order
+        # Status reads Cancelled; this is the same rule server-side, and it
+        # also covers the all-dead combinations that do not aggregate to
+        # Cancelled (every stone replaced, QC-failed, returned from memo).
+        # Placed AFTER the check above so that its more specific advice -
+        # "set each one to Confirmed or Cancelled" - still wins for a line the user can simply correct.
+        stone_lines = self.order_line.filtered(
+            lambda l: l.product_id and not l.display_type)
+        if stone_lines and not self.lgd_has_printable_lines:
+            raise UserError(_(
+                "Cannot confirm order %(order)s.\n\n"
+                "Every stone on it is cancelled, replaced, unavailable, "
+                "QC-failed or returned from memo, so there is nothing to "
+                "confirm. Confirming would still issue an Order Confirmation "
+                "number for a sale with no stones on it.\n\n"
+                "If a stone here should still be live, correct its "
+                "Availability in Order Lines first.",
+                order=self.lgd_oc_number or self.sdk_augmont_number or self.name))
+
         # Offline orders: Procurement must fill Vendor Company AND Procurement
         # Price/carat on every confirmed stone line before the order can be
         # confirmed (these are the vendor + rate the PO is raised against).

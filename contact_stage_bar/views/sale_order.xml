@@ -703,7 +703,12 @@
             <xpath expr="//button[@name='action_confirm']" position="replace">
                 <!-- Confirm & Save hidden for the sales family (LGD Sales, Sales
                      Manager, Regional Sales Head — all members of group_lgd_sales). -->
-                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_sales" />
+                <!-- Also hidden once Order Status reads Cancelled. Cancelling
+                     every LINE leaves the ORDER in draft - Odoo's state only
+                     moves when the order itself is cancelled - so the two
+                     tests on state never fired and a cancelled order could
+                     still be confirmed. -->
+                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel') or sdk_augmont_status == 'Cancelled'" groups="!contact_stage_bar.group_lgd_sales" />
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this
