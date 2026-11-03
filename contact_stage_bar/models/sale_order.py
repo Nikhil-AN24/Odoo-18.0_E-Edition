@@ -3869,6 +3869,9 @@ class SaleOrderLine(models.Model):
             template = line.product_template_id
             if not template or template.certificate:
                 continue
+
+            if template.website_product_id:
+                continue
             if not template.lgd_stock_number:
                 # Natural stones get no SKU at all - nothing to make unique.
                 continue
