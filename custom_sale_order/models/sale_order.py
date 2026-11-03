@@ -81,6 +81,11 @@ class SaleOrderLine(models.Model):
         string='Sales Price/Stone', readonly=True,
         currency_field='lgd_price_display_currency_id',
         compute='_compute_rfq_pricing')
+
+    lgd_sales_price_per_stone_usd = fields.Monetary(
+        string='$ Sales Price/Stone', readonly=True,
+        currency_field='rfq_currency_id',
+        compute='_compute_rfq_pricing')
     lgd_price_display_currency_id = fields.Many2one(
         'res.currency', compute='_compute_lgd_price_display_currency',
         readonly=True)
@@ -241,9 +246,12 @@ class SaleOrderLine(models.Model):
             if not rfq and template.website_product_id:
                 line.sales_price_per_carat = template.list_price or 0.0
                 line.sales_price_per_stone = template.final_price_margin or 0.0
+                line.lgd_sales_price_per_stone_usd = (
+                    template.final_price_margin or 0.0)
                 continue
             line.sales_price_per_carat = rfq.sale_rate_per_carat if rfq else 0.0
             per_stone = rfq.sale_price_per_stone if rfq else 0.0
+            line.lgd_sales_price_per_stone_usd = per_stone
 
             if line.order_id.lgd_show_usd_rate and line.order_id.lgd_usd_rate:
                 per_stone *= line.order_id.lgd_usd_rate

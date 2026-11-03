@@ -346,14 +346,8 @@ class SaleOrder(models.Model):
         template = line.product_template_id
         return {
             'title': self._lgd_offline_title(line, template),
-            # The vendor's own reference for the stone, and nothing else.
-            # Nobody enters one for a stone we raise from a Customer RFQ -
-            # stock_number is only ever written from an inbound website
-            # payload - so for an offline order this is blank, which is
-            # exactly what the order line shows in Odoo under "Vendor SKU".
-            # It used to fall back to our own LGD-OFF- number, which made the
-            # platform print the same string under both SKU and Vendor SKU.
-            'stockNum': template.stock_number or '',
+            'stockNum': (template.stock_number or line.lgd_stock_number
+                         or template.lgd_stock_number or ''),
             # From the LINE, not the template: a non-certified parcel shares
             # its product with other lines, so the template's SKU would name all of them identically.
             'lgdStockNum': line.lgd_stock_number or '',
@@ -364,8 +358,7 @@ class SaleOrder(models.Model):
             # file the stone under and shows every offline stone as Lab
             # Grown - which is right for its own catalogue and wrong for a
             # natural stone Sales raised from an RFQ. Taken from the LINE:
-            # one invoice can carry both kinds, and the line is where that
-            # distinction is held.
+            # one invoice can carry both kinds, and the line is where that distinction is held.
             'stoneType': dict(
                 line._fields['stone_type'].selection
             ).get(line.stone_type, '') if line.stone_type else '',

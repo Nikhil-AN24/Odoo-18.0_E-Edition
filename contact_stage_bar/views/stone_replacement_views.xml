@@ -62,7 +62,8 @@
                         <field name="orig_certificate"/>
                     </group>
                     <group string="Replacement Stone">
-                        <field name="stone_type" required="mode == 'manual'"/>
+                        <field name="stone_type" required="mode == 'manual'"
+                               readonly="orig_stone_type"/>
                         <field name="lab" required="certificate"/>
                         <field name="certificate" required="lab"/>
                         <div colspan="2" class="text-muted"

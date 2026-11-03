@@ -19,14 +19,14 @@ _logger = logging.getLogger(__name__)
 from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
-# Which line types Replace Stone is offered on. A parcel is in here as well
-# as a single certified stone: when one is not available or fails QC,
-# Procurement still has to source a substitute, and the wizard already copes
-# with a non-certified original - it enforces the shape rule only when
-# stone_certification_type is 'certified'. The rule used to read
-# line_type == 'lgd', which covered offline parcels only by accident, because
-# nothing on the offline path set line_type and they defaulted to 'lgd'.
-LGD_REPLACEABLE_LINE_TYPES = ('lgd', 'melee')
+# Which line types Replace Stone is offered on. Single stones only.
+# A MELEE parcel was in here for a while, on the reasoning that Procurement
+# still has to source a substitute when one is not available - but Replace
+# Stone swaps ONE stone for ONE stone, and a parcel is a weight of many,
+# so there is nothing for the wizard to match a replacement against. A melee
+# parcel that cannot be supplied is cancelled or re-sourced on the parcel,
+# not replaced stone-for-stone.
+LGD_REPLACEABLE_LINE_TYPES = ('lgd',)
 
 LGD_PAYMENT_TERMS = [
     ('advance', 'Advance'),
@@ -3764,8 +3764,16 @@ class SaleOrderLine(models.Model):
         Operations roles only — enforced by the
         wizard's ACL and by the button's group on the view."""
         self.ensure_one()
-        if (self.line_type not in LGD_REPLACEABLE_LINE_TYPES
-                or self.availability_status not in LGD_REPLACEABLE_STATUSES):
+        # Two separate reasons, said separately: a melee user told their
+        # parcel is the wrong availability goes and changes the availability,
+        # and is refused again for a reason nobody named.
+        if self.line_type not in LGD_REPLACEABLE_LINE_TYPES:
+            raise UserError(_(
+                "Replace Stone is for a single certified stone. This line is "
+                "a MELEE parcel - a weight of many stones - so there is no "
+                "one stone to swap. Cancel the parcel line or re-source it "
+                "instead."))
+        if self.availability_status not in LGD_REPLACEABLE_STATUSES:
             raise UserError(_(
                 "Replace Stone applies only to a stone line whose "
                 "availability is Not available or QC Fail."))
