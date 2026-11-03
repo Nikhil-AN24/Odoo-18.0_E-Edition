@@ -204,6 +204,37 @@ class SaleOrder(models.Model):
         for order in self:
             order.can_edit_line_availability = allowed
 
+    lgd_has_printable_lines = fields.Boolean(
+        string="Has a live stone",
+        compute='_compute_lgd_has_printable_lines',
+        help="At least one stone on this order is still alive - not "
+             "cancelled, replaced, unavailable, QC-failed or returned from "
+             "memo. The Order Slip prints only the live stones, so an order "
+             "with none of them has nothing to print, and the Print an Order "
+             "Slip button is hidden.")
+
+    @api.depends('order_line.availability_status', 'order_line.product_id',
+                 'order_line.display_type')
+    def _compute_lgd_has_printable_lines(self):
+        for order in self:
+            order.lgd_has_printable_lines = bool(order.order_line.filtered(
+                lambda line: line.product_id and not line.display_type
+                and line.availability_status not in LGD_DEAD_STATUSES))
+
+    def _lgd_check_printable_before_print(self):
+        for order in self:
+            if order.lgd_has_printable_lines:
+                continue
+            raise UserError(_(
+                "Every stone on %(order)s is cancelled, replaced, "
+                "unavailable, QC-failed or returned from memo, so there is "
+                "nothing to put on an Order Slip.\n\n"
+                "Printing one would produce a sheet with no diamond details "
+                "and a total of 0.00. If a stone on this order should still "
+                "be live, correct its Availability in Order Lines first."
+            ) % {'order': order.lgd_oc_number or order.sdk_augmont_number
+                 or order.name})
+
     def _lgd_check_usd_rate_before_print(self):
         for order in self:
             if order.lgd_show_usd_rate and not order.lgd_usd_rate:
@@ -224,6 +255,7 @@ class SaleOrder(models.Model):
         than the advance-payment wizard's regular/down-payment choice.
         """
         self.ensure_one()
+        self._lgd_check_printable_before_print()
         self._lgd_check_usd_rate_before_print()
         try:
             self._create_invoices()
@@ -556,20 +588,8 @@ class SaleOrder(models.Model):
                     _logger.info("✅ C1: Order Completed")
 
             # ── C2: logistics ─────────────────────────────────────────────
-            # At least one line is in a logistics status. These used to all
-            # report as plain 'Dispatched', which hid both a return and a
-            # re-dispatch behind the status of the first send.
-            # Order of the tests is deliberate - most-exceptional first:
-            #   return_of_order - stones have come BACK and are waiting on a
-            #       decision, so it outranks a sibling that has already gone
-            #       out again; it is the thing someone has to act on.
-            #   re_dispatched   - the second send is under way.
-            #   dispatched      - the ordinary first send.
             elif all_statuses & LOGISTICS:
-                if 'return_of_order' in all_statuses:
-                    order.sdk_augmont_status = 'Return of Order'
-                    _logger.info("✅ C2: Return of Order")
-                elif 're_dispatched' in all_statuses:
+                if 're_dispatched' in all_statuses:
                     order.sdk_augmont_status = 'Re - Dispatched'
                     _logger.info("✅ C2: Re - Dispatched")
                 else:

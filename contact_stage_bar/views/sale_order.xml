@@ -222,7 +222,6 @@
                 <widget name="web_ribbon" title="Re - Dispatched" bg_color="text-bg-info" invisible="sdk_augmont_status != 'Re - Dispatched'"/>
                 <widget name="web_ribbon" title="Delivered" bg_color="text-bg-lgd-orange" invisible="sdk_augmont_status != 'Delivered'"/>
                 <widget name="web_ribbon" title="Order Completed" bg_color="text-bg-success" invisible="sdk_augmont_status != 'Order Completed'"/>
-                <widget name="web_ribbon" title="Return of Order" bg_color="text-bg-warning" invisible="sdk_augmont_status != 'Return of Order'"/>
                 <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-danger" invisible="sdk_augmont_status != 'Cancelled'"/>
                 <widget name="web_ribbon" title="Not Available" bg_color="text-bg-secondary" invisible="sdk_augmont_status != 'Not available'"/>
             </xpath>
@@ -717,12 +716,15 @@
                  Calls SaleOrder.action_print_the_invoice() in models/sale_order.py:
                  creates the invoice (if needed) and downloads the Order Confirmation Slip PDF in one click. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="after">
+                <!-- lgd_has_printable_lines hides the button outright once
+                     every stone is dead. -->
+                <field name="lgd_has_printable_lines" invisible="1"/>
                 <button
                     name="action_print_the_invoice"
                     string="Print an Order Slip"
                     type="object"
                     class="btn-primary"
-                    invisible="state != 'sale'"
+                    invisible="state != 'sale' or not lgd_has_printable_lines"
                     groups="!contact_stage_bar.group_lgd_procurement"
                 />
             </xpath>
