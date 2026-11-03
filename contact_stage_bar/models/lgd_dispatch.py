@@ -435,6 +435,7 @@ class LgdDispatch(models.Model):
             return self.env['stock.picking'].sudo().browse()
         warehouse = self._lgd_warehouse()
         customers = self.env.ref('stock.stock_location_customers')
+        self._lgd_release_sale_delivery_moves(lines)
         return self._lgd_create_picking(
             location_id=warehouse.lot_stock_id,
             location_dest_id=customers,
@@ -442,6 +443,28 @@ class LgdDispatch(models.Model):
             lines=lines,
             check_availability=True,
         )
+
+    def _lgd_release_sale_delivery_moves(self, lines):
+        self.ensure_one()
+        if not lines:
+            return self.env['stock.move'].sudo().browse()
+
+        rival_moves = self.env['stock.move'].sudo().search([
+            ('sale_line_id', 'in', lines.ids),
+            ('state', 'not in', ('done', 'cancel')),
+        ]).filtered(lambda move: not move.picking_id.lgd_dispatch_id)
+
+        if not rival_moves:
+            return rival_moves
+
+        _logger.info(
+            "Dispatch %s: cancelling %d delivery move(s) that hold this "
+            "parcel's stones - %s. Dispatch is moving them itself.",
+            self.name, len(rival_moves),
+            ', '.join(sorted(set(
+                rival_moves.mapped('picking_id.name')))) or 'no picking')
+        rival_moves._action_cancel()
+        return rival_moves
 
     def _lgd_stock_lines(self):
 
@@ -497,7 +520,29 @@ class LgdDispatch(models.Model):
                 needed = line.product_uom_qty or 1.0
                 available = Quant._get_available_quantity(
                     line.product_id, location_id)
-                if available < needed:
+                if available >= needed:
+                    continue
+
+                quants = Quant.search([
+                    ('product_id', '=', line.product_id.id),
+                    ('location_id', 'child_of', location_id.id),
+                ])
+                on_hand = sum(quants.mapped('quantity'))
+                if on_hand >= needed:
+                    holders = self.env['stock.move'].sudo().search([
+                        ('product_id', '=', line.product_id.id),
+                        ('state', 'in', ('assigned', 'partially_available')),
+                    ]).mapped('picking_id.name')
+                    shortages.append(_(
+                        "%(stone)s: %(on_hand)s is at %(location)s but "
+                        "reserved by %(holder)s, so this parcel cannot take "
+                        "it. Unreserve that transfer, or cancel it, and hand "
+                        "over again."
+                    ) % {'stone': line._lgd_label(), 'on_hand': on_hand,
+                         'location': location_id.display_name,
+                         'holder': ', '.join(sorted(set(h for h in holders if h)))
+                                   or _("another transfer")})
+                else:
                     shortages.append(_(
                         "%(stone)s: only %(available)s in stock at "
                         "%(location)s, %(needed)s needed."

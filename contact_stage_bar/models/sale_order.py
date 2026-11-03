@@ -556,20 +556,8 @@ class SaleOrder(models.Model):
                     _logger.info("✅ C1: Order Completed")
 
             # ── C2: logistics ─────────────────────────────────────────────
-            # At least one line is in a logistics status. These used to all
-            # report as plain 'Dispatched', which hid both a return and a
-            # re-dispatch behind the status of the first send.
-            # Order of the tests is deliberate - most-exceptional first:
-            #   return_of_order - stones have come BACK and are waiting on a
-            #       decision, so it outranks a sibling that has already gone
-            #       out again; it is the thing someone has to act on.
-            #   re_dispatched   - the second send is under way.
-            #   dispatched      - the ordinary first send.
             elif all_statuses & LOGISTICS:
-                if 'return_of_order' in all_statuses:
-                    order.sdk_augmont_status = 'Return of Order'
-                    _logger.info("✅ C2: Return of Order")
-                elif 're_dispatched' in all_statuses:
+                if 're_dispatched' in all_statuses:
                     order.sdk_augmont_status = 'Re - Dispatched'
                     _logger.info("✅ C2: Re - Dispatched")
                 else:

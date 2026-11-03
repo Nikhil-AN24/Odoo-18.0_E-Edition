@@ -222,7 +222,6 @@
                 <widget name="web_ribbon" title="Re - Dispatched" bg_color="text-bg-info" invisible="sdk_augmont_status != 'Re - Dispatched'"/>
                 <widget name="web_ribbon" title="Delivered" bg_color="text-bg-lgd-orange" invisible="sdk_augmont_status != 'Delivered'"/>
                 <widget name="web_ribbon" title="Order Completed" bg_color="text-bg-success" invisible="sdk_augmont_status != 'Order Completed'"/>
-                <widget name="web_ribbon" title="Return of Order" bg_color="text-bg-warning" invisible="sdk_augmont_status != 'Return of Order'"/>
                 <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-danger" invisible="sdk_augmont_status != 'Cancelled'"/>
                 <widget name="web_ribbon" title="Not Available" bg_color="text-bg-secondary" invisible="sdk_augmont_status != 'Not available'"/>
             </xpath>
