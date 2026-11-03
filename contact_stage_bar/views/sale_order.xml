@@ -716,12 +716,15 @@
                  Calls SaleOrder.action_print_the_invoice() in models/sale_order.py:
                  creates the invoice (if needed) and downloads the Order Confirmation Slip PDF in one click. -->
             <xpath expr="//button[@name='%(sale.action_view_sale_advance_payment_inv)d']" position="after">
+                <!-- lgd_has_printable_lines hides the button outright once
+                     every stone is dead. -->
+                <field name="lgd_has_printable_lines" invisible="1"/>
                 <button
                     name="action_print_the_invoice"
                     string="Print an Order Slip"
                     type="object"
                     class="btn-primary"
-                    invisible="state != 'sale'"
+                    invisible="state != 'sale' or not lgd_has_printable_lines"
                     groups="!contact_stage_bar.group_lgd_procurement"
                 />
             </xpath>
