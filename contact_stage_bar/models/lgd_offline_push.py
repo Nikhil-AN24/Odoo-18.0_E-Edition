@@ -346,7 +346,7 @@ class SaleOrder(models.Model):
         template = line.product_template_id
         return {
             'title': self._lgd_offline_title(line, template),
-            'stockNum': (line.lgd_stock_number or template.stock_number
+            'stockNum': (template.stock_number or line.lgd_stock_number
                          or template.lgd_stock_number or ''),
             # From the LINE, not the template: a non-certified parcel shares
             # its product with other lines, so the template's SKU would name all of them identically.
@@ -358,8 +358,7 @@ class SaleOrder(models.Model):
             # file the stone under and shows every offline stone as Lab
             # Grown - which is right for its own catalogue and wrong for a
             # natural stone Sales raised from an RFQ. Taken from the LINE:
-            # one invoice can carry both kinds, and the line is where that
-            # distinction is held.
+            # one invoice can carry both kinds, and the line is where that distinction is held.
             'stoneType': dict(
                 line._fields['stone_type'].selection
             ).get(line.stone_type, '') if line.stone_type else '',
@@ -702,6 +701,8 @@ class SaleOrder(models.Model):
                     # same deploy.
                     'gstin': self.vat or '',
                     'einNumber': self.ein_number or '',
+                    'gstinStatus': partner.gst_stages or '',
+                    'einStatus': partner.ein_status or '',
                 },
             },
             'billingAddress': self._lgd_offline_address(

@@ -436,11 +436,12 @@
                         <field name="order_number" readonly="1"/>
                         <field name="product_template_id" readonly="1"/>
                         <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
-                        <!-- Replace Stone: a stone line - single stone or parcel - that is
-                             Not available or has failed QC. -->
+                        <!-- Replace Stone: a single certified stone that is
+                             Not available or has failed QC. Never a MELEE
+                             parcel - see LGD_REPLACEABLE_LINE_TYPES. -->
                         <button name="action_open_replace_stone" type="object"
                                 icon="fa-exchange" title="Replace Stone"
-                                invisible="line_type not in ('lgd', 'melee') or availability_status not in ('not_available', 'qc_fail')"
+                                invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                         <field name="certificate" readonly="1"/>
                         <field name="lgd_ship_address_id" string="Deliver to"
@@ -498,11 +499,11 @@
 
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="after">
                 <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
-                <!-- Replace Stone: Operations only, on a stone line -
-                     single stone or parcel - that is Not available. -->
+                <!-- Replace Stone: Operations only, on a single certified
+                     stone that is Not available. Never a MELEE parcel. -->
                 <button name="action_open_replace_stone" type="object"
                         icon="fa-exchange" title="Replace Stone"
-                        invisible="line_type not in ('lgd', 'melee') or availability_status not in ('not_available', 'qc_fail')"
+                        invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                         groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
                 <!-- Sales confirm / reject a pending replacement.
                      Hidden on a dead line as well as on an unflagged one:
@@ -702,7 +703,12 @@
             <xpath expr="//button[@name='action_confirm']" position="replace">
                 <!-- Confirm & Save hidden for the sales family (LGD Sales, Sales
                      Manager, Regional Sales Head — all members of group_lgd_sales). -->
-                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel')" groups="!contact_stage_bar.group_lgd_sales" />
+                <!-- Also hidden once Order Status reads Cancelled. Cancelling
+                     every LINE leaves the ORDER in draft - Odoo's state only
+                     moves when the order itself is cancelled - so the two
+                     tests on state never fired and a cancelled order could
+                     still be confirmed. -->
+                <button name="action_confirm_wrapper" string="Confirm" type="object" class="btn-primary" invisible="not sdk_augmont_number or state in ('sale', 'cancel') or sdk_augmont_status == 'Cancelled'" groups="!contact_stage_bar.group_lgd_sales" />
             </xpath>
 
             <!-- Standard "Create Invoice" is hidden for every user: this

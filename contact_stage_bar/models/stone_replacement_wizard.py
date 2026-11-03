@@ -106,6 +106,17 @@ class StoneReplacement(models.TransientModel):
         [('natural', 'Natural'), ('lab_grown', 'Lab Grown')],
         string="Stone Type")
 
+    @api.model
+    def default_get(self, fields_list):
+        values = super().default_get(fields_list)
+        line_id = (values.get('sale_line_id')
+                   or self.env.context.get('default_sale_line_id'))
+        if line_id:
+            line = self.env['sale.order.line'].browse(line_id)
+            if line.stone_type:
+                values['stone_type'] = line.stone_type
+        return values
+
     # ── Vendor / price ─────────────────────────────────────
     vendor_id = fields.Many2one(
         'res.partner', string="Vendor",
@@ -220,7 +231,9 @@ class StoneReplacement(models.TransientModel):
             'depth_pct': result.get('depth_pct_value') or 0.0,
             'certificate': result.get('report_number') or report,
             'lab': 'IGI',
-            'stone_type': 'lab_grown' if result.get('is_lab_grown') else 'natural',
+            'stone_type': (self.sale_line_id.stone_type
+                           or ('lab_grown' if result.get('is_lab_grown')
+                               else 'natural')),
         })
         return {
             'type': 'ir.actions.act_window',
@@ -298,6 +311,13 @@ class StoneReplacement(models.TransientModel):
         create the replacement."""
         self.ensure_one()
         line = self.sale_line_id
+        # The view freezes Stone Type, but a view only binds the form. This is
+        # what actually guarantees the replacement is filed as the same kind of stone as the one it replaces.
+        if line.stone_type and self.stone_type != line.stone_type:
+            _logger.warning(
+                "Replacement for line %s arrived as %r; forced back to the "
+                "original's %r.", line.id, self.stone_type, line.stone_type)
+            self.stone_type = line.stone_type
         problems = []
         if not self.vendor_id:
             problems.append(_("Select the vendor."))

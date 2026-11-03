@@ -81,6 +81,11 @@ class SaleOrderLine(models.Model):
         string='Sales Price/Stone', readonly=True,
         currency_field='lgd_price_display_currency_id',
         compute='_compute_rfq_pricing')
+
+    lgd_sales_price_per_stone_usd = fields.Monetary(
+        string='$ Sales Price/Stone', readonly=True,
+        currency_field='rfq_currency_id',
+        compute='_compute_rfq_pricing')
     lgd_price_display_currency_id = fields.Many2one(
         'res.currency', compute='_compute_lgd_price_display_currency',
         readonly=True)
@@ -96,10 +101,14 @@ class SaleOrderLine(models.Model):
         for line in self:
             line.lgd_sales_price_per_stone_conv = line.sales_price_per_stone
 
-    @api.depends('rfq_currency_id', 'order_id.company_id.currency_id',
+    @api.depends('rfq_currency_id', 'order_id.currency_id',
+                 'order_id.company_id.currency_id',
                  'order_id.lgd_show_usd_rate')
     def _compute_lgd_price_display_currency(self):
         for line in self:
+            if not line.rfq_currency_id:
+                line.lgd_price_display_currency_id = line.order_id.currency_id
+                continue
             line.lgd_price_display_currency_id = (
                 line.order_id.company_id.currency_id
                 if line.order_id.lgd_show_usd_rate
@@ -227,12 +236,22 @@ class SaleOrderLine(models.Model):
     @api.depends(
         'order_id.custom_sale_order_id.customer_rfq_id.sale_rate_per_carat',
         'order_id.custom_sale_order_id.customer_rfq_id.sale_price_per_stone',
-        'order_id.lgd_usd_rate', 'order_id.lgd_show_usd_rate')
+        'order_id.lgd_usd_rate', 'order_id.lgd_show_usd_rate',
+        'product_template_id.list_price',
+        'product_template_id.final_price_margin')
     def _compute_rfq_pricing(self):
         for line in self:
             rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
+            template = line.product_template_id
+            if not rfq and template.website_product_id:
+                line.sales_price_per_carat = template.list_price or 0.0
+                line.sales_price_per_stone = template.final_price_margin or 0.0
+                line.lgd_sales_price_per_stone_usd = (
+                    template.final_price_margin or 0.0)
+                continue
             line.sales_price_per_carat = rfq.sale_rate_per_carat if rfq else 0.0
             per_stone = rfq.sale_price_per_stone if rfq else 0.0
+            line.lgd_sales_price_per_stone_usd = per_stone
 
             if line.order_id.lgd_show_usd_rate and line.order_id.lgd_usd_rate:
                 per_stone *= line.order_id.lgd_usd_rate

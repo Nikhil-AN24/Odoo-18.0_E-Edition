@@ -329,9 +329,22 @@
                        readonly="1" optional="show"
                        column_invisible="parent.order_source != 'offline'"
                        groups="!contact_stage_bar.group_lgd_procurement"/>
-                <field name="sales_price_per_stone" string="Sales Price/Stone"
+                <!-- Two views of one price. sales_price_per_stone has the
+                     $ rate applied, so on this offline-only column it is
+                     always the company's rupee figure; the field keeps its
+                     generic label elsewhere, because on a website order it
+                     holds dollars and a Rs sign there would be a lie. -->
+                <field name="sales_price_per_stone" string="&#8377; Sales Price/Stone"
                        readonly="1" optional="show"
                        column_invisible="parent.order_source != 'offline'"
+                       groups="!contact_stage_bar.group_lgd_procurement"/>
+                <!-- The same price before conversion. Only meaningful on an
+                     order actually priced in dollars - on a rupee RFQ the two
+                     columns would hold the identical number under two
+                     different signs. -->
+                <field name="lgd_sales_price_per_stone_usd" string="$ Sales Price/Stone"
+                       readonly="1" optional="show"
+                       column_invisible="parent.order_source != 'offline' or not parent.lgd_show_usd_rate"
                        groups="!contact_stage_bar.group_lgd_procurement"/>
             </xpath>
 
