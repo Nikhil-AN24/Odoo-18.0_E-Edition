@@ -303,16 +303,11 @@ class ResPartner(models.Model):
                     "stays in Open until one is supplied.",
                     data.get('email'), wanted)
 
-        gst_stage_map = {
-            'verified': 'Verified',
-            'not_verified': 'Not Verified',
-            'pending': 'Pending',
-        }
         gst_value = data.get("kyc", {}).get('gstinStatus')
-        _logger.info(f"GST value: {gst_value}")
-        
         ein_value = data.get("kyc", {}).get('einStatus')
-        _logger.info(f"EIN value: {ein_value}")
+        _logger.info(
+            "KYC status from the platform for %s: gstinStatus=%r einStatus=%r",
+            data.get('email'), gst_value, ein_value)
                     
         # ── leadSource -> only the four the field accepts ────────────────
         _LEAD_SOURCES = ('website', 'cold_call', 'email', 'marketing_campaign')
@@ -383,7 +378,32 @@ class ResPartner(models.Model):
         for field_name, value in mapping.items():
             if value:
                 vals[field_name] = value
-        
+
+        # A verification already granted is not undone by a later order.
+        # The platform sends the buyer's whole KYC block with every cart_add,
+        # so an order placed while its own copy still read `pending` would
+        # reset an account that Odoo - or an operator on the platform - had
+        # already verified. That is the "manually verified, then back to
+        # Pending" half of the mismatch, and it arrives as ordinary order
+        # traffic rather than as anything anyone decided.
+        #
+        # Only the slide back to the initial `pending` is refused. A real
+        # downgrade - not_verified, failed - is somebody's decision and still
+        # comes through.
+        if partner:
+            for field_name in ('gst_stages', 'ein_status'):
+                if vals.get(field_name) != 'pending':
+                    continue
+                if partner[field_name] in ('verified', 'manual_verified'):
+                    _logger.warning(
+                        "Buyer %s: the platform sent %s=pending but this "
+                        "account is already %s here, so the verification is "
+                        "kept. Nothing downgrades a verified account on an "
+                        "order payload.",
+                        partner.email or partner.display_name,
+                        field_name, partner[field_name])
+                    vals.pop(field_name)
+
         if partner:
             _logger.info(f"Writing values to partner {partner.id}: {vals}")
             partner.write(vals)

@@ -702,6 +702,8 @@ class SaleOrder(models.Model):
                     # same deploy.
                     'gstin': self.vat or '',
                     'einNumber': self.ein_number or '',
+                    'gstinStatus': partner.gst_stages or '',
+                    'einStatus': partner.ein_status or '',
                 },
             },
             'billingAddress': self._lgd_offline_address(
