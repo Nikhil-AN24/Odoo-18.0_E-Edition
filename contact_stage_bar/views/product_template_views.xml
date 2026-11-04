@@ -473,7 +473,12 @@
                         <group>
                             <group>
                                 <field name="labs"/>
-                                <field name="lgd_stock_number"/>
+                                <!-- Not lgd_stock_number: this popup is opened
+                                     from a single stone's row, and stones of
+                                     one spec share a template. The caller
+                                     passes that stone's SKU in the context;
+                                     see product.template. -->
+                                <field name="lgd_display_stock_number"/>
                                 <!-- Same reason as the dialog above: this
                                      view is built from scratch, so the melee
                                      numbers have to be named here as well. -->

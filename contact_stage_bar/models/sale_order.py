@@ -3660,10 +3660,17 @@ class SaleOrderLine(models.Model):
 
         `new_order_number` is the website's id for the REPLACEMENT line. The
         website knows it when the customer picked the stone there, and sends
-        it; a procurement-raised replacement has none, and the original's id
-        is reused as before so the stone is still reportable. Two lines then
-        share one id, which the status paths resolve by preferring the live
-        line over the replaced one - see _lgd_status_entries_deduped.
+        it; a procurement-raised replacement has none and is left WITHOUT an
+        id until replace-product returns one.
+
+        It used to inherit the original's id so the stone was "still
+        reportable", but it never actually was: two lines under one id are
+        deduped in _lgd_status_entries_deduped and the ORIGINAL always wins,
+        so the replacement's status was dropped every time. All the copy
+        achieved was showing an id on a stone the website has never heard
+        of - the same number on both rows of the order. A line with no
+        order_number is simply skipped by the status push, which is the
+        truthful behaviour: there is nothing on the website to update yet.
 
         `provenance` carries who asked and why, for a website-raised request.
         """
@@ -3686,7 +3693,7 @@ class SaleOrderLine(models.Model):
             'price_unit': price_outcome['final_price_unit'],
             'vendor_id': vendor.id,
             'order_number': (str(new_order_number).strip()
-                             if new_order_number else self.order_number),
+                             if new_order_number else False),
             'availability_status': 'diamond_booked',
             'replaces_line_id': self.id,
             'replacement_pending_sales': needs_sales,

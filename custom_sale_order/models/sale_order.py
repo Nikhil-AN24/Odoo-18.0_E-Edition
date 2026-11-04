@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
+from odoo.addons.contact_stage_bar.models.lgd_inventory_sale_line import (
+    lgd_carat_value)
 
 
 class SaleOrder(models.Model):
@@ -238,7 +240,8 @@ class SaleOrderLine(models.Model):
         'order_id.custom_sale_order_id.customer_rfq_id.sale_price_per_stone',
         'order_id.lgd_usd_rate', 'order_id.lgd_show_usd_rate',
         'product_template_id.list_price',
-        'product_template_id.final_price_margin')
+        'product_template_id.final_price_margin',
+        'replaces_line_id', 'price_unit', 'carat_weight')
     def _compute_rfq_pricing(self):
         for line in self:
             rfq = line.order_id.custom_sale_order_id.sudo().customer_rfq_id
@@ -249,8 +252,18 @@ class SaleOrderLine(models.Model):
                 line.lgd_sales_price_per_stone_usd = (
                     template.final_price_margin or 0.0)
                 continue
-            line.sales_price_per_carat = rfq.sale_rate_per_carat if rfq else 0.0
-            per_stone = rfq.sale_price_per_stone if rfq else 0.0
+
+            if line.replaces_line_id:
+                per_stone = line.price_unit or 0.0
+                carat = lgd_carat_value(line.carat_weight)
+
+                line.sales_price_per_carat = (
+                    per_stone / carat) if carat > 0 else 0.0
+            else:
+                line.sales_price_per_carat = (
+                    rfq.sale_rate_per_carat if rfq else 0.0)
+                per_stone = rfq.sale_price_per_stone if rfq else 0.0
+
             line.lgd_sales_price_per_stone_usd = per_stone
 
             if line.order_id.lgd_show_usd_rate and line.order_id.lgd_usd_rate:
