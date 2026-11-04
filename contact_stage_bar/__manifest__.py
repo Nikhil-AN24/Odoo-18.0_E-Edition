@@ -34,6 +34,7 @@
         "views/crm_lead.xml",
         "views/res_partner_stage.xml",
         "views/res_partner_category_views.xml",
+        "views/lgd_line_bulk_wizard_views.xml",
         "views/sale_order.xml",
         "views/lgd_payment_state_views.xml",
         "views/sale_order_add_product_wizard.xml",

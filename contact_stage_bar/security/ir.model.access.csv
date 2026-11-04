@@ -88,3 +88,7 @@ access_lgd_dispatch_destination_option_system,lgd.dispatch.destination.option.sy
 access_lgd_doc_series_user,lgd.doc.series.user,model_lgd_doc_series,base.group_user,1,0,0,0
 access_lgd_doc_series_superadmin,lgd.doc.series.superadmin,model_lgd_doc_series,contact_stage_bar.group_lgd_superadmin,1,1,1,0
 access_lgd_doc_series_system,lgd.doc.series.system,model_lgd_doc_series,base.group_system,1,1,1,1
+access_lgd_line_bulk_wizard_proc,lgd.line.bulk.wizard.proc,model_lgd_line_bulk_wizard,contact_stage_bar.group_lgd_procurement,1,1,1,1
+access_lgd_line_bulk_wizard_proc_mgr,lgd.line.bulk.wizard.proc.mgr,model_lgd_line_bulk_wizard,contact_stage_bar.group_lgd_procurement_manager,1,1,1,1
+access_lgd_line_bulk_wizard_superadmin,lgd.line.bulk.wizard.superadmin,model_lgd_line_bulk_wizard,contact_stage_bar.group_lgd_superadmin,1,1,1,1
+access_lgd_line_bulk_wizard_system,lgd.line.bulk.wizard.system,model_lgd_line_bulk_wizard,base.group_system,1,1,1,1

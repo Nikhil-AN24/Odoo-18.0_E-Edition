@@ -29,6 +29,13 @@ LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # not replaced stone-for-stone.
 LGD_REPLACEABLE_LINE_TYPES = ('lgd',)
 
+LGD_MANUAL_AVAILABILITY = [
+    ('diamond_booked', 'Diamond Booked'),
+    ('confirmed', 'Confirmed'),
+    ('not_available', 'Not available'),
+    ('cancelled', 'Cancelled'),
+]
+
 LGD_PAYMENT_TERMS = [
     ('advance', 'Advance'),
     ('upon_delivery', 'Upon Delivery'),
