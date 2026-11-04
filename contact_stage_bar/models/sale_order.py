@@ -453,9 +453,10 @@ class SaleOrder(models.Model):
           C1   Delivered / Order Completed – C1-active ⊆ {delivered,
                order_completed}; 'Delivered' when any line is still merely
                delivered, 'Order Completed' once none is.
-          C2   Return of Order / Re - Dispatched / Dispatched – at least 1 in
-               {dispatched, re_dispatched, return_of_order}, reported
-               most-exceptional first.
+          C2   Dispatched – at least 1 in {dispatched, re_dispatched,
+               return_of_order}. All three mean goods are with the courier,
+               so the invoice reads 'Dispatched' for any of them; which of
+               the three a given stone is at stays on the LINE.
           C3   Payment Completed – C3-active == {payment_completed}
           C4   In QC process    – at least 1 in_qc_process
           C5   Availability Check – at least 1 not_available OR at least 1 qc_fail
@@ -599,13 +600,8 @@ class SaleOrder(models.Model):
                     _logger.info("✅ C1: Order Completed")
 
             # ── C2: logistics ─────────────────────────────────────────────
-            elif all_statuses & LOGISTICS:
-                if 're_dispatched' in all_statuses:
-                    order.sdk_augmont_status = 'Re - Dispatched'
-                    _logger.info("✅ C2: Re - Dispatched")
-                else:
-                    order.sdk_augmont_status = 'Dispatched'
-                    _logger.info("✅ C2: Dispatched")
+                order.sdk_augmont_status = 'Dispatched'
+                _logger.info("✅ C2: Dispatched")
 
             # ── C3: Payment Completed ─────────────────────────────────────
             # All payment-flow lines = payment_completed
