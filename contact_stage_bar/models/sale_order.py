@@ -16,7 +16,8 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
-from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT
+from .lgd_inventory_sale_line import (
+    LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT, lgd_group_slip_rows)
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # Which line types Replace Stone is offered on. Single stones only.
@@ -220,6 +221,9 @@ class SaleOrder(models.Model):
             order.lgd_has_printable_lines = bool(order.order_line.filtered(
                 lambda line: line.product_id and not line.display_type
                 and line.availability_status not in LGD_DEAD_STATUSES))
+
+    def _lgd_slip_rows(self, lines):
+        return lgd_group_slip_rows(lines)
 
     def _lgd_check_printable_before_print(self):
         for order in self:

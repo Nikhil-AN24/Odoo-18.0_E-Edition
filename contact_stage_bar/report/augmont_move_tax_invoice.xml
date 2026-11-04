@@ -23,6 +23,7 @@
                 <t t-set="lines"
                    t-value="doc.invoice_line_ids.filtered(lambda l: l.display_type == 'product')"/>
 
+                <t t-set="rows" t-value="doc._lgd_slip_rows(lines)"/>
                 <t t-set="stone_kinds" t-value="set(lines.mapped('lgd_stone_type'))"/>
                 <t t-set="stone_caption"
                    t-value="' / '.join([('LAB GROWN CUT &amp; POLISHED DIAMOND' if k == 'lab_grown' else 'NATURAL DIAMOND') for k in ['lab_grown', 'natural'] if k in stone_kinds]) or 'DIAMOND'"/>
@@ -209,19 +210,26 @@
                                 <tbody>
                                     <!-- Per the design CSS: certificate, CTS and
                                          AMOUNT are w500; shape/col/cla/qty/rate are
-                                         w400; HSN is w400 AND muted #5F5E5E. -->
-                                    <tr t-foreach="lines" t-as="line">
-                                        <td style="font-weight:500;"><span t-esc="line.lgd_certificate or ''"/></td>
-                                        <td><span t-esc="(line.lgd_shapes or '').upper()"/></td>
-                                        <td class="c"><span t-esc="line.lgd_color or ''"/></td>
-                                        <td class="c"><span t-esc="line.lgd_clarity or ''"/></td>
+                                         w400; HSN is w400 AND muted #5F5E5E.
+                                         One row per DISTINCT stone, not per
+                                         order line: seven identical stones are
+                                         one row of QTY 7, not seven rows of
+                                         QTY 1. A certified stone is never
+                                         merged - see lgd_group_slip_rows. The
+                                         totals below still come from `lines`,
+                                         so grouping cannot move the money. -->
+                                    <tr t-foreach="rows" t-as="row">
+                                        <td style="font-weight:500;"><span t-esc="row['certificate']"/></td>
+                                        <td><span t-esc="row['shape'].upper()"/></td>
+                                        <td class="c"><span t-esc="row['color']"/></td>
+                                        <td class="c"><span t-esc="row['clarity']"/></td>
                                         <!-- Same ink and weight as SHAPE: the HSN was the only
                                              muted column in the row, which read as
                                              though it mattered less than the rest. The
                                              "c" class is kept - it only centres. -->
-                                        <td class="c"><span t-esc="hsn_by_kind.get(line.lgd_stone_type) or line.product_id.l10n_in_hsn_code or ''"/></td>
-                                        <td class="r"><span t-esc="'%.2f' % line.quantity"/></td>
-                                        <td class="r" style="font-weight:500;"><span t-esc="line.lgd_carat_weight or ''"/></td>
+                                        <td class="c"><span t-esc="hsn_by_kind.get(row['stone_type']) or row['product'].l10n_in_hsn_code or ''"/></td>
+                                        <td class="r"><span t-esc="'%.2f' % row['qty']"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="row['carats_text']"/></td>
                                         <!-- Sales Price/carat, not price_unit. price_unit is the
                                              price per STONE, so the table contradicted itself:
                                              RATE x CTS did not equal AMOUNT (306 x 3 != 306).
@@ -233,8 +241,8 @@
                                              none and would otherwise print 0.
                                              Two decimals, because a per-carat rate is
                                              commonly not a whole number. -->
-                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.lgd_sales_price_per_carat or line.price_unit)"/></td>
-                                        <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(line.price_subtotal)"/></td>
+                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(row['rate'])"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(row['amount'])"/></td>
                                     </tr>
                                 </tbody>
                             </table>

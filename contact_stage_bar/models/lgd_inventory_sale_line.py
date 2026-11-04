@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import re
 from collections import defaultdict
 from odoo import _, api, fields, models
 from .lgd_ops_mixin import lgd_notify, lgd_responsible_user
@@ -13,6 +14,82 @@ GROUP_SHIPMENT = 'contact_stage_bar.group_lgd_shipment'
 #: Line statuses that mean the stone will never ship on this order.
 LGD_DEAD_STATUSES = (
     'cancelled', 'replaced', 'not_available', 'qc_fail', 'memo_returned')
+
+LGD_SLIP_FIELDS = {
+    'sale.order.line': {
+        'certificate': 'certificate', 'shape': 'shapes', 'color': 'color',
+        'clarity': 'clarity', 'stone_type': 'stone_type',
+        'qty': 'product_uom_qty', 'carat': 'carat_weight',
+        'rate': 'sales_price_per_carat',
+    },
+    'account.move.line': {
+        'certificate': 'lgd_certificate', 'shape': 'lgd_shapes',
+        'color': 'lgd_color', 'clarity': 'lgd_clarity',
+        'stone_type': 'lgd_stone_type', 'quantity': 'quantity',
+        'qty': 'quantity', 'carat': 'lgd_carat_weight',
+        'rate': 'lgd_sales_price_per_carat',
+    },
+}
+
+
+def lgd_carat_value(raw):
+    """Carat weight is stored as free text ("5.00", "1.41 ct"), so the first
+    number in it is the weight. Anything unreadable counts as zero rather
+    than breaking the slip over a typo."""
+    if not raw:
+        return 0.0
+    found = re.search(r'(-?\d+(?:\.\d+)?)', str(raw))
+    try:
+        return float(found.group(1)) if found else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def lgd_group_slip_rows(lines):
+    if not lines:
+        return []
+    names = LGD_SLIP_FIELDS[lines._name]
+    rows, seen = [], {}
+    for line in lines:
+        certificate = (line[names['certificate']] or '').strip()
+        carat_text = (line[names['carat']] or '').strip()
+        rate = line[names['rate']] or line.price_unit or 0.0
+        row = {
+            'certificate': certificate,
+            'shape': (line[names['shape']] or '').strip(),
+            'color': (line[names['color']] or '').strip(),
+            'clarity': (line[names['clarity']] or '').strip(),
+            'stone_type': line[names['stone_type']] or '',
+            'product': line.product_id,
+            'qty': line[names['qty']] or 0.0,
+            'carats': lgd_carat_value(carat_text),
+            # The raw text while one stone owns the row, so a slip that
+            # merges nothing prints exactly what it printed before.
+            'carats_text': carat_text,
+            'rate': rate,
+            'amount': line.price_subtotal,
+            'count': 1,
+        }
+        key = None if certificate else (
+            row['shape'].upper(), row['color'], row['clarity'],
+            row['stone_type'], row['product'].l10n_in_hsn_code or '',
+            carat_text, round(rate, 4),
+        )
+        first = seen.get(key) if key is not None else None
+        if first is None:
+            if key is not None:
+                seen[key] = row
+            rows.append(row)
+            continue
+        first['qty'] += row['qty']
+        first['carats'] += row['carats']
+        first['amount'] += row['amount']
+        first['count'] += 1
+        # Several stones share the row now, so one stone's own text no
+        # longer describes it.
+        first['carats_text'] = '{:,.2f}'.format(first['carats'])
+    return rows
+
 
 LINE_STATUS_TO_AUGMONT = {
     'diamond_booked':    'Diamond Booked',
