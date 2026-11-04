@@ -497,6 +497,14 @@
                 <field name="order_number" readonly="1"/>
             </xpath>
 
+            <xpath expr="//field[@name='order_line']" position="before">
+                <button name="%(contact_stage_bar.action_lgd_line_bulk_wizard)d"
+                        type="action" string="Update Stones"
+                        class="btn-secondary mb-2" icon="fa-check-square-o"
+                        context="{'active_id': id, 'active_model': 'sale.order'}"
+                        groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
+            </xpath>
+
             <xpath expr="//field[@name='order_line']/list/field[@name='product_template_id']" position="after">
                 <button name="action_open_product_popup" type="object" icon="fa-info-circle" title="View Product"/>
                 <!-- Replace Stone: Operations only, on a single certified

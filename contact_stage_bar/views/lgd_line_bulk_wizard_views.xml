@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════ Set Availability / Vendor on several stones ═══════ -->
+    <record id="view_lgd_line_bulk_wizard_form" model="ir.ui.view">
+        <field name="name">lgd.line.bulk.wizard.form</field>
+        <field name="model">lgd.line.bulk.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Update Stones">
+                <group>
+                    <field name="order_id" invisible="1"/>
+                    <!-- Both optional: set one, the other, or both. Leaving
+                         a field empty leaves that value alone on every
+                         stone, rather than blanking it. -->
+                    <field name="availability_status"
+                           placeholder="Leave empty to keep each stone's own"/>
+                    <field name="vendor_id" options="{'no_create': True}"
+                           placeholder="Leave empty to keep each stone's own"/>
+                </group>
+                <separator string="Stones to update"/>
+                <!-- Opens with every stone this user may edit already in the
+                     list; remove the ones that should keep their current
+                     values. Read-only columns - this is a picker, not a
+                     second place to edit a stone. -->
+                <field name="line_ids" nolabel="1">
+                    <list create="false">
+                        <field name="lgd_stock_number" string="LGD SKU"/>
+                        <field name="product_template_id" string="Product"/>
+                        <field name="certificate" string="Certificate Number"/>
+                        <field name="availability_status" string="Availability"/>
+                        <field name="vendor_id" string="Vendor Company"/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="action_apply" type="object"
+                            string="Apply to Selected" class="btn-primary"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_lgd_line_bulk_wizard" model="ir.actions.act_window">
+        <field name="name">Update Stones</field>
+        <field name="res_model">lgd.line.bulk.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

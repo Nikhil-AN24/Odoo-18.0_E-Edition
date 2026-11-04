@@ -16,7 +16,8 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
-from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT
+from .lgd_inventory_sale_line import (
+    LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT, lgd_group_slip_rows)
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # Which line types Replace Stone is offered on. Single stones only.
@@ -27,6 +28,13 @@ LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # parcel that cannot be supplied is cancelled or re-sourced on the parcel,
 # not replaced stone-for-stone.
 LGD_REPLACEABLE_LINE_TYPES = ('lgd',)
+
+LGD_MANUAL_AVAILABILITY = [
+    ('diamond_booked', 'Diamond Booked'),
+    ('confirmed', 'Confirmed'),
+    ('not_available', 'Not available'),
+    ('cancelled', 'Cancelled'),
+]
 
 LGD_PAYMENT_TERMS = [
     ('advance', 'Advance'),
@@ -220,6 +228,9 @@ class SaleOrder(models.Model):
             order.lgd_has_printable_lines = bool(order.order_line.filtered(
                 lambda line: line.product_id and not line.display_type
                 and line.availability_status not in LGD_DEAD_STATUSES))
+
+    def _lgd_slip_rows(self, lines):
+        return lgd_group_slip_rows(lines)
 
     def _lgd_check_printable_before_print(self):
         for order in self:
@@ -3649,10 +3660,17 @@ class SaleOrderLine(models.Model):
 
         `new_order_number` is the website's id for the REPLACEMENT line. The
         website knows it when the customer picked the stone there, and sends
-        it; a procurement-raised replacement has none, and the original's id
-        is reused as before so the stone is still reportable. Two lines then
-        share one id, which the status paths resolve by preferring the live
-        line over the replaced one - see _lgd_status_entries_deduped.
+        it; a procurement-raised replacement has none and is left WITHOUT an
+        id until replace-product returns one.
+
+        It used to inherit the original's id so the stone was "still
+        reportable", but it never actually was: two lines under one id are
+        deduped in _lgd_status_entries_deduped and the ORIGINAL always wins,
+        so the replacement's status was dropped every time. All the copy
+        achieved was showing an id on a stone the website has never heard
+        of - the same number on both rows of the order. A line with no
+        order_number is simply skipped by the status push, which is the
+        truthful behaviour: there is nothing on the website to update yet.
 
         `provenance` carries who asked and why, for a website-raised request.
         """
@@ -3675,7 +3693,7 @@ class SaleOrderLine(models.Model):
             'price_unit': price_outcome['final_price_unit'],
             'vendor_id': vendor.id,
             'order_number': (str(new_order_number).strip()
-                             if new_order_number else self.order_number),
+                             if new_order_number else False),
             'availability_status': 'diamond_booked',
             'replaces_line_id': self.id,
             'replacement_pending_sales': needs_sales,

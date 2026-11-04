@@ -108,7 +108,10 @@
                                                 type="object" icon="fa-info-circle"
                                                 title="General Information"
                                                 invisible="not product_id"/>
-                          
+
+                                        <field name="lgd_stock_number"
+                                               string="LGD SKU" readonly="1"/>
+
                                         <field name="lgd_note_order_specific"
                                                string="Order Specific Notes" readonly="1"/>
                                         <field name="lgd_note_order_item"
@@ -157,6 +160,9 @@
                             type="object" icon="fa-info-circle"
                             title="General Information"
                             invisible="not product_id"/>
+
+                    <field name="lgd_stock_number"
+                           string="LGD SKU" readonly="1"/>
                     <field name="lgd_note_order_specific"
                            string="Order Specific Notes" readonly="1" optional="show"/>
                     <field name="lgd_note_order_item"

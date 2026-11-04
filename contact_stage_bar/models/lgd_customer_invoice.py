@@ -4,7 +4,7 @@ import re
 
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, UserError
-from .lgd_inventory_sale_line import LGD_DEAD_STATUSES
+from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, lgd_group_slip_rows
 
 _logger = logging.getLogger(__name__)
 
@@ -14,6 +14,12 @@ LGD_INVOICEABLE_ORDER_STATES = ('sale', 'done')
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
+
+    def _lgd_slip_rows(self, lines):
+        """Invoice Slip table rows: identical stones merged into one line.
+        Shares lgd_group_slip_rows with the Order Slip, so a stone printed
+        on both documents reads the same way on each."""
+        return lgd_group_slip_rows(lines)
 
     lgd_platform_number = fields.Char(
         string="Platform number", copy=False, index=True,

@@ -302,7 +302,8 @@ class SaleOrder(models.Model):
             _logger.warning(
                 "[REPLACEMENT PUSH] %s: base_augmont_url is not set, so the "
                 "website cannot be told about this replacement. The new stone "
-                "is reporting under the original's order id.",
+                "stays without a website order id and is not status-synced "
+                "until one is allocated.",
                 self.sdk_augmont_number or self.name)
             # In the chatter too, for the same reason as every other failure
             # below: nothing was sent, and without a line on the record the
@@ -421,8 +422,8 @@ class SaleOrder(models.Model):
 
         Their contract puts it at data.newOrder.orderUniqueId. The flatter
         spellings are still read as a fallback: this endpoint is new on both
-        sides, and silently storing nothing would leave the two stones
-        sharing one id with nothing in the log to explain it.
+        sides, and silently storing nothing would leave the replacement with
+        no id at all and nothing in the log to explain it.
         """
         self.ensure_one()
         data = (response_data or {}).get('data') or {}
@@ -435,9 +436,9 @@ class SaleOrder(models.Model):
         if not unique_id:
             _logger.error(
                 "[REPLACEMENT PUSH] %s: the website accepted the replacement "
-                "but returned no newOrder.orderUniqueId, so the new stone "
-                "keeps the original's id (%s) and the two share one id. "
-                "Response: %s",
+                "but returned no newOrder.orderUniqueId, so the new stone has "
+                "no website id (%s) and cannot be status-synced until one "
+                "arrives. Response: %s",
                 self.sdk_augmont_number or self.name,
                 new_line.order_number or '(none)',
                 json.dumps(response_data)[:400])

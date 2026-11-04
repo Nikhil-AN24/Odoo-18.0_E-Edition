@@ -38,6 +38,17 @@ class PurchaseOrderLine(models.Model):
     lgd_colour = fields.Char(related='sale_line_id.color', string='Colour')
     lgd_clarity = fields.Char(related='sale_line_id.clarity', string='Clarity')
 
+    lgd_stock_number = fields.Char(
+        string='LGD SKU', compute='_compute_lgd_stock_number')
+
+    @api.depends('sale_line_id.lgd_stock_number',
+                 'product_id.product_tmpl_id.lgd_stock_number')
+    def _compute_lgd_stock_number(self):
+        for line in self:
+            line.lgd_stock_number = (
+                line.sale_line_id.lgd_stock_number
+                or line.product_id.product_tmpl_id.lgd_stock_number)
+
     lgd_availability_status = fields.Selection(
         related='sale_line_id.availability_status', string='Availability')
     lgd_cert_type = fields.Selection(
@@ -912,6 +923,9 @@ class PurchaseOrderLine(models.Model):
             'views': [(self.env.ref(
                 'contact_stage_bar.view_product_popup_info_only').id, 'form')],
             'target': 'new',
+            # This row is one stone; show ITS SKU, not the shared template's.
+            'context': dict(self.env.context,
+                            lgd_row_stock_number=self.lgd_stock_number or ''),
         }
 
     # ── Mark set complete ─────────────────────────────────────────────

@@ -139,7 +139,19 @@ class ProductTemplate(models.Model):
     country_id = fields.Many2one('res.country',string="Country")
     stock_number = fields.Char(string="Vendor Stock Number")
     lgd_stock_number = fields.Char(string="Website Stock Number")
-    
+
+    lgd_display_stock_number = fields.Char(
+        string="Website Stock Number",
+        compute='_compute_lgd_display_stock_number')
+
+    @api.depends('lgd_stock_number')
+    @api.depends_context('lgd_row_stock_number')
+    def _compute_lgd_display_stock_number(self):
+        from_row = self.env.context.get('lgd_row_stock_number')
+        for tmpl in self:
+            tmpl.lgd_display_stock_number = from_row or tmpl.lgd_stock_number
+
+
     length = fields.Float(string="Length")
     width = fields.Float(string="Width")
     depth = fields.Float(string="Depth")
