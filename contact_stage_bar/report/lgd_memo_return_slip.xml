@@ -66,9 +66,23 @@
                            memo slips read as the same family of document
                            instead of plain white. */
                         body, .lgd-memo-return { background:#FBFBF9; }
-                        .lgd-memo-return table { border-collapse:collapse; border:0; }
-                        .lgd-memo-return td, .lgd-memo-return th { border:0; padding:0;
-                                                                   vertical-align:top; }
+                                                /* Bootstrap's Reboot sets, on EVERY table element:
+                               thead, tbody, tfoot, tr, td, th {
+                                   border-color: inherit;
+                                   border-style: solid;
+                                   border-width: 0; }
+                           A zero-width solid border is still a border, and
+                           Qt 4.8.7 (wkhtmltopdf's engine) rounds it up to one
+                           device unit and paints it in the inherited colour -
+                           36 hairlines boxing every cell on this slip. The
+                           reset has to name tr/thead/tbody/tfoot too: killing
+                           it on td/th alone leaves the row borders behind,
+                           which is exactly what the boxes were. */
+                        .lgd-memo-return table, .lgd-memo-return thead, .lgd-memo-return tbody,
+                        .lgd-memo-return tfoot, .lgd-memo-return tr, .lgd-memo-return td, .lgd-memo-return th {
+                            border-style: none; }
+                        .lgd-memo-return table { border-collapse:collapse; }
+                        .lgd-memo-return td, .lgd-memo-return th { padding:0; vertical-align:top; }
                     </style>
                     <div class="page lgd-memo-return"
                          style="font-family:Helvetica,Arial,sans-serif;
