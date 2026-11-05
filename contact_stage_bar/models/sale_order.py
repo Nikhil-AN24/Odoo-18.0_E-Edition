@@ -767,19 +767,26 @@ class SaleOrder(models.Model):
                 _logger.exception(error_msg)
                 raise UserError(error_msg)
     
+    # The fiscal position each GST treatment implies. It is what actually
+    # swaps CGST + SGST for IGST: the treatment flag only labels the slip.
+    LGD_GST_FISCAL_POSITIONS = {
+        'within_maharashtra': 'Within Maharashtra',
+        'outside_maharashtra': 'Inter State',
+    }
+
+    def _lgd_apply_gst_fiscal_position(self):
+        FiscalPosition = self.env['account.fiscal.position'].sudo()
+        for order in self:
+            name = self.LGD_GST_FISCAL_POSITIONS.get(order.gst_treatment)
+            fiscal_position = FiscalPosition.search([
+                ('name', '=', name),
+                ('company_id', '=', order.company_id.id),
+            ], limit=1) if name else FiscalPosition.browse()
+            order.fiscal_position_id = fiscal_position.id or False
+
     @api.onchange('gst_treatment')
     def _onchange_gst_treatment(self):
-        for order in self:
-            if order.gst_treatment == 'within_maharashtra':
-                fiscal_position = self.env['account.fiscal.position'].search([('name', '=', 'Within Maharashtra')],limit=1)
-                order.fiscal_position_id = fiscal_position.id if fiscal_position else False
-                # order.action_update_taxes()
-            elif order.gst_treatment == 'outside_maharashtra':
-                fiscal_position = self.env['account.fiscal.position'].search([('name', '=', 'Inter State')], limit=1)
-                order.fiscal_position_id = fiscal_position.id if fiscal_position else False
-                # order.action_update_taxes()
-            else:
-                order.fiscal_position_id = False
+        self._lgd_apply_gst_fiscal_position()
     
     
     def action_open_add_product_wizard(self):

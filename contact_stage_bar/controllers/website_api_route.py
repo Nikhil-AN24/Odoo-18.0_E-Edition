@@ -260,6 +260,11 @@ class PartnerSyncController(http.Controller):
             ('company_id', '=', company.id),
         ], order='active desc, id', limit=1)
 
+    def _website_line_taxes(self, sale_order, product, company):
+        taxes = product.taxes_id.filtered(lambda t: t.company_id == company)
+        fiscal_position = sale_order.fiscal_position_id
+        return fiscal_position.map_tax(taxes) if fiscal_position else taxes
+
     def _lgd_vendor_from_order(self, seller, fallback_name):
         """The vendor named on an order line, through the one partner path.
 
@@ -410,7 +415,6 @@ class PartnerSyncController(http.Controller):
                     'billing_address': billing_address,
                     'shipping_address': shipping_address,
                     'location': 'mumbai',
-                    'gst_treatment' : 'within_maharashtra',
                     'is_website': order_source == 'website',
                     'order_source': order_source,
                     'company_id': company.id,
@@ -422,6 +426,10 @@ class PartnerSyncController(http.Controller):
                     order_vals['lgd_usd_rate'] = website_rate
 
                 sale_order = request.env['sale.order'].sudo().create(order_vals)
+                # The UI does this from an onchange, which a create() made by
+                # this controller never fires. Without it a website order
+                # reached confirmation with no fiscal position at all, so nothing could map its taxes to IGST.
+                sale_order._lgd_apply_gst_fiscal_position()
 
                 if shipping_address:
                     ship_addr = request.env['res.partner']._lgd_match_or_create_address(
@@ -616,7 +624,7 @@ class PartnerSyncController(http.Controller):
                                 'name': summary_title,
                                 'order_number': str(order_number) if order_number else request_number,
                                 'vendor_id': melee_vendor.id if melee_vendor else False,
-                                'tax_id': [(6, 0, melee_product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
+                                'tax_id': [(6, 0, self._website_line_taxes(sale_order, melee_product, company).ids)],
                                 # The platform just told us its own status for this
                                 # line, so that IS what it holds. Recording it stops
                                 # the next push re-sending it as a no-op, which the
@@ -749,7 +757,7 @@ class PartnerSyncController(http.Controller):
                                     'name': parcel_name,
                                     'order_number': str(order_number) if order_number else '',
                                     'vendor_id': melee_vendor.id if melee_vendor else False,
-                                    'tax_id': [(6, 0, melee_product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
+                                    'tax_id': [(6, 0, self._website_line_taxes(sale_order, melee_product, company).ids)],
                                     'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(melee_avail_status),
                                     'availability_status': melee_avail_status,
                                     'line_type': 'melee',
@@ -982,7 +990,7 @@ class PartnerSyncController(http.Controller):
                             'vendor_id': vendor.id,
                             'procurement_price_per_carat': vendor_ppc,
                             'vendor_total_price': product.final_price,
-                            'tax_id': [(6, 0, product.taxes_id.filtered(lambda t: t.company_id == company).ids)],
+                            'tax_id': [(6, 0, self._website_line_taxes(sale_order, product, company).ids)],
                             'lgd_last_pushed_status': LINE_STATUS_TO_AUGMONT.get(lgd_avail_status),
                             'availability_status': lgd_avail_status,
                         })]

@@ -396,7 +396,11 @@
                 <t t-set="company" t-value="doc.company_id"/>
                 <t t-set="customer" t-value="doc.partner_id"/>
                 <t t-set="commercial" t-value="customer.commercial_partner_id"/>
-                <t t-set="sym" t-value="doc.currency_id.symbol or ''"/>
+                <t t-set="fx"
+                   t-value="doc.lgd_usd_rate if (doc.lgd_show_usd_rate and doc.lgd_usd_rate) else 0.0"/>
+                <t t-set="cur" t-value="company.currency_id if fx else doc.currency_id"/>
+                <t t-set="fx" t-value="fx or 1.0"/>
+                <t t-set="sym" t-value="cur.symbol or ''"/>
 
                 <!-- GST split. within_maharashtra gives CGST + SGST, else IGST.
                      The halves are derived, not rounded independently: rounding
@@ -414,21 +418,29 @@
                      shipping_charges is added back because the order's own
                      amount_untaxed carries it (see sale.order._compute_amounts)
                      and a plain re-sum of the lines would drop it. -->
-                <t t-set="amt_untaxed"
+                <t t-set="base"
                    t-value="sum(lines.mapped('price_subtotal')) + (doc.shipping_charges or 0.0)"/>
-                <t t-set="amt_tax" t-value="sum(lines.mapped('price_tax'))"/>
+
+                <t t-set="tax_pct"
+                   t-value="round(sum((sum(t.children_tax_ids.mapped('amount')) if t.amount_type == 'group' else t.amount) for t in lines.tax_id), 2)"/>
+                <t t-set="tax_pct"
+                   t-value="tax_pct or (round(sum(lines.mapped('price_tax')) / base * 100, 2) if base else 0.0)"/>
+                <t t-set="half_pct" t-value="round(tax_pct / 2.0, 2)"/>
+
+                <t t-set="posted_tax" t-value="sum(lines.mapped('price_tax'))"/>
+                <t t-set="tax_src"
+                   t-value="round(base * tax_pct / 100.0, 2) if tax_pct else posted_tax"/>
+                <t t-set="tax_src"
+                   t-value="tax_src if abs(tax_src - posted_tax) &lt;= 0.01 * len(lines) + 0.005 else posted_tax"/>
+
+                <t t-set="amt_untaxed" t-value="round(base * fx, 2)"/>
+                <t t-set="amt_tax" t-value="round(tax_src * fx, 2)"/>
                 <t t-set="amt_total" t-value="amt_untaxed + amt_tax"/>
 
                 <t t-set="intra" t-value="doc.gst_treatment == 'within_maharashtra'"/>
                 <t t-set="cgst" t-value="round(amt_tax / 2.0, 2) if intra else 0.0"/>
                 <t t-set="sgst" t-value="(amt_tax - cgst) if intra else 0.0"/>
                 <t t-set="igst" t-value="0.0 if intra else amt_tax"/>
-
-                <t t-set="tax_pct"
-                   t-value="round(sum((sum(t.children_tax_ids.mapped('amount')) if t.amount_type == 'group' else t.amount) for t in lines.tax_id), 2)"/>
-                <t t-set="tax_pct"
-                   t-value="tax_pct or (round(amt_tax / amt_untaxed * 100, 2) if amt_untaxed else 0.0)"/>
-                <t t-set="half_pct" t-value="round(tax_pct / 2.0, 2)"/>
 
                 <t t-set="round_off"
                    t-value="amt_total - amt_untaxed - amt_tax"/>
@@ -439,7 +451,7 @@
                 <!-- House format: currency first, no interior commas,
                      hyphens or "and"s, and exactly one "And" between
                      the units and the subunits. See res.currency.lgd_amount_in_words. -->
-                <t t-set="words" t-value="doc.currency_id.lgd_amount_in_words(amt_total)"/>
+                <t t-set="words" t-value="cur.lgd_amount_in_words(amt_total)"/>
 
                 <!-- RUNNING HEADER. Odoo pulls every div classed
                      "header" out of the body and hands it to wkhtmltopdf
@@ -627,8 +639,8 @@
                                              none and would otherwise print 0.
                                              Two decimals, because a per-carat rate is
                                              commonly not a whole number. -->
-                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(row['rate'])"/></td>
-                                        <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(row['amount'])"/></td>
+                                        <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(round(row['rate'] * fx, 2))"/></td>
+                                        <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(round(row['amount'] * fx, 2))"/></td>
                                     </tr>
                                 </tbody>
                             </table>
