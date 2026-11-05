@@ -260,6 +260,12 @@ class SaleOrder(models.Model):
             'finalPriceMargin': final_margin,
         }
 
+    def _lgd_offline_added_note(self, line):
+        if line.customer_reference_note:
+            return line.customer_reference_note
+        size_line = line.rfq_size_line_id
+        return (size_line.description or '') if size_line else ''
+
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
         size_line = line.rfq_size_line_id
@@ -649,7 +655,7 @@ class SaleOrder(models.Model):
                 'invoiceAmount': float(prices['finalPriceMargin']),
                 'orderNote': line.order_specific or '',
                 'generalNotes': line.popup_item_notes or '',
-                'customerReference': line.customer_reference_note or '',
+                'customerReference': self._lgd_offline_added_note(line),
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(line)
@@ -700,6 +706,15 @@ class SaleOrder(models.Model):
                 self.partner_shipping_id or partner),
             'orders': orders,
         }
+
+        rate = self._lgd_offline_inr_rate()
+        if rate:
+            priced_at = self.date_order or fields.Datetime.now()
+            payload.update({
+                'conversionRate': float(rate),
+                'conversionRateCurrency': 'INR',
+                'conversionRateAt': priced_at.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+            })
         return payload
 
     # ------------------------------------------------------------------
