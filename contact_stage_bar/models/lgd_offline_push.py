@@ -229,12 +229,30 @@ class SaleOrder(models.Model):
         carat = self._lgd_offline_carat(line)
 
         final_margin = float(line.price_unit or 0.0)
-        final_base = float(template.final_price or 0.0) or final_margin
         per_carat_margin = float(template.final_price_margin or 0.0)
-        per_carat_base = float(template.price_per_carat or 0.0)
+
+        # The vendor's rate lives on the LINE for anything raised from a
+        # Customer RFQ: that flow creates the product template empty, so it
+        # carries no price_per_carat and no final_price. Reading only the
+        # template therefore fell straight through to the customer figures
+        # and sent the SELLING price as pricePerCarat - which is what the
+        # website prints as "Vendor Price / ct". Guarded with _fields
+        # because procurement_price_per_carat belongs to custom_sale_order,
+        # which depends on this module rather than the other way round.
+        line_cost = 0.0
+        if 'procurement_price_per_carat' in line._fields:
+            line_cost = float(line.procurement_price_per_carat or 0.0)
+        per_carat_base = float(template.price_per_carat or 0.0) or line_cost
+        final_base = float(template.final_price or 0.0)
+
         if carat:
             per_carat_margin = per_carat_margin or (final_margin / carat)
             per_carat_base = per_carat_base or (final_base / carat)
+            final_base = final_base or (per_carat_base * carat)
+
+        # Only when nothing anywhere records a cost do the pre-margin figures fall back to the customer ones, exactly as before.
+        per_carat_base = per_carat_base or per_carat_margin
+        final_base = final_base or final_margin
         return {
             'pricePerCarat': per_carat_base,
             'pricePerCaratMargin': per_carat_margin,
