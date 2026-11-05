@@ -260,35 +260,6 @@ class SaleOrder(models.Model):
             'finalPriceMargin': final_margin,
         }
 
-    def _lgd_offline_line_description(self, line):
-        """What Sales typed in the RFQ's Description column for this stone.
-
-        It reaches the order line only inside its composed name -
-        "CRFQ00130 - Testing 3103" - and was on no key of the payload, so
-        the website had no way to show it. The raw description is preferred
-        over that name; the name is the fallback for a line with no size
-        row behind it.
-        """
-        size_line = line.rfq_size_line_id
-        if size_line and size_line.description:
-            return size_line.description
-        return line.name or ''
-
-    def _lgd_offline_order_note(self, line):
-        """orderNote: the product's Order Specific Notes, and nothing else.
-
-        This used to fall back to the line description, on the guess that
-        orderNote was the key behind "Added Note" on the website's Order
-        Details. It is not - the website labels orderNote "Order specific
-        note", and the CRFQ reference landed in that box instead. The
-        description now rides generalNotes; see _lgd_offline_added_note.
-        """
-        return line.order_specific or ''
-
-    def _lgd_offline_added_note(self, line):
-        return (line.customer_reference_note
-                or self._lgd_offline_line_description(line))
-
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
         size_line = line.rfq_size_line_id
@@ -676,9 +647,9 @@ class SaleOrder(models.Model):
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
                 'productPrice': float(prices['finalPrice']),
                 'invoiceAmount': float(prices['finalPriceMargin']),
-                'orderNote': self._lgd_offline_order_note(line),
+                'orderNote': line.order_specific or '',
                 'generalNotes': line.popup_item_notes or '',
-                'customerReference': self._lgd_offline_added_note(line),
+                'customerReference': line.customer_reference_note or '',
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(line)

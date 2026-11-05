@@ -600,6 +600,7 @@ class SaleOrder(models.Model):
                     _logger.info("✅ C1: Order Completed")
 
             # ── C2: logistics ─────────────────────────────────────────────
+            elif all_statuses & LOGISTICS:
                 order.sdk_augmont_status = 'Dispatched'
                 _logger.info("✅ C2: Dispatched")
 
