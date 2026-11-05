@@ -286,15 +286,8 @@ class SaleOrder(models.Model):
         return line.order_specific or ''
 
     def _lgd_offline_added_note(self, line):
-        """generalNotes - the box the website shows as "Added Note".
-
-        A General Order Note typed into the (i) popup always wins. Where
-        there is none the line description rides here, rather than leaving
-        the box reading "-": on an offline order that description is the
-        Customer RFQ reference, which is the one thing the buyer needs to
-        read against the stone.
-        """
-        return line.popup_item_notes or self._lgd_offline_line_description(line)
+        return (line.customer_reference_note
+                or self._lgd_offline_line_description(line))
 
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
@@ -667,6 +660,7 @@ class SaleOrder(models.Model):
         for line in self._lgd_offline_lines():
             line_type = self._lgd_offline_line_type(line)
             is_melee = line_type == 'MELEE'
+            prices = self._lgd_offline_price_block(line)
             entry = {
                 # Odoo's own line id, echoed back by the website so each
                 # orderUniqueId lands on the line it belongs to. Product
@@ -680,11 +674,11 @@ class SaleOrder(models.Model):
                 # Always 1 on a parcel: what was sold is in meleeQty, and a
                 # quantity repeated in both places is counted twice.
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
-                'productPrice': float(line.price_unit or 0.0),
-                'invoiceAmount': float(line.price_total or 0.0),
+                'productPrice': float(prices['finalPrice']),
+                'invoiceAmount': float(prices['finalPriceMargin']),
                 'orderNote': self._lgd_offline_order_note(line),
-                'generalNotes': self._lgd_offline_added_note(line),
-                'customerReference': line.customer_reference_note or '',
+                'generalNotes': line.popup_item_notes or '',
+                'customerReference': self._lgd_offline_added_note(line),
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(line)
