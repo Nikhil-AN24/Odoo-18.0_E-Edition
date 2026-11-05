@@ -275,20 +275,26 @@ class SaleOrder(models.Model):
         return line.name or ''
 
     def _lgd_offline_order_note(self, line):
-        """orderNote, with the line description as a fallback.
+        """orderNote: the product's Order Specific Notes, and nothing else.
 
-        orderNote carries Order Specific Notes, which is a field on the
-        PRODUCT and is empty on every offline order unless somebody types
-        into the (i) popup. "Added Note" on the website's Order Details is
-        the box the description belongs in, and orderNote is the likeliest
-        key behind it - so where nothing else claims orderNote the
-        description rides there rather than printing "-".
-
-        Nothing is overwritten: a real Order Specific Note always wins. If
-        the website reads some other key for Added Note, drop this and keep
-        lineDescription, which carries the same text on a key of its own.
+        This used to fall back to the line description, on the guess that
+        orderNote was the key behind "Added Note" on the website's Order
+        Details. It is not - the website labels orderNote "Order specific
+        note", and the CRFQ reference landed in that box instead. The
+        description now rides generalNotes; see _lgd_offline_added_note.
         """
-        return line.order_specific or self._lgd_offline_line_description(line)
+        return line.order_specific or ''
+
+    def _lgd_offline_added_note(self, line):
+        """generalNotes - the box the website shows as "Added Note".
+
+        A General Order Note typed into the (i) popup always wins. Where
+        there is none the line description rides here, rather than leaving
+        the box reading "-": on an offline order that description is the
+        Customer RFQ reference, which is the one thing the buyer needs to
+        read against the stone.
+        """
+        return line.popup_item_notes or self._lgd_offline_line_description(line)
 
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
@@ -677,7 +683,7 @@ class SaleOrder(models.Model):
                 'productPrice': float(line.price_unit or 0.0),
                 'invoiceAmount': float(line.price_total or 0.0),
                 'orderNote': self._lgd_offline_order_note(line),
-                'generalNotes': line.popup_item_notes or '',
+                'generalNotes': self._lgd_offline_added_note(line),
                 'customerReference': line.customer_reference_note or '',
                 'defaultQcRequirements': line.popup_default_qc_requirements or '',
                 'seller': self._lgd_offline_seller_block(line),
