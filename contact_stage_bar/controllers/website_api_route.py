@@ -142,8 +142,9 @@ class PartnerSyncController(http.Controller):
     # request: a call without a logged-in session runs as the Public user,
     # whose own company may differ and would hide the order from Procurement.
     _WEBSITE_ORDER_COMPANY_NAME = 'ANIRATH OVERSEAS LIMITED'
-    # Tax historically hardcoded on website stone products.
+    _WEBSITE_STONE_TAX_NAME = '1.5% GST'
     _WEBSITE_STONE_TAX_ID = 112
+    _WEBSITE_STONE_TAX_PARAM = 'lgd_website_stone_tax'
 
     #: Which company website orders belong to. Set per database, because
     #: localhost and UAT do not hold the same companies.
@@ -244,21 +245,46 @@ class PartnerSyncController(http.Controller):
         return rate
 
     def _website_stone_tax(self, company):
-        """Tax for website stone products, taken from the order's company.
-
-        Keeps the historical tax when it belongs to that company; otherwise
-        uses the company's sale tax of the same name, so an order never
-        carries another company's tax (which Odoo rejects).
-        """
         Tax = request.env['account.tax'].sudo().with_context(active_test=False)
-        tax = Tax.browse(self._WEBSITE_STONE_TAX_ID).exists()
-        if not tax or tax.company_id == company:
+
+        def by_name(name):
+            return Tax.search([
+                ('name', '=', name),
+                ('type_tax_use', '=', 'sale'),
+                ('company_id', '=', company.id),
+            ], order='active desc, id', limit=1)
+
+        configured = (request.env['ir.config_parameter'].sudo()
+                      .get_param(self._WEBSITE_STONE_TAX_PARAM) or '').strip()
+        if configured:
+            tax = (Tax.browse(int(configured)).exists()
+                   if configured.isdigit() else by_name(configured))
+            if tax and tax.company_id == company:
+                return tax
+            _logger.warning(
+                "[CART_ADD] %s is set to %r, which matches no sale tax in "
+                "%s. Falling back.", self._WEBSITE_STONE_TAX_PARAM,
+                configured, company.display_name)
+
+        tax = by_name(self._WEBSITE_STONE_TAX_NAME)
+        if tax:
             return tax
-        return Tax.search([
-            ('name', '=', tax.name),
-            ('type_tax_use', '=', tax.type_tax_use),
-            ('company_id', '=', company.id),
-        ], order='active desc, id', limit=1)
+
+        legacy = Tax.browse(self._WEBSITE_STONE_TAX_ID).exists()
+        if legacy and legacy.company_id != company:
+            legacy = Tax.search([
+                ('name', '=', legacy.name),
+                ('type_tax_use', '=', legacy.type_tax_use),
+                ('company_id', '=', company.id),
+            ], order='active desc, id', limit=1)
+        _logger.warning(
+            "[CART_ADD] %s has no sale tax named %r, so website stones fall "
+            "back to %r - check it is the rate the platform charges, or set "
+            "the %s system parameter.",
+            company.display_name, self._WEBSITE_STONE_TAX_NAME,
+            legacy.name if legacy else '(none)',
+            self._WEBSITE_STONE_TAX_PARAM)
+        return legacy
 
     def _website_line_taxes(self, sale_order, product, company):
         taxes = product.taxes_id.filtered(lambda t: t.company_id == company)
@@ -1302,8 +1328,10 @@ class PartnerSyncController(http.Controller):
                             "🔄 Auto-cancelling %s (all lines cancelled via website)",
                             sale_order.name,
                         )
+
                         sale_order.sudo().with_context(
-                            from_website_api=True
+                            from_website_api=True,
+                            disable_cancel_warning=True,
                         ).action_cancel()
                         _logger.info(
                             "✅ %s cancelled → state: %s",

@@ -1365,14 +1365,19 @@ class SaleOrder(models.Model):
         
         # Call parent to handle Odoo's cancel logic (sets state → 'cancel')
         result = super(SaleOrder, self).action_cancel()
-        
-        # Explicitly set order status to Cancelled after parent cancel
+
         for order in self:
+            if order.state != 'cancel':
+                _logger.info(
+                    "⏸️ CANCEL: Order %s is still %r - Odoo asked for the "
+                    "cancellation wizard, so the status is left alone until "
+                    "it comes back confirmed.", order.name, order.state)
+                continue
             # Use invalidate + direct write to ensure compute doesn't overwrite
             order.invalidate_recordset(['sdk_augmont_status'])
             order.write({'sdk_augmont_status': 'Cancelled'})
             _logger.info("❌ CANCEL: Order %s → sdk_augmont_status: Cancelled", order.name)
-        
+
         return result
 
     def _cancellation_can_be_requested(self):
