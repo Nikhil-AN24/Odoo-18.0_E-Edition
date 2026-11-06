@@ -783,6 +783,39 @@ class SaleOrder(models.Model):
                 ('company_id', '=', order.company_id.id),
             ], limit=1) if name else FiscalPosition.browse()
             order.fiscal_position_id = fiscal_position.id or False
+            order._lgd_remap_line_taxes()
+
+    def _lgd_remap_line_taxes(self):
+        """Put the fiscal position's taxes back on the lines.
+
+        Setting fiscal_position_id alone does not move an existing line off
+        1.5% GST: tax_id is stored and already written, so Odoo does not
+        recompute it. The line then keeps CGST + SGST while the order header
+        says Inter State, and the invoice made from it books the intra-state
+        split - which is what printed CGST/SGST on an out-of-Maharashtra Tax
+        Invoice while the Order Slip, reading gst_treatment, said IGST.
+
+        Taxes are rebuilt from the product rather than mapped from whatever
+        the line holds, so switching the treatment back and forth lands on
+        the same answer each way.
+        """
+        for order in self:
+            # A cancelled or locked order is not ours to re-price, and a line
+            # already on an invoice must keep the tax that invoice booked.
+            if order.state == 'cancel' or order.locked:
+                continue
+            company = order.company_id
+            fiscal_position = order.fiscal_position_id
+            for line in order.order_line:
+                if line.display_type or not line.product_id:
+                    continue
+                if line.qty_invoiced:
+                    continue
+                taxes = line.product_id.taxes_id.filtered(
+                    lambda t: t.company_id == company)
+                mapped = fiscal_position.map_tax(taxes) if fiscal_position else taxes
+                if set(mapped.ids) != set(line.tax_id.ids):
+                    line.tax_id = [(6, 0, mapped.ids)]
 
     @api.onchange('gst_treatment')
     def _onchange_gst_treatment(self):

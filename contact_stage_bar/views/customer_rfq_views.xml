@@ -264,8 +264,6 @@
                                        groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                                 <field name="quantity" string="Quantity (ct)"/>
                                 <field name="description"/>
-                                <field name="added_note"/>
-                                <field name="default_qc_requirements"/>
                             </list>
                         </field>
                         <!-- POST-DRAFT variant (Carats): create="0" hides "Add a line". -->
@@ -312,8 +310,6 @@
                                 <field name="carat_per_piece"
                                        string="Carat/Piece" required="1"/>
                                 <field name="description"/>
-                                <field name="added_note"/>
-                                <field name="default_qc_requirements"/>
                             </list>
                         </field>
                         <!-- POST-DRAFT variant (Pieces): create="0" hides "Add a line". -->
