@@ -9,6 +9,7 @@ import logging
 from odoo.addons.contact_stage_bar.models.lgd_api_log import (
     IN, OUT, log_api)
 _logger = logging.getLogger(__name__)
+from .lgd_api_auth import lgd_api_auth_headers
 
 class StockMove(models.Model):
     _inherit = 'stock.move'
@@ -977,11 +978,15 @@ class StockPicking(models.Model):
             if not picking.tracker_name and not picking.tracking_number:
                 raise UserError(f"No courier or tracking information to update for {picking.name}")
             
-            url = "https://policies-afternoon-stud-visible.trycloudflare.com/api/v1/odoo/utr-tracking/update"
-            headers = {
-                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI",
-                "Content-Type": "application/json"
-            }
+
+            Param = self.env['ir.config_parameter'].sudo()
+            base = (Param.get_param('base_augmont_url') or '').rstrip('/')
+            if not base:
+                raise UserError(_(
+                    "base_augmont_url is not set on this database, so there "
+                    "is no LGD host to send the tracking update to."))
+            url = "%s/api/v1/odoo/utr-tracking/update" % base
+            headers = lgd_api_auth_headers(self.env)
             
             tracking_updates = {}
             if picking.tracker_name:

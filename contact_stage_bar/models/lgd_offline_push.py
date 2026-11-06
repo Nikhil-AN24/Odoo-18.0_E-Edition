@@ -260,11 +260,20 @@ class SaleOrder(models.Model):
             'finalPriceMargin': final_margin,
         }
 
+    def _lgd_offline_size_line_note(self, line, field):
+        size_line = line.rfq_size_line_id
+        return (size_line[field] or '') if size_line else ''
+
     def _lgd_offline_added_note(self, line):
         if line.customer_reference_note:
             return line.customer_reference_note
-        size_line = line.rfq_size_line_id
-        return (size_line.description or '') if size_line else ''
+        return self._lgd_offline_size_line_note(line, 'added_note')
+
+    def _lgd_offline_qc_requirements(self, line):
+        if line.popup_default_qc_requirements:
+            return line.popup_default_qc_requirements
+        return (self._lgd_offline_size_line_note(line, 'default_qc_requirements')
+                or self._lgd_offline_size_line_note(line, 'description'))
 
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
@@ -656,7 +665,7 @@ class SaleOrder(models.Model):
                 'orderNote': line.order_specific or '',
                 'generalNotes': line.popup_item_notes or '',
                 'customerReference': self._lgd_offline_added_note(line),
-                'defaultQcRequirements': line.popup_default_qc_requirements or '',
+                'defaultQcRequirements': self._lgd_offline_qc_requirements(line),
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(line)
                             if is_melee

@@ -149,7 +149,14 @@ class SaleOrderLine(models.Model):
             shared = self.env['sale.order.line'].sudo().search_count([
                 ('product_template_id', '=', tmpl.id), ('id', '!=', line.id)])
             if shared:
-                new_tmpl = tmpl.sudo().copy({'name': tmpl.name})
+                # The LGD SKU names one stone and a unique index enforces
+                # that, so the copy must not inherit the parcel's number.
+                # The line already carries its own; where it has none,
+                # create() mints a fresh one.
+                new_tmpl = tmpl.sudo().copy({
+                    'name': tmpl.name,
+                    'lgd_stock_number': line.lgd_own_stock_number or False,
+                })
                 line.sudo().write({
                     'product_template_id': new_tmpl.id,
                     'product_id': new_tmpl.product_variant_id.id,
@@ -260,9 +267,25 @@ class SaleOrderLine(models.Model):
                 line.sales_price_per_carat = (
                     per_stone / carat) if carat > 0 else 0.0
             else:
+                # An ordinary line used to report the RFQ's HEADER figures
+                # verbatim, so every line on an order showed the same Sales
+                # Price/Stone whatever it was actually priced at: $122.40
+                # against a $250.00 line, and $0.00 wherever the header had
+                # never been filled in. The line knows its own price - that
+                # is what price_unit is - and the header is only the
+                # fallback for a line that has none.
+                #
+                # Per-carat follows the same rule as the replacement branch
+                # above: derived from the line where the line knows both its
+                # price and its weight, so Rate x CTS still equals Amount;
+                # the RFQ's agreed rate where it does not.
+                per_stone = line.price_unit or (
+                    rfq.sale_price_per_stone if rfq else 0.0)
+                carat = lgd_carat_value(line.carat_weight)
                 line.sales_price_per_carat = (
-                    rfq.sale_rate_per_carat if rfq else 0.0)
-                per_stone = rfq.sale_price_per_stone if rfq else 0.0
+                    (per_stone / carat)
+                    if (carat > 0 and line.price_unit)
+                    else (rfq.sale_rate_per_carat if rfq else 0.0))
 
             line.lgd_sales_price_per_stone_usd = per_stone
 

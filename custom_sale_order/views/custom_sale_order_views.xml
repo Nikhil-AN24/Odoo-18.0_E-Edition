@@ -318,6 +318,8 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='order_line']/list/field[@name='lgd_stock_number']" position="after">
                 <field name="rfq_currency_id" column_invisible="True"/>
+                <!-- The currency behind sales_price_per_stone. A Monetary field renders its symbol only when its currency_field is in the view, and without this the column printed a bare 26,647.50 next to a "$ 56.10" - two different currencies, one of them unlabelled. -->
+                <field name="lgd_price_display_currency_id" column_invisible="True"/>
                 <field name="procurement_price_per_carat" string="Procurement Price/carat"
                        readonly="not can_edit_vendor" optional="show"
                        column_invisible="parent.order_source != 'offline'"
@@ -353,6 +355,7 @@
                  (Sales-price columns stay off the procurement view). -->
             <xpath expr="//field[@name='procurement_line_ids']/list/field[@name='lgd_stock_number']" position="after">
                 <field name="rfq_currency_id" column_invisible="True"/>
+                <field name="lgd_price_display_currency_id" column_invisible="True"/>
                 <field name="procurement_price_per_carat" string="Procurement Price/carat"
                        readonly="not can_edit_vendor" optional="show"
                        column_invisible="parent.order_source != 'offline'"/>
@@ -376,6 +379,7 @@
                          still Diamond Booked, for every role. -->
                     <field name="lgd_can_edit_product_specs" invisible="1"/>
                     <field name="rfq_currency_id" invisible="1"/>
+                    <field name="lgd_price_display_currency_id" invisible="1"/>
                     <notebook>
                         <page string="General Information" name="general_information">
                             <group>
@@ -461,6 +465,7 @@
             <form string="Product" edit="0" create="0">
                 <sheet>
                     <field name="rfq_currency_id" invisible="1"/>
+                    <field name="lgd_price_display_currency_id" invisible="1"/>
                     <notebook>
                         <page string="General Information" name="general_information">
                             <group>
