@@ -978,13 +978,14 @@ class StockPicking(models.Model):
             if not picking.tracker_name and not picking.tracking_number:
                 raise UserError(f"No courier or tracking information to update for {picking.name}")
             
-            # FIXME: a throwaway trycloudflare tunnel, hardcoded. That
-            # host is long gone, so every tracking update from here has
-            # been failing silently. Its twin in sale_order builds the
-            # same path from base_augmont_url; pointing this one there
-            # too would START sending updates that currently go nowhere,
-            # so it is left as-is pending a decision.
-            url = "https://policies-afternoon-stud-visible.trycloudflare.com/api/v1/odoo/utr-tracking/update"
+
+            Param = self.env['ir.config_parameter'].sudo()
+            base = (Param.get_param('base_augmont_url') or '').rstrip('/')
+            if not base:
+                raise UserError(_(
+                    "base_augmont_url is not set on this database, so there "
+                    "is no LGD host to send the tracking update to."))
+            url = "%s/api/v1/odoo/utr-tracking/update" % base
             headers = lgd_api_auth_headers(self.env)
             
             tracking_updates = {}
