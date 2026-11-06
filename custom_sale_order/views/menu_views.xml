@@ -28,6 +28,12 @@
          really is admin-only on databases that already had it. -->
     <record id="menu_custom_sale_root" model="ir.ui.menu">
         <field name="groups_id" eval="[(6, 0, [ref('base.group_system')])]"/>
+        <!-- Hidden from the Apps screen entirely. Nobody reaches an offline
+             order through this menu: 
+             Nothing is deleted. The action, the views and the model are
+             untouched, so the RFQ flow keeps working and setting this back
+             to True brings the icon straight back. -->
+        <field name="active" eval="False"/>
     </record>
 
 </odoo>

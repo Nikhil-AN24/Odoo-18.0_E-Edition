@@ -74,6 +74,14 @@ class CustomerRfqSizeLine(models.Model):
     width_mm = fields.Float(string='Width (mm)')
     depth_mm = fields.Float(string='Depth (mm)')
     description = fields.Char(string='Description')
+    added_note = fields.Char(
+        string='Added Note',
+        help="Shown to the buyer on the LGD website under \"Added Note\". "
+             "Sent as customerReference.")
+    default_qc_requirements = fields.Char(
+        string='QC Requirement',
+        help="What QC must check on this stone. Shown on the LGD website "
+             "and sent as defaultQcRequirements.")
     costing = fields.Float(string='Costing')
     # Per-row Sales Price/Carat surfaced on the Sales side once Procurement sends the RFQ back.
     # Formula: costing × (1 + margin_percentage / 100).

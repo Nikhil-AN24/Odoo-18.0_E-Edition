@@ -14,6 +14,8 @@ from odoo.addons.contact_stage_bar.models.lgd_api_log import (
     IN, OUT, log_api)
 _logger = logging.getLogger(__name__)
 
+from .lgd_api_auth import lgd_api_auth_headers
+
 
 class ProductTemplate(models.Model):
     _inherit = "product.template" 
@@ -296,12 +298,37 @@ class ProductTemplate(models.Model):
         stones unnumbered with no error.
         """
         Sequence = self.env['ir.sequence'].sudo()
-        number = Sequence.next_by_code('lgd.offline.stock')
-        if number:
-            return number
-        seq = Sequence.search(
-            [('code', '=', 'lgd.offline.stock')], order='company_id', limit=1)
-        return seq.next_by_id() if seq else False
+        seq = False
+        for _attempt in range(self._LGD_SKU_DRAW_ATTEMPTS):
+            number = Sequence.next_by_code('lgd.offline.stock')
+            if not number:
+                seq = seq or Sequence.search(
+                    [('code', '=', 'lgd.offline.stock')],
+                    order='company_id', limit=1)
+                number = seq.next_by_id() if seq else False
+            if not number:
+                return False
+            if not self._lgd_stock_number_taken(number):
+                return number
+            _logger.warning(
+                "LGD SKU %s is already in use; drawing the next one. The "
+                "lgd.offline.stock sequence has fallen behind the numbers "
+                "actually on products - check its Next Number.", number)
+        _logger.error(
+            "Could not draw an unused LGD SKU in %s attempts. The stone is "
+            "left unnumbered rather than given a number another stone "
+            "already holds. Fix the lgd.offline.stock sequence's Next "
+            "Number and re-save.", self._LGD_SKU_DRAW_ATTEMPTS)
+        return False
+
+    _LGD_SKU_DRAW_ATTEMPTS = 50
+
+    @api.model
+    def _lgd_stock_number_taken(self, number):
+        if not number:
+            return False
+        return bool(self.sudo().with_context(active_test=False).search_count(
+            [('lgd_stock_number', '=', number)]))
 
     @api.model
     def _lgd_needs_offline_stock_number(self, vals):
@@ -309,8 +336,19 @@ class ProductTemplate(models.Model):
             return False
         if vals.get('website_product_id'):
             return False
-        if vals.get('stone_type') == 'natural':
-            return False
+        # stone_type == 'natural' used to be excluded here, on the reading
+        # that a natural stone carries its own certificate or vendor stock
+        # number and needs no synthetic one. In practice it does: an offline
+        # natural stone goes to the website as lineType NATURAL with both
+        # stockNum and lgdStockNum set to its LGD-OFF number, and that is
+        # what the platform matches on.
+        #
+        # The exclusion also only ever half-applied. _create_requested_stone
+        # passes no stone_type, so an RFQ-raised natural stone was numbered
+        # anyway; only the replacement path passes it (see
+        # stone.replacement._spec_vals) and so lost its SKU. The same stone
+        # was numbered or not depending purely on which path made it, which
+        # is what left a blank LGD SKU against a replacement.
         return (vals.get('certificate_type') or '').strip().upper() != 'NATURAL'
 
     @api.model
@@ -870,11 +908,7 @@ class ProductTemplate(models.Model):
             Param = self.env['ir.config_parameter'].sudo()
             url = (Param.get_param('base_augmont_url') or '').rstrip('/')
             url = f"{url}/api/v1/odoo/product?id={number_id}&country=IN"
-            headers = {
-                "Authorization": (
-                    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI"
-                )
-            }
+            headers = lgd_api_auth_headers(self.env, content_type=False)
 
             _logger.info("Fetching certificate data for product %s | URL: %s", number_id, url)
 

@@ -76,6 +76,12 @@ class AugmontApiRetry(models.Model):
             pass
         return False
 
+    @staticmethod
+    def _lgd_endpoint_suffix(path):
+
+        marker = (path or '').find('/api/')
+        return path[marker:] if marker >= 0 else (path or '')
+
     def _lgd_retry_url(self, default_url):
 
         self.ensure_one()
@@ -86,13 +92,18 @@ class AugmontApiRetry(models.Model):
             from urllib.parse import urlsplit, urlunsplit
             stored_parts = urlsplit(stored)
             current = urlsplit(default_url)
-            if stored_parts.netloc and current.netloc and \
-                    stored_parts.netloc != current.netloc:
+            if not (stored_parts.netloc and current.netloc):
+                return stored
+            prefix = current.path[:current.path.find('/api/')] \
+                if '/api/' in current.path else ''
+            path = prefix + self._lgd_endpoint_suffix(stored_parts.path)
+            rebuilt = urlunsplit((current.scheme, current.netloc, path,
+                                  stored_parts.query, ''))
+            if rebuilt != stored:
                 _logger.info(
                     "[CRON] Record %s was queued against %s; sending to %s "
-                    "instead.", self.id, stored_parts.netloc, current.netloc)
-                return urlunsplit((current.scheme, current.netloc,
-                                   stored_parts.path, stored_parts.query, ''))
+                    "instead.", self.id, stored, rebuilt)
+            return rebuilt
         except Exception:
             _logger.warning(
                 "[CRON] Record %s: could not re-point %r; using it as stored.",

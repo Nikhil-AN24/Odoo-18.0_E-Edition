@@ -16,6 +16,8 @@ from markupsafe import Markup
 import  logging
 _logger = logging.getLogger(__name__)
 
+from .lgd_api_auth import lgd_api_auth_headers
+
 from .lgd_inventory_sale_line import (
     LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT, lgd_group_slip_rows)
 
@@ -705,10 +707,7 @@ class SaleOrder(models.Model):
             Param = self.env['ir.config_parameter'].sudo()
             url = (Param.get_param('base_augmont_url') or '').rstrip('/')
             url = f"{url}/api/v1/odoo/utr-tracking/update"
-            headers = {
-                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI",
-                "Content-Type": "application/json"
-            }
+            headers = lgd_api_auth_headers(self.env)
             
             current_user = self.env.user
             if order.sdk_augmont_status == "Payment Completed":
@@ -1714,12 +1713,7 @@ class SaleOrder(models.Model):
         try:
             # Make API call
             endpoint = f"{url}/api/v1/odoo/gst/update"
-            headers = {
-            "Authorization": (
-                "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI"
-            ),
-            "Content-Type": "application/json",
-        }
+            headers = lgd_api_auth_headers(self.env)
             
             log_api(OUT, "POST %s" % endpoint, payload, headers=headers,
                     env=self.env)
@@ -1762,12 +1756,7 @@ class SaleOrder(models.Model):
             return
         url = f"{url}/api/v1/odoo/product/add"
         _logger.info(f"🔹URL: {url}")
-        headers = {
-            "Authorization": (
-                "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI"
-            ),
-            "Content-Type": "application/json",
-        }
+        headers = lgd_api_auth_headers(self.env)
         current_user = self.env.user
 
 
@@ -1920,13 +1909,40 @@ class SaleOrder(models.Model):
                     )
                 else:
                     _logger.error(f"❌ API Error {response.status_code}: {response.text}")
-                    raise ValidationError(f"API Error {response.status_code}: {response.text}")
+                    order._lgd_note_product_add_failure(
+                        '%s %s' % (response.status_code, response.text))
 
             except requests.exceptions.RequestException as e:
-                raise ValidationError(f"API connection failed: {str(e)}")
+                _logger.error("product/add could not reach %s: %s", url, e)
+                order._lgd_note_product_add_failure(str(e))
 
         return True
-    
+
+    def _lgd_note_product_add_failure(self, detail):
+        """Record a failed product/add without undoing the confirmation.
+
+        This used to `raise ValidationError`, which aborts the transaction -
+        so an unreachable or unauthenticated website silently rolled the
+        Confirm back and the order stayed in Draft. The replacement push
+        already took the opposite view, in as many words: "Procurement has
+        made this change and a website outage must not undo it." Two paths,
+        one platform, opposite answers; this one now matches.
+
+        The order is confirmed either way. What the platform has not been
+        told is written to the chatter so somebody can see it and re-send,
+        rather than the whole action vanishing behind a dialog.
+        """
+        self.ensure_one()
+        self.message_post(body=Markup(
+            "<p><b>%s</b></p><p>%s</p><p>%s</p>"
+        ) % (
+            _("The new stones on this order were not sent to the website."),
+            _("The order is confirmed in Odoo. The website has not been told "
+              "about the stones it did not already know, so they carry no "
+              "order id there yet."),
+            _("Response: %s", detail),
+        ))
+
     @api.depends('state', 'invoice_status', 'payment_ids.state')
     def _compute_sdk_augmont_status(self):
         for order in self:
@@ -2353,10 +2369,7 @@ class SaleOrder(models.Model):
             base_url = (Param.get_param('base_augmont_url') or '').rstrip('/')
             api_url = f"{base_url}/api/v1/odoo/orderStatusUpdate"
 
-            headers = {
-                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtZXJjaGFudElkIjoiZjA3NDA3YzItZTI1ZS00YjI2LTk1MWUtODliZGQxZjI4YmQ2Iiwic2hvcnROYW1lIjoib2RvbyIsImlhdCI6MTc2MDYxNjU3OCwiZXhwIjoyMDc2MTkyNTc4fQ.XpKKN78VVCezg6BrEhQYxvTs1FTmES59pyrp3zFpmdI",
-                "Content-Type": "application/json",
-            }
+            headers = lgd_api_auth_headers(self.env)
 
             _logger.info("=" * 70)
             _logger.info(
@@ -3607,9 +3620,9 @@ class SaleOrderLine(models.Model):
                              increase_pct, threshold))
         if lab_changed:
             reasons.append(_("the lab differs from the original"))
-        # Absorbed a replacement within threshold — or cheaper —
-        # keeps the original price_unit; above threshold carries the new price.
-        final_price_unit = original_price if within_threshold else replacement_price
+
+        final_price_unit = (min(original_price, replacement_price)
+                            if within_threshold else replacement_price)
         return {
             'original_price': original_price,
             'replacement_price': replacement_price,
@@ -3711,6 +3724,10 @@ class SaleOrderLine(models.Model):
             **{k: v for k, v in (provenance or {}).items() if k != 'source'},
             **vendor_price_vals,
         })
+
+        if product.list_price != price_outcome['final_price_unit']:
+            product.sudo().list_price = price_outcome['final_price_unit']
+
         if not new_line:
             # Belt and braces behind the exemption above. Carrying on here is
             # what turned a blocked insert into lost data: a PO with no
