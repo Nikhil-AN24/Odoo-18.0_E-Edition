@@ -30,6 +30,14 @@ class SaleOrder(models.Model):
     # The last push failure as the website worded it. Kept so the retry cron
     # can tell a NEW problem from the one already in the chatter: without it
     # every sweep would post the same paragraph again. Cleared on success.
+    lgd_offline_pushed = fields.Boolean(
+        string="Pushed to the website", copy=False,
+        help="Set when /odoo/order/offline accepted this order. Durable on "
+             "purpose: whether an order was pushed must not change when a "
+             "stone later dies or the melee grouping is reconfigured - "
+             "either would reopen the order for a re-push that the website "
+             "answers with alreadyExists, forever.")
+
     lgd_offline_push_error = fields.Text(
         string="Last Website Push Error", copy=False, readonly=True)
 
@@ -324,21 +332,138 @@ class SaleOrder(models.Model):
             return size_line.rfq_id
         return line.order_id.custom_sale_order_id.sudo().customer_rfq_id
 
-    def _lgd_offline_melee_block(self, line):
-        """meleeUnit / meleeQty / meleePricing for one parcel line.
+    def _lgd_offline_group_key(self, line):
+        """What one payload entry stands for.
+
+        A MELEE line expanded from a Customer RFQ size line is one slice of
+        a parcel, and the parcel - the size line - is what the website sells,
+        so every slice shares its key. Everything else is its own entry: LGD
+        and NATURAL stones, parcels sent as LGD under the melee off-switch
+        (there one entry per stone is the contract), replacement lines, and
+        legacy melee lines with no size line - folding those would merge
+        parcels nobody said are the same.
+        """
+        if (self._lgd_offline_line_type(line) == 'MELEE'
+                and 'rfq_size_line_id' in line._fields
+                and line.rfq_size_line_id):
+            return ('szl', line.rfq_size_line_id.id)
+        return ('line', line.id)
+
+    def _lgd_offline_groups(self):
+        """[(key, head, members, kin)] - one tuple per payload entry.
+
+        members are the LIVE lines of the group (what _lgd_offline_lines
+        returns); kin adds the dead ones back in. Both matter: money and
+        quantities are summed over members, but identity and pushed-ness
+        belong to kin - a parcel does not stop having been pushed because
+        the stone holding its orderUniqueId failed QC.
+
+        The head supplies lineRef, orderUniqueId and the parcel SKU. It is
+        pinned to whichever kin already holds an order_number - dead or not -
+        so a retry can never renumber a parcel the website has booked, and
+        only falls back to the lowest-id live member on a first push.
+        """
+        self.ensure_one()
+        members_all = self._lgd_offline_lines()
+        kin_all = self.order_line.filtered(
+            lambda l: not l.display_type and not l.is_melee_parent)
+        key_of = {l.id: self._lgd_offline_group_key(l) for l in kin_all}
+
+        Line = self.env['sale.order.line']
+        buckets = {}
+        for l in kin_all:
+            buckets.setdefault(key_of[l.id], [Line, Line])
+            buckets[key_of[l.id]][1] |= l
+        for l in members_all:
+            buckets[key_of[l.id]][0] |= l
+
+        groups, seen = [], set()
+        for l in members_all:
+            key = key_of[l.id]
+            if key in seen:
+                continue
+            seen.add(key)
+            members, kin = buckets[key]
+            head = (kin.filtered('order_number').sorted('id')[:1]
+                    or members.sorted('id')[:1])
+            groups.append((key, head, members, kin))
+        return groups
+
+    def _lgd_offline_parcel_totals(self, line, members):
+        """One parcel row's totals over every live line expanded from it.
+
+        carats is the sum of the members' own weights, so a slice that dies
+        leaves the total honestly smaller. pieces is the real stone count
+        when the size line records Carat/Piece - carats over carat-per-piece
+        - and only falls back to the slice count when it does not; Odoo has
+        no other stone-count field, and the slice count equals round(carats)
+        in carats mode, which is not a piece count.
+        """
+        carats = sum(self._lgd_offline_carat(m) for m in members)
+        size_line = line.rfq_size_line_id
+        per_piece = float(size_line.carat_per_piece or 0.0) if size_line else 0.0
+        if per_piece > 0 and carats:
+            pieces = max(1, int(round(carats / per_piece)))
+        else:
+            pieces = sum(int(m.product_uom_qty or 1) for m in members) or 1
+        final = margin = 0.0
+        for m in members:
+            prices = self._lgd_offline_price_block(m)
+            final += float(prices['finalPrice'])
+            margin += float(prices['finalPriceMargin'])
+        return {'carats': carats, 'pieces': pieces,
+                'finalPrice': final, 'finalPriceMargin': margin}
+
+    # The live pipeline, least advanced first. Dead statuses are absent on
+    # purpose: they are excluded before this is consulted.
+    _LGD_LINE_STATUS_PROGRESSION = (
+        'diamond_booked', 'confirmed', 'in_qc_process', 'payment_pending',
+        'payment_completed', 'dispatched', 'return_of_order',
+        're_dispatched', 'delivered', 'order_completed')
+
+    def _lgd_offline_group_status_map(self):
+        """line.id -> the availability_status to REPORT for that line.
+
+        A grouped parcel sends one entry, so only its head reports - and what
+        it reports must be the PARCEL's status, not its own. The least
+        advanced live member speaks for the parcel: a dead head would
+        otherwise cancel the whole parcel on the website while its sibling
+        stones live on. Lines outside a multi-line group are absent from the
+        map and report themselves, unchanged.
+        """
+        self.ensure_one()
+        mapping = {}
+        if self.order_source != 'offline':
+            return mapping
+        rank = {status: index for index, status
+                in enumerate(self._LGD_LINE_STATUS_PROGRESSION)}
+        for _key, _head, members, kin in self._lgd_offline_groups():
+            if len(kin) <= 1 or not members:
+                continue
+            status = min((m.availability_status or '' for m in members),
+                         key=lambda s: rank.get(s, -1))
+            for l in kin:
+                mapping[l.id] = status
+        return mapping
+
+    def _lgd_offline_melee_block(self, line, totals=None):
+        """meleeUnit / meleeQty / meleePricing for one parcel entry.
 
         Sent ONLY on a MELEE line - the spec lists these three keys as
         "Ignored" on LGD and Natural lines, and they went out on every line
         until now.
 
-        Offline expands a parcel into one line per unit ordered, so this
-        line's share is one row: its own carat weight and its own quantity,
-        not the whole parcel's. meleeUnit follows the RFQ's own Unit toggle,
+        With `totals` (a grouped size-line parcel) the quantities are the
+        whole row's; without it (a legacy melee line with no size line) they
+        stay this line's own. meleeUnit follows the RFQ's own Unit toggle,
         because that is the unit the buyer actually ordered in - a Pieces RFQ
         counting carats would reduce the parcel's stock by the wrong amount.
         """
-        carats = self._lgd_offline_carat(line)
-        pieces = int(line.product_uom_qty or 1)
+        if totals is None:
+            carats = self._lgd_offline_carat(line)
+            pieces = int(line.product_uom_qty or 1)
+        else:
+            carats, pieces = totals['carats'], totals['pieces']
         rfq = self._lgd_offline_melee_rfq(line)
         by_piece = (rfq.unit_type or 'carats') == 'pieces' if rfq else False
         return {
@@ -347,13 +472,20 @@ class SaleOrder(models.Model):
             'meleePricing': {'carats': carats, 'pieces': pieces},
         }
 
-    def _lgd_offline_melee_product_block(self, line):
+    def _lgd_offline_melee_product_block(self, line, head=None, totals=None):
         template = line.product_template_id
-        carats = self._lgd_offline_carat(line)
-        pieces = int(line.product_uom_qty or 1)
+        if totals is None:
+            carats = self._lgd_offline_carat(line)
+            pieces = int(line.product_uom_qty or 1)
+        else:
+            carats, pieces = totals['carats'], totals['pieces']
         prices = self._lgd_offline_price_block(line)
+        sku_line = head or line
         return {
-            'skuId': (line.lgd_stock_number or template.lgd_stock_number
+            # The head's number, one per parcel row, stable across retries -
+            # not one freshly minted number per stone, which made the website
+            # create a new unverified 0-stock parcel for every slice.
+            'skuId': (sku_line.lgd_stock_number or template.lgd_stock_number
                       or template.stock_number or ''),
             'title': self._lgd_offline_title(line, template),
             'shape': template.shapes or '',
@@ -365,8 +497,7 @@ class SaleOrder(models.Model):
             'mmMax': '',
             'mmRange': '',
             'sieveSize': template.sieve_size or '',
-            # Carats per stone. An offline parcel is expanded one unit per
-            # line, so this is that line's own weight over its own count.
+            # Carats per stone, over the whole parcel row when grouped.
             'avgCaratPerStone': (carats / pieces) if pieces else carats,
             'pricePerCarat': prices['pricePerCarat'],
             'pricePerCaratMargin': prices['pricePerCaratMargin'],
@@ -685,26 +816,32 @@ class SaleOrder(models.Model):
         partner = self.partner_id
 
         orders = []
-        for line in self._lgd_offline_lines():
+        for key, head, members, kin in self._lgd_offline_groups():
+            line = head if head in members else members[:1]
             line_type = self._lgd_offline_line_type(line)
             is_melee = line_type == 'MELEE'
+            # One entry per RFQ size line: the parcel row is one thing on the
+            # website, however many one-unit Odoo lines it was expanded into.
+            # Legacy melee lines with no size line keep one entry each.
+            totals = (self._lgd_offline_parcel_totals(line, members)
+                      if is_melee and key[0] == 'szl' else None)
             prices = self._lgd_offline_price_block(line)
             added_note = self._lgd_offline_added_note(line, is_melee)
             entry = {
-                # Odoo's own line id, echoed back by the website so each
-                # orderUniqueId lands on the line it belongs to. Product
+                # The HEAD's id, echoed back by the website so the group's
+                # orderUniqueId lands on the line that anchors it. Product
                 # identity is NOT sufficient: a non-certified order can carry
                 # several lines of the same product, which then share a
                 # certNumber and an lgdStockNum and cannot be told apart.
-                'lineRef': line.id,
-                'orderUniqueId': self._lgd_offline_unique_id(line),
+                'lineRef': head.id,
+                'orderUniqueId': self._lgd_offline_unique_id(head),
                 'lineType': line_type,
                 'status': self._lgd_offline_line_status(line),
                 # Always 1 on a parcel: what was sold is in meleeQty, and a
                 # quantity repeated in both places is counted twice.
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
-                'productPrice': float(prices['finalPrice']),
-                'invoiceAmount': float(prices['finalPriceMargin']),
+                'productPrice': float((totals or prices)['finalPrice']),
+                'invoiceAmount': float((totals or prices)['finalPriceMargin']),
                 'orderNote': (added_note if is_melee
                               else (line.order_specific or '')),
                 'generalNotes': line.popup_item_notes or '',
@@ -712,7 +849,8 @@ class SaleOrder(models.Model):
                                       if is_melee else added_note),
                 'defaultQcRequirements': self._lgd_offline_qc_requirements(line),
                 'seller': self._lgd_offline_seller_block(line),
-                'product': (self._lgd_offline_melee_product_block(line)
+                'product': (self._lgd_offline_melee_product_block(
+                                line, head=head, totals=totals)
                             if is_melee
                             else self._lgd_offline_product_block(line)),
             }
@@ -721,7 +859,7 @@ class SaleOrder(models.Model):
             # keys are ignored on an LGD line, so sending them there is
             # noise the spec asks us to stop making.
             if is_melee:
-                entry.update(self._lgd_offline_melee_block(line))
+                entry.update(self._lgd_offline_melee_block(line, totals=totals))
             orders.append(entry)
 
         payload = {
@@ -780,7 +918,11 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
         entries = (response_data or {}).get('data', {}).get('orders') or []
-        lines = self._lgd_offline_lines()
+        # Over KIN, not just live lines: a retry's response must still land
+        # its id on a head that died between the push and the answer, or the
+        # parcel would read as never pushed.
+        lines = self.order_line.filtered(
+            lambda l: not l.display_type and not l.is_melee_parent)
         stored = 0
 
         for entry in entries:
@@ -874,10 +1016,18 @@ class SaleOrder(models.Model):
         self.ensure_one()
         if self.order_source != 'offline':
             return False
+        if self.lgd_offline_pushed:
+            return False
         lines = self._lgd_offline_lines()
         if not lines:
             return False
-        return not all(line.order_number for line in lines)
+        # Per GROUP, not per line: a parcel sends one entry and gets one id
+        # back, so its other lines never hold one. And over KIN, dead lines
+        # included: the id does not stop meaning "the website has this
+        # parcel" when the stone holding it later fails QC.
+        return not all(
+            kin.filtered('order_number')
+            for _key, _head, _members, kin in self._lgd_offline_groups())
 
     def _lgd_offline_send(self, url, headers, payload):
         """POST one payload and hand back the response.
@@ -981,6 +1131,7 @@ class SaleOrder(models.Model):
             return False
 
         self._lgd_store_order_unique_ids(data)
+        self.sudo().lgd_offline_pushed = True
         if self.lgd_offline_push_error:
             self.sudo().lgd_offline_push_error = False
             try:

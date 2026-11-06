@@ -1279,8 +1279,20 @@ class PartnerSyncController(http.Controller):
             try:
                 old_line_status = order_line.availability_status
 
+                # One website entry stands for a whole melee parcel, so its
+                # status lands on every LIVE stone of that parcel. Never on a
+                # dead one - a replaced or QC-failed stone does not come back
+                # because the parcel moved on - and a dead id-holder passes
+                # the update to its surviving siblings instead of itself.
+                target_lines = order_line
+                if sale_order.order_source == 'offline':
+                    for _key, _head, members, kin in sale_order._lgd_offline_groups():
+                        if order_line in kin and len(kin) > 1:
+                            target_lines = members or order_line
+                            break
+
                 # ── Write the line status ─────────────────────────────────────
-                order_line.sudo().with_context(from_website_api=True).write({
+                target_lines.sudo().with_context(from_website_api=True).write({
                     # The platform is telling us its own status, so this is
                     # what it holds - record it so the next push does not send
                     # it straight back as a no-op and get the batch refused.

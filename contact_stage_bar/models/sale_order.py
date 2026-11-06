@@ -2392,6 +2392,12 @@ class SaleOrder(models.Model):
             )
             return
 
+        # A grouped melee parcel has ONE id-holder, so what that line reports
+        # must be the parcel's status - the least advanced live stone - not
+        # its own: a holder that failed QC would otherwise cancel the whole
+        # parcel on the website while its sibling stones live on.
+        group_status = self._lgd_offline_group_status_map()
+
         # Declared before the try so the exception handler can still say which
         # lines were affected when the failure lands before the batch is built.
         entries = []
@@ -2421,7 +2427,8 @@ class SaleOrder(models.Model):
                 order_number = line.order_number
 
                 # ── Derive per-line Augmont status from the LINE's own availability ──
-                mapped = _LINE_TO_AUGMONT.get(line.availability_status)
+                mapped = _LINE_TO_AUGMONT.get(
+                    group_status.get(line.id, line.availability_status))
                 if mapped:
                     final_status = mapped
                     _logger.info(

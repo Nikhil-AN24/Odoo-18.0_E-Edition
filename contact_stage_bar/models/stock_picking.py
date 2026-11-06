@@ -2342,9 +2342,20 @@ class StockPicking(models.Model):
                         )
 
                 if sale_order:
+                    # A grouped melee sibling holds no order_number of its
+                    # own - the parcel's id lives on its head - so "no id"
+                    # does not mean "the website was never told". Every line
+                    # whose group (dead stones included) holds an id is
+                    # protected from the sweep.
+                    pushed_kin_ids = set()
+                    if sale_order.order_source == 'offline':
+                        for _k, _h, _m, kin in sale_order._lgd_offline_groups():
+                            if kin.filtered('order_number'):
+                                pushed_kin_ids.update(kin.ids)
                     spurious = sale_order.order_line.filtered(
                         lambda l: l.availability_status == 'diamond_booked'
                                   and not l.order_number
+                                  and l.id not in pushed_kin_ids
                     )
                     if spurious:
                         _logger.warning(
