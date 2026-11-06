@@ -34,3 +34,4 @@ from . import lgd_customer_invoice
 from . import lgd_offline_push
 from . import lgd_replacement_push
 from . import lgd_payment_state
+from . import account_fiscal_position

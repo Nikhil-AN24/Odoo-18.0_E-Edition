@@ -611,6 +611,17 @@ class PartnerSyncController(http.Controller):
                     if melee_pieces_val is not None:
                         melee_product_vals['melee_pieces'] = melee_pieces_val
 
+
+                    for key, field in (('orderNote', 'order_specific'),
+                                       ('generalNotes', 'item_notes'),
+                                       ('customerReference',
+                                        'customer_reference_note'),
+                                       ('defaultQcRequirements',
+                                        'default_qc_requirements')):
+                        value = (order.get(key) or '').strip()
+                        if value:
+                            melee_product_vals[field] = value
+
                     _logger.info(
                         "   💠 MELEE quantity: %s pieces / %s carats (sold by %s)",
                         melee_pieces_val if melee_pieces_val is not None else '?',
