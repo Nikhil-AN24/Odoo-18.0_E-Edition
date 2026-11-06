@@ -267,13 +267,13 @@ class SaleOrder(models.Model):
     def _lgd_offline_added_note(self, line):
         if line.customer_reference_note:
             return line.customer_reference_note
-        return self._lgd_offline_size_line_note(line, 'added_note')
+        return (self._lgd_offline_size_line_note(line, 'added_note')
+                or self._lgd_offline_size_line_note(line, 'description'))
 
     def _lgd_offline_qc_requirements(self, line):
         if line.popup_default_qc_requirements:
             return line.popup_default_qc_requirements
-        return (self._lgd_offline_size_line_note(line, 'default_qc_requirements')
-                or self._lgd_offline_size_line_note(line, 'description'))
+        return self._lgd_offline_size_line_note(line, 'default_qc_requirements')
 
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
