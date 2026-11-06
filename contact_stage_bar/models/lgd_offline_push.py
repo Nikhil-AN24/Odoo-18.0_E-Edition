@@ -310,13 +310,9 @@ class SaleOrder(models.Model):
         size_line = line.rfq_size_line_id
         return (size_line[field] or '') if size_line else ''
 
-    def _lgd_offline_added_note(self, line):
-        # customerReference is the website's "Added Note", shown per stone.
-        # The size line's Description is the one place a note is typed; it
-        # cannot ride on defaultQcRequirements instead, which the website
-        # renders once per order so only the first line would be seen.
-        if line.customer_reference_note:
-            return line.customer_reference_note
+    def _lgd_offline_order_note(self, line):
+        if line.order_specific:
+            return line.order_specific
         return self._lgd_offline_size_line_note(line, 'description')
 
     def _lgd_offline_qc_requirements(self, line):
@@ -709,9 +705,9 @@ class SaleOrder(models.Model):
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
                 'productPrice': float(prices['finalPrice']),
                 'invoiceAmount': float(prices['finalPriceMargin']),
-                'orderNote': line.order_specific or '',
+                'orderNote': self._lgd_offline_order_note(line),
                 'generalNotes': line.popup_item_notes or '',
-                'customerReference': self._lgd_offline_added_note(line),
+                'customerReference': line.customer_reference_note or '',
                 'defaultQcRequirements': self._lgd_offline_qc_requirements(line),
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(line)
