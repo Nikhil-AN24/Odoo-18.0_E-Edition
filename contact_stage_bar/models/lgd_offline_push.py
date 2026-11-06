@@ -111,6 +111,52 @@ class SaleOrder(models.Model):
             'countryIsoCode': self._lgd_offline_country_code(partner, 'buyer'),
         }
 
+    # gst_stages / ein_status values that mean the account is verified.
+    _LGD_VERIFIED_KYC_STATUSES = ('verified', 'manual_verified')
+
+    def _lgd_offline_registration_status(self, partner):
+        """verified or pending - the only two the website stores.
+
+        Odoo keeps five (pending, verified, not_verified, manual_verified,
+        failed). Manually verified counts as verified; anything else, blank
+        included, is pending, which is the website's own default.
+        """
+        statuses = (partner.gst_stages, partner.ein_status)
+        return ('verified'
+                if any(v in self._LGD_VERIFIED_KYC_STATUSES for v in statuses)
+                else 'pending')
+
+    def _lgd_offline_buyer_block(self, partner):
+        first, last = self._lgd_offline_name_parts(partner)
+        fallback = partner.parent_id
+        country = self._lgd_offline_country_code(partner, 'buyer')
+        return {
+            'firstName': first,
+            'lastName': last,
+            'email': partner.email or '',
+            'mobileNumber': (partner.mobile or partner.phone
+                             or fallback.mobile or fallback.phone or ''),
+            'countryIsoCode': country,
+            'companyName': (partner.commercial_company_name
+                            or partner.company_name or ''),
+            'addressLine1': partner.street or '',
+            'addressLine2': partner.street2 or '',
+            'state': partner.state_id.name or '',
+            'city': partner.city or '',
+            'pincode': partner.zip or '',
+            'shippingAddressLine1': partner.shipping_street or '',
+            'shippingAddressLine2': partner.shipping_street2 or '',
+            'shippingCountryIsoCode': (partner.shipping_country_id.code
+                                       or country),
+            'shippingState': partner.shipping_state_id.name or '',
+            'shippingCity': partner.shipping_city or '',
+            'shippingPincode': partner.shipping_zip or '',
+            'registrationNumber': (self.vat or partner.vat
+                                   or self.ein_number or partner.ein_number
+                                   or ''),
+            'registrationStatus': self._lgd_offline_registration_status(partner),
+        }
+
     def _lgd_offline_leaf_taxes(self, taxes):
         """Every leaf tax behind `taxes`, with group taxes expanded.
 
@@ -265,15 +311,16 @@ class SaleOrder(models.Model):
         return (size_line[field] or '') if size_line else ''
 
     def _lgd_offline_added_note(self, line):
+        # customerReference is the website's "Added Note", shown per stone.
+        # The size line's Description is the one place a note is typed; it
+        # cannot ride on defaultQcRequirements instead, which the website
+        # renders once per order so only the first line would be seen.
         if line.customer_reference_note:
             return line.customer_reference_note
-        return (self._lgd_offline_size_line_note(line, 'added_note')
-                or self._lgd_offline_size_line_note(line, 'description'))
+        return self._lgd_offline_size_line_note(line, 'description')
 
     def _lgd_offline_qc_requirements(self, line):
-        if line.popup_default_qc_requirements:
-            return line.popup_default_qc_requirements
-        return self._lgd_offline_size_line_note(line, 'default_qc_requirements')
+        return line.popup_default_qc_requirements or ''
 
     def _lgd_offline_melee_rfq(self, line):
         """The Customer RFQ behind a parcel line, or an empty recordset."""
@@ -691,24 +738,7 @@ class SaleOrder(models.Model):
             'cgst': cgst,
             'igst': igst,
             'vat': 0,
-            'buyer': {
-                **self._lgd_offline_address(partner),
-                'email': partner.email or '',
-                'kyc': {
-                    'type': 'GSTIN' if self.vat else 'EIN',
-                    'number': self.vat or self.ein_number or '',
-                    # The website reads its own inbound orders as kyc.gstin /
-                    # kyc.einNumber - see the buyer KYC block in
-                    # website_api_route - and was never taught type/number,
-                    # which is why Order Details printed "-" for GST Number.
-                    # Both shapes go out so neither side has to change in the
-                    # same deploy.
-                    'gstin': self.vat or '',
-                    'einNumber': self.ein_number or '',
-                    'gstinStatus': partner.gst_stages or '',
-                    'einStatus': partner.ein_status or '',
-                },
-            },
+            'buyer': self._lgd_offline_buyer_block(partner),
             'billingAddress': self._lgd_offline_address(
                 self.partner_invoice_id or partner),
             'shippingAddress': self._lgd_offline_address(
