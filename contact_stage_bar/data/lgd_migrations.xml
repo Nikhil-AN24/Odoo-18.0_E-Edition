@@ -42,6 +42,13 @@
         <function model="sale.order.line"
                   name="_lgd_reclassify_certification"/>
 
+        <!-- The Indian localisation has no Inter State mapping for the 1.5%
+             diamond rate, so an out-of-Maharashtra sale kept CGST + SGST and
+             the Tax Invoice printed them. Creates the row only where it is
+             missing and the two taxes agree on their rate. -->
+        <function model="account.fiscal.position"
+                  name="_lgd_ensure_gst_tax_mappings"/>
+
         <delete model="ir.ui.view"
                 search="[('name', '=', 'sale.order.form.lgd.resend.offline.push')]"/>
 
