@@ -310,10 +310,9 @@ class SaleOrder(models.Model):
         size_line = line.rfq_size_line_id
         return (size_line[field] or '') if size_line else ''
 
-    def _lgd_offline_order_note(self, line):
-        if line.order_specific:
-            return line.order_specific
-        return self._lgd_offline_size_line_note(line, 'description')
+    def _lgd_offline_added_note(self, line, is_melee):
+        stored = line.order_specific if is_melee else line.customer_reference_note
+        return stored or self._lgd_offline_size_line_note(line, 'description')
 
     def _lgd_offline_qc_requirements(self, line):
         return line.popup_default_qc_requirements or ''
@@ -690,6 +689,7 @@ class SaleOrder(models.Model):
             line_type = self._lgd_offline_line_type(line)
             is_melee = line_type == 'MELEE'
             prices = self._lgd_offline_price_block(line)
+            added_note = self._lgd_offline_added_note(line, is_melee)
             entry = {
                 # Odoo's own line id, echoed back by the website so each
                 # orderUniqueId lands on the line it belongs to. Product
@@ -705,9 +705,11 @@ class SaleOrder(models.Model):
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
                 'productPrice': float(prices['finalPrice']),
                 'invoiceAmount': float(prices['finalPriceMargin']),
-                'orderNote': self._lgd_offline_order_note(line),
+                'orderNote': (added_note if is_melee
+                              else (line.order_specific or '')),
                 'generalNotes': line.popup_item_notes or '',
-                'customerReference': line.customer_reference_note or '',
+                'customerReference': ((line.customer_reference_note or '')
+                                      if is_melee else added_note),
                 'defaultQcRequirements': self._lgd_offline_qc_requirements(line),
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(line)
