@@ -70,6 +70,42 @@ class CustomerRfqSizeLine(models.Model):
              'turn the piece count into a carat weight the Price/carat can '
              'be extended against.',
     )
+    pieces_per_carat = fields.Float(
+        string='Pieces/Carat',
+        compute='_compute_pieces_per_carat',
+        inverse='_inverse_pieces_per_carat',
+        help="How many stones make one carat on this row (e.g. 22). The "
+             "same fact as Carat/Piece seen from the other side: typing 22 "
+             "here stores Carat/Piece = 1/22, so every calculation built on "
+             "Carat/Piece keeps working.")
+    pieces = fields.Integer(
+        string='Pieces', compute='_compute_pieces',
+        help="Stones in this parcel row. In Carats mode: Quantity (ct) x "
+             "Pieces/Carat. In Pieces mode the Quantity already counts "
+             "stones, so it is the Quantity itself.")
+
+    @api.depends('carat_per_piece')
+    def _compute_pieces_per_carat(self):
+        for line in self:
+            cpp = line.carat_per_piece or 0.0
+            line.pieces_per_carat = (1.0 / cpp) if cpp else 0.0
+
+    def _inverse_pieces_per_carat(self):
+        for line in self:
+            ppc = line.pieces_per_carat or 0.0
+            line.carat_per_piece = (1.0 / ppc) if ppc else 0.0
+
+    @api.depends('quantity', 'carat_per_piece', 'rfq_id.unit_type')
+    def _compute_pieces(self):
+        for line in self:
+            qty = line.quantity or 0.0
+            if (line.rfq_id.unit_type or 'carats') == 'pieces':
+                line.pieces = int(qty)
+            elif line.carat_per_piece and qty:
+                line.pieces = int(round(qty / line.carat_per_piece))
+            else:
+                line.pieces = 0
+
     length_mm = fields.Float(string='Length (mm)')
     width_mm = fields.Float(string='Width (mm)')
     depth_mm = fields.Float(string='Depth (mm)')
