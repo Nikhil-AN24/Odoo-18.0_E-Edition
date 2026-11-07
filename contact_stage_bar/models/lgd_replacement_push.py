@@ -134,10 +134,10 @@ class SaleOrder(models.Model):
         if 'procurement_price_per_carat' in new_line._fields:
             per_carat = new_line.procurement_price_per_carat or 0.0
             if per_carat:
-                return float(per_carat)
+                return round(float(per_carat), 2)
         template = new_line.product_template_id
         if template.price_per_carat:
-            return float(template.price_per_carat)
+            return round(float(template.price_per_carat), 2)
         carat = float(template.carat_value or 0.0)
         if carat:
             return round(float(template.final_price or 0.0) / carat, 2)

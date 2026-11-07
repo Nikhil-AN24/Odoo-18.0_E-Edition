@@ -307,11 +307,12 @@ class SaleOrder(models.Model):
         # Only when nothing anywhere records a cost do the pre-margin figures fall back to the customer ones, exactly as before.
         per_carat_base = per_carat_base or per_carat_margin
         final_base = final_base or final_margin
+        cents = (self.currency_id or self.env.company.currency_id).round
         return {
-            'pricePerCarat': per_carat_base,
-            'pricePerCaratMargin': per_carat_margin,
-            'finalPrice': final_base,
-            'finalPriceMargin': final_margin,
+            'pricePerCarat': cents(per_carat_base),
+            'pricePerCaratMargin': cents(per_carat_margin),
+            'finalPrice': cents(final_base),
+            'finalPriceMargin': cents(final_margin),
         }
 
     def _lgd_offline_added_note(self, line):
@@ -447,8 +448,9 @@ class SaleOrder(models.Model):
             prices = self._lgd_offline_price_block(m)
             final += float(prices['finalPrice'])
             margin += float(prices['finalPriceMargin'])
+        cents = (self.currency_id or self.env.company.currency_id).round
         return {'carats': carats, 'pieces': pieces,
-                'finalPrice': final, 'finalPriceMargin': margin}
+                'finalPrice': cents(final), 'finalPriceMargin': cents(margin)}
 
     # The live pipeline, least advanced first. Dead statuses are absent on
     # purpose: they are excluded before this is consulted.
@@ -505,6 +507,7 @@ class SaleOrder(models.Model):
                       or int(line.product_uom_qty or 1))
         else:
             carats, pieces = totals['carats'], totals['pieces']
+        carats = round(carats, 2)
         rfq = self._lgd_offline_melee_rfq(line)
         by_piece = (rfq.unit_type or 'carats') == 'pieces' if rfq else False
         return {
