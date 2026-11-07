@@ -325,7 +325,8 @@ class SaleOrder(models.Model):
         ('within_maharashtra', 'Within Maharashtra'),
         ('outside_maharashtra', 'Outside Maharashtra'),
     ], string='GST Treatment',
-        compute='_compute_gst_treatment', store=True, readonly=False)
+        compute='_compute_gst_treatment', store=True, readonly=False,
+        precompute=True)
 
     @api.depends('partner_id', 'partner_id.state_id', 'company_id')
     def _compute_gst_treatment(self):
@@ -774,22 +775,41 @@ class SaleOrder(models.Model):
         'outside_maharashtra': 'Inter State',
     }
 
-    def _lgd_apply_gst_fiscal_position(self):
+    def _lgd_gst_fiscal_position(self):
+        self.ensure_one()
         FiscalPosition = self.env['account.fiscal.position'].sudo()
+        name = self.LGD_GST_FISCAL_POSITIONS.get(self.gst_treatment)
+        fiscal_position = FiscalPosition.search([
+            ('name', '=', name),
+            ('company_id', '=', self.company_id.id),
+        ], limit=1) if name else FiscalPosition.browse()
+        if name and not fiscal_position:
+            _logger.warning(
+                "Order %s: no fiscal position named %r exists for "
+                "company %s, so its taxes stay unmapped and an "
+                "inter-state sale will book CGST+SGST.",
+                self.name, name, self.company_id.display_name)
+        return fiscal_position
+
+    def _lgd_apply_gst_fiscal_position(self):
         for order in self:
-            name = self.LGD_GST_FISCAL_POSITIONS.get(order.gst_treatment)
-            fiscal_position = FiscalPosition.search([
-                ('name', '=', name),
-                ('company_id', '=', order.company_id.id),
-            ], limit=1) if name else FiscalPosition.browse()
-            if name and not fiscal_position:
-                _logger.warning(
-                    "Order %s: no fiscal position named %r exists for "
-                    "company %s, so its taxes stay unmapped and an "
-                    "inter-state sale will book CGST+SGST.",
-                    order.name, name, order.company_id.display_name)
-            order.fiscal_position_id = fiscal_position.id or False
+            order.fiscal_position_id = order._lgd_gst_fiscal_position().id or False
             order._lgd_remap_line_taxes()
+
+    @api.depends('gst_treatment')
+    def _compute_fiscal_position_id(self):
+        super()._compute_fiscal_position_id()
+        for order in self:
+            customer = order.partner_id.commercial_partner_id
+            if not (order.gst_treatment and customer.country_id.code == 'IN'):
+                continue
+            company_order = order.with_company(order.company_id)
+            if (company_order.partner_id.property_account_position_id
+                    or company_order.partner_shipping_id.property_account_position_id):
+                continue
+            fiscal_position = order._lgd_gst_fiscal_position()
+            if fiscal_position:
+                order.fiscal_position_id = fiscal_position
 
     def _lgd_remap_line_taxes(self):
         """Put the fiscal position's taxes back on the lines.
@@ -3516,6 +3536,9 @@ class SaleOrderLine(models.Model):
         else create one from the given spec vals. Used for both the
         IGI-filled and the manually typed stone."""
         Product = self.env['product.template']
+        if (vals.get('certificate') or '').strip() and \
+                not vals.get('website_product_id'):
+            vals = {**vals, **Product._lgd_platform_stone(vals['certificate'])}
         pairs = [
             ('certificate', (vals.get('certificate') or '').strip()),
             ('stock_number', (vals.get('stock_number') or '').strip()),
@@ -3546,7 +3569,9 @@ class SaleOrderLine(models.Model):
             for field in ('certificate', 'certificate_type', 'labs',
                           'stock_number', 'lgd_stock_number', 'shapes',
                           'color', 'clarity', 'cut', 'polish', 'symmetry',
-                          'weight_carat', 'measurements', 'stone_type'):
+                          'weight_carat', 'measurements', 'stone_type',
+                          'website_product_id', 'final_price',
+                          'final_price_margin'):
                 supplied = vals.get(field)
                 if supplied and not product[field]:
                     fill[field] = supplied
@@ -3586,15 +3611,32 @@ class SaleOrderLine(models.Model):
     # website's short form ("round") matches IGI's full form ("Round Brilliant").
     _SHAPE_NOISE_WORDS = {'brilliant', 'cut', 'modified', 'step', 'mixed', 'old'}
 
+    _SHAPE_CUTTING_STYLES = (
+        (('cornered', 'square', 'step'), 'asscher'),
+        (('cornered', 'step'), 'emerald'),
+        (('square', 'emerald'), 'asscher'),
+        (('sq.', 'emerald'), 'asscher'),
+        (('cornered', 'square'), 'radiant'),
+        (('cornered', 'rectangular'), 'radiant'),
+        (('square', 'modified', 'brilliant'), 'princess'),
+        (('rectangular', 'modified', 'brilliant'), 'princess'),
+    )
+
     @staticmethod
     def _normalize_shape(shape):
         """Canonical shape token for matching: lower-cased core words with the
         cut-quality descriptors removed, so 'Round Brilliant', 'round' and
-        'ROUND BRILLIANT CUT' all compare equal."""
+        'ROUND BRILLIANT CUT' all compare equal - and a report's formal
+        cutting style mapped to its trade name, so IGI's 'Cut-Cornered
+        Rectangular Modified Brilliant' compares equal to 'Radiant'."""
         if not shape:
             return ''
         cleaned = shape.strip().lower().replace('_', ' ').replace('-', ' ')
-        words = [w for w in cleaned.split()
+        words = cleaned.split()
+        for required, trade_name in SaleOrderLine._SHAPE_CUTTING_STYLES:
+            if all(w in words for w in required):
+                return trade_name
+        words = [w for w in words
                  if w not in SaleOrderLine._SHAPE_NOISE_WORDS]
         return ' '.join(words)
 
@@ -3641,7 +3683,12 @@ class SaleOrderLine(models.Model):
         Never falls back to vendor cost."""
         self.ensure_one()
         if product.website_product_id and product.final_price_margin > 0:
-            return product.final_price_margin
+            # The website's sell price is in USD; an INR order charges it at
+            # the order's own rate rather than reading dollars as rupees.
+            price = product.final_price_margin
+            if (self.order_id.currency_id.name or 'USD') != 'USD':
+                price *= self.order_id._lgd_offline_inr_rate() or 1.0
+            return price
         margin_pct = self.env['lgd.margin']._get_margin_pct_for_carat(
             product.carat_value)
         return gross_total * (1 + margin_pct / 100.0)

@@ -83,6 +83,11 @@ class StoneReplacement(models.TransientModel):
             return Shape
         text = str(value).strip()
         match = Shape.search([('name', '=ilike', text)], limit=1)
+        if not match:
+            Line = self.env['sale.order.line']
+            wanted = Line._normalize_shape(text)
+            match = Shape.search([]).filtered(
+                lambda s: Line._normalize_shape(s.name) == wanted)[:1]
         if not match and text.split():
             match = Shape.search(
                 [('name', '=ilike', text.split()[0])], limit=1)

@@ -40,8 +40,24 @@ _KEY_MAP = {
 _MEAS_XYZ = re.compile(r'([\d.]+)\s*x\s*([\d.]+)\s*x\s*([\d.]+)', re.IGNORECASE)
 _MEAS_RANGE = re.compile(r'([\d.]+)\s*-\s*([\d.]+)\s*x\s*([\d.]+)', re.IGNORECASE)
 
+_RESULT_CACHE = {}
+_RESULT_CACHE_TTL = 24 * 3600  # seconds
+
 
 def fetch_by_report_number(env, report_no):
+    key = (report_no or '').strip().upper()
+    hit = _RESULT_CACHE.get(key)
+    if hit and time.time() - hit[0] < _RESULT_CACHE_TTL:
+        _logger.info("[IGI LOOKUP] report=%s served from cache (IGI refuses "
+                     "repeat lookups for a while).", report_no)
+        return dict(hit[1])
+    result = _fetch_by_report_number(env, report_no)
+    if result and not result.get('error'):
+        _RESULT_CACHE[key] = (time.time(), dict(result))
+    return result
+
+
+def _fetch_by_report_number(env, report_no):
     if not report_no:
         return None
     token = env['ir.config_parameter'].sudo().get_param(_CONFIG_PARAM)

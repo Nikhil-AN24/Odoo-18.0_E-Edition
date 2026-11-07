@@ -97,7 +97,7 @@
 
                 <group>
                     <group string="Vendor &amp; Buying Price">
-                        <field name="vendor_id" required="1"/>
+                        <field name="vendor_id"/>
                         <field name="gross_price_per_carat" required="1"/>
                         <field name="carat_value"/>
                         <field name="gross_total"/>
