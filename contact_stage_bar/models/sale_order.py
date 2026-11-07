@@ -782,6 +782,12 @@ class SaleOrder(models.Model):
                 ('name', '=', name),
                 ('company_id', '=', order.company_id.id),
             ], limit=1) if name else FiscalPosition.browse()
+            if name and not fiscal_position:
+                _logger.warning(
+                    "Order %s: no fiscal position named %r exists for "
+                    "company %s, so its taxes stay unmapped and an "
+                    "inter-state sale will book CGST+SGST.",
+                    order.name, name, order.company_id.display_name)
             order.fiscal_position_id = fiscal_position.id or False
             order._lgd_remap_line_taxes()
 
@@ -5017,7 +5023,35 @@ class SaleOrderLine(models.Model):
                     if (old_status in ('diamond_booked', 'confirmed')
                             and line.availability_status == 'in_qc_process'):
                         lines_needing_procurement |= line
-                if lines_needing_procurement:
+                if lines_needing_procurement and from_website_api:
+
+                    try:
+                        with self.env.cr.savepoint():
+                            lines_needing_procurement.with_context(
+                                skip_auto_procurement=True,
+                            )._auto_create_procurement_for_qc()
+                    except Exception as error:
+                        _logger.exception(
+                            "[AUTO-QC] Procurement automation failed for %s; "
+                            "the website's status is kept and the failure is "
+                            "posted on the order.",
+                            ', '.join(sorted(set(
+                                lines_needing_procurement.mapped(
+                                    'order_id.name')))))
+                        for order in lines_needing_procurement.mapped('order_id'):
+                            try:
+                                order.sudo().message_post(
+                                    body=Markup(
+                                        "<p><b>%s</b></p><p>%s</p>") % (
+                                        _("QC procurement could not be "
+                                          "created automatically"),
+                                        str(error)),
+                                    subject=_("Auto-QC failed"))
+                            except Exception:
+                                _logger.exception(
+                                    "Could not post the Auto-QC failure to "
+                                    "%s's chatter.", order.name)
+                elif lines_needing_procurement:
                     lines_needing_procurement.with_context(
                         skip_auto_procurement=True,
                     )._auto_create_procurement_for_qc()

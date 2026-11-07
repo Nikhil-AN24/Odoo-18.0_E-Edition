@@ -52,8 +52,21 @@ class AccountFiscalPosition(models.Model):
                     dest = Tax.search(domain + [('name', '=', dest_name)], limit=1)
                     if not src or not dest:
                         continue
-                    if Mapping.search_count([('position_id', '=', position.id),
-                                             ('tax_src_id', '=', src.id)]):
+                    existing = Mapping.search(
+                        [('position_id', '=', position.id),
+                         ('tax_src_id', '=', src.id)], limit=1)
+                    if existing:
+                        if existing.tax_dest_id != dest:
+                            _logger.warning(
+                                "Fiscal position %s (company %s): %s is "
+                                "already mapped to %r, not %r. Left as "
+                                "configured - but an inter-state sale will "
+                                "keep booking whatever that maps to. Fix the "
+                                "row by hand if the Tax Invoice shows "
+                                "CGST/SGST for an out-of-state buyer.",
+                                position.name, company.display_name, src_name,
+                                existing.tax_dest_id.display_name or '(none)',
+                                dest_name)
                         continue
 
                     src_rate = self._lgd_effective_rate(src)
