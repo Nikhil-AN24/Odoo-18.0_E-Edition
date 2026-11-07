@@ -66,10 +66,18 @@ class CustomerRfqSizeLine(models.Model):
 
     pieces_count = fields.Integer(
         string='Pieces', compute='_compute_pieces_count',
+        inverse='_inverse_pieces_count', readonly=False,
         help="How many stones this row holds. In Pieces mode it is the "
-             "quantity itself; in Carats mode it is quantity x the RFQ's "
-             "Pieces per Carat (e.g. 1 ct = 22 pieces), or quantity over "
-             "Carat/Piece when that is set instead.")
+             "quantity itself. In Carats mode it is suggested as quantity x "
+             "the RFQ's Pieces per Carat (1 ct = 22 pieces); type the real "
+             "count to replace the suggestion.")
+    carat_total = fields.Float(
+        string='Carat', digits=(16, 2), compute='_compute_carat_total',
+        inverse='_inverse_carat_total', readonly=False,
+        help="Total carat weight of the stones on this row. In Pieces mode "
+             "it is suggested as pieces / the RFQ's Pieces per Carat (22 "
+             "pieces = 1 ct); type the real weight to replace the "
+             "suggestion.")
 
     @api.depends('quantity', 'carat_per_piece', 'rfq_id.unit_type',
                  'rfq_id.lgd_pieces_per_carat')
@@ -85,6 +93,31 @@ class CustomerRfqSizeLine(models.Model):
                 factor = (rfq.lgd_pieces_per_carat
                           or rfq._LGD_DEFAULT_PIECES_PER_CARAT)
                 line.pieces_count = int(round(qty * factor))
+
+    # Melee weight per stone depends on its size - 22 a carat is a ~2.2 mm
+    # stone, a 1.3 mm one runs ~100 - so a count or weight typed in is
+    # kept as this row's own Carat/Piece instead of the flat suggestion.
+    def _inverse_pieces_count(self):
+        for line in self:
+            if ((line.rfq_id.unit_type or 'carats') == 'carats'
+                    and line.pieces_count > 0 and line.quantity):
+                line.carat_per_piece = line.quantity / line.pieces_count
+
+    @api.depends('quantity', 'carat_per_piece', 'rfq_id.unit_type',
+                 'rfq_id.lgd_pieces_per_carat')
+    def _compute_carat_total(self):
+        for line in self:
+            qty = line.quantity or 0.0
+            if (line.rfq_id.unit_type or 'carats') == 'pieces':
+                line.carat_total = qty * line._lgd_stone_carat()
+            else:
+                line.carat_total = qty
+
+    def _inverse_carat_total(self):
+        for line in self:
+            if ((line.rfq_id.unit_type or 'carats') == 'pieces'
+                    and line.quantity and line.carat_total > 0):
+                line.carat_per_piece = line.carat_total / line.quantity
 
     def _lgd_stone_carat(self):
         """Weight of one stone on this row: its own Carat/Piece, else one
@@ -679,16 +712,30 @@ class CustomerRfq(models.Model):
           - legacy fallback     → the header Quantity (min 1).
         """
         self.ensure_one()
-        if self.size_line_ids:
+        if self._lgd_size_rows():
             unit_is_pieces = (self.unit_type or 'carats') == 'pieces'
             total = 0
-            for sl in self.size_line_ids:
+            for sl in self._lgd_size_rows():
                 raw = sl.quantity or 0.0
                 count = int(raw) if unit_is_pieces else int(round(raw))
                 if count > 0:
                     total += count
             return total
         return max(1, int(self.quantity)) if self.quantity else 1
+
+    def _lgd_size_rows(self):
+        """The Quantity & Size rows, when they are what this RFQ is sized by.
+
+        The form only shows that table for Lab grown / Non-Certified. Rows
+        entered there survive a switch to another stone type, hidden, and
+        used to be read anyway: a Natural Certified RFQ with Quantity 2 and
+        a leftover blank row produced no stones and refused to create its
+        Offline Order."""
+        self.ensure_one()
+        if (self.stone_type == 'lab_grown'
+                and self.stone_certification_type == 'non_certified'):
+            return self.size_line_ids
+        return self.size_line_ids.browse()
 
     @api.depends('price', 'carat', 'total_carat', 'tax_ids', 'different_prices',
                  'quantity', 'unit_type',
@@ -721,7 +768,8 @@ class CustomerRfq(models.Model):
 
         for rec in self:
             effective_carat = 0.0
-            if rec.size_line_ids:
+            rows = rec._lgd_size_rows()
+            if rows:
                 if (rec.unit_type or 'carats') == 'pieces':
                     # `quantity` is a piece count here, so the order's carat
                     # weight is pieces x the weight of one stone on that row.
@@ -729,11 +777,10 @@ class CustomerRfq(models.Model):
                     # stone as if it weighed exactly 1.00 ct.
                     effective_carat = sum(
                         (sl.quantity or 0.0) * sl._lgd_stone_carat()
-                        for sl in rec.size_line_ids
+                        for sl in rows
                     )
                 else:
-                    effective_carat = sum(
-                        rec.size_line_ids.mapped('quantity')) or 0.0
+                    effective_carat = sum(rows.mapped('quantity')) or 0.0
             if not effective_carat and rec.carat:
                 try:
                     effective_carat = float(rec.carat)
@@ -745,10 +792,10 @@ class CustomerRfq(models.Model):
             # ── 1. Base price ────────────────────────────────────────────────
             # Different prices ON → sum of (per-row costing × per-row quantity).
             # OFF → the flat Procurement Price/carat × effective carat weight.
-            if rec.different_prices and rec.size_line_ids:
+            if rec.different_prices and rows:
                 rec_base_price = sum(
                     (sl.costing or 0.0) * (sl.quantity or 0.0)
-                    for sl in rec.size_line_ids
+                    for sl in rows
                 )
             else:
                 rec_base_price = rec.price * effective_carat
@@ -800,7 +847,7 @@ class CustomerRfq(models.Model):
             # Multiplying rec_total by the stone count on BOTH paths double
             # counted the guided-intake quote by the number of stones.
             stone_count = rec._rfq_stone_count()
-            if rec.size_line_ids:
+            if rows:
                 total_order_carat = effective_carat
             elif rec._is_melee_parcel():
                 # Parcel weight is the order's total weight, sold as a single
@@ -1387,9 +1434,9 @@ class CustomerRfq(models.Model):
         """
         line_vals = []
 
-        if self.size_line_ids:
+        if self._lgd_size_rows():
             unit_is_pieces = (self.unit_type or 'carats') == 'pieces'
-            for size_line in self.size_line_ids:
+            for size_line in self._lgd_size_rows():
                 raw_qty = size_line.quantity or 0.0
                 count = int(raw_qty) if unit_is_pieces else int(round(raw_qty))
                 if count <= 0:
@@ -1424,10 +1471,9 @@ class CustomerRfq(models.Model):
                     # Carats mode: the row's weight split across the stones the rounding produced for that row.
                     stone_carat = (size_line.quantity or 0.0) / count
                 if stone_carat:
-                    # Five places for a 1/22 ct stone (0.04545): at three it
-                    # reads 0.045, and 22 of them add up to 0.99 ct.
-                    precision = (5 if unit_is_pieces
-                                 and not size_line.carat_per_piece else 3)
+                    # Five places for a melee stone (1/22 ct = 0.04545): at
+                    # three it reads 0.045, and 22 of them add up to 0.99 ct.
+                    precision = 5 if unit_is_pieces else 3
                     row_vals['carat_weight'] = (
                         '%.*f' % (precision, stone_carat)).rstrip(
                         '0').rstrip('.')
