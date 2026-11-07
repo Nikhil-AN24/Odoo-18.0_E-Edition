@@ -314,13 +314,13 @@ class SaleOrder(models.Model):
             'finalPriceMargin': final_margin,
         }
 
-    def _lgd_offline_size_line_note(self, line, field):
-        size_line = line.rfq_size_line_id
-        return (size_line[field] or '') if size_line else ''
+    def _lgd_offline_added_note(self, line):
 
-    def _lgd_offline_added_note(self, line, is_melee):
-        stored = line.order_specific if is_melee else line.customer_reference_note
-        return stored or self._lgd_offline_size_line_note(line, 'description')
+        if line.customer_reference_note:
+            return line.customer_reference_note
+        if 'rfq_size_line_id' in line._fields and line.rfq_size_line_id:
+            return line.rfq_size_line_id.description or ''
+        return ''
 
     def _lgd_offline_qc_requirements(self, line):
         return line.popup_default_qc_requirements or ''
@@ -826,7 +826,6 @@ class SaleOrder(models.Model):
             totals = (self._lgd_offline_parcel_totals(line, members)
                       if is_melee and key[0] == 'szl' else None)
             prices = self._lgd_offline_price_block(line)
-            added_note = self._lgd_offline_added_note(line, is_melee)
             entry = {
                 # The HEAD's id, echoed back by the website so the group's
                 # orderUniqueId lands on the line that anchors it. Product
@@ -842,11 +841,9 @@ class SaleOrder(models.Model):
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
                 'productPrice': float((totals or prices)['finalPrice']),
                 'invoiceAmount': float((totals or prices)['finalPriceMargin']),
-                'orderNote': (added_note if is_melee
-                              else (line.order_specific or '')),
+                'orderNote': line.order_specific or '',
                 'generalNotes': line.popup_item_notes or '',
-                'customerReference': ((line.customer_reference_note or '')
-                                      if is_melee else added_note),
+                'customerReference': self._lgd_offline_added_note(line),
                 'defaultQcRequirements': self._lgd_offline_qc_requirements(line),
                 'seller': self._lgd_offline_seller_block(line),
                 'product': (self._lgd_offline_melee_product_block(
