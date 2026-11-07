@@ -1287,9 +1287,11 @@ class PartnerSyncController(http.Controller):
                 target_lines = order_line
                 if sale_order.order_source == 'offline':
                     for _key, _head, members, kin in sale_order._lgd_offline_groups():
-                        if order_line in kin and len(kin) > 1:
+                        if order_line not in kin or len(kin) <= 1:
+                            continue
+                        if len(kin.filtered('order_number')) <= 1:
                             target_lines = members or order_line
-                            break
+                        break
 
                 # ── Write the line status ─────────────────────────────────────
                 target_lines.sudo().with_context(from_website_api=True).write({

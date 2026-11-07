@@ -332,6 +332,28 @@ class SaleOrder(models.Model):
             return size_line.rfq_id
         return line.order_id.custom_sale_order_id.sudo().customer_rfq_id
 
+    def _lgd_offline_melee_grouped(self):
+        value = self.env['ir.config_parameter'].sudo().get_param(
+            'lgd_offline_group_melee', '')
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    def _lgd_offline_line_pieces(self, line, carats):
+        """The real stone count behind `carats` of this line's parcel:
+        Carat/Piece when the size line records it, else the RFQ's Pieces
+        per Carat (e.g. 1 ct = 22 pieces), else the unit count."""
+        size_line = ('rfq_size_line_id' in line._fields
+                     and line.rfq_size_line_id)
+        per_piece = float(size_line.carat_per_piece or 0.0) if size_line else 0.0
+        if per_piece > 0 and carats:
+            return max(1, int(round(carats / per_piece)))
+        rfq = self._lgd_offline_melee_rfq(line)
+        per_carat = (float(rfq.lgd_pieces_per_carat
+                           or rfq._LGD_DEFAULT_PIECES_PER_CARAT)
+                     if rfq else 0.0)
+        if per_carat > 0 and carats:
+            return max(1, int(round(carats * per_carat)))
+        return 0
+
     def _lgd_offline_group_key(self, line):
         """What one payload entry stands for.
 
@@ -349,7 +371,7 @@ class SaleOrder(models.Model):
             return ('szl', line.rfq_size_line_id.id)
         return ('line', line.id)
 
-    def _lgd_offline_groups(self):
+    def _lgd_offline_groups(self, for_payload=False):
         """[(key, head, members, kin)] - one tuple per payload entry.
 
         members are the LIVE lines of the group (what _lgd_offline_lines
@@ -367,7 +389,13 @@ class SaleOrder(models.Model):
         members_all = self._lgd_offline_lines()
         kin_all = self.order_line.filtered(
             lambda l: not l.display_type and not l.is_melee_parent)
-        key_of = {l.id: self._lgd_offline_group_key(l) for l in kin_all}
+        # The payload's shape follows the switch; everything else (push
+        # predicate, status fan-out, sweep guard) always groups by parcel,
+        # then decides per group from the data how it was actually pushed.
+        if for_payload and not self._lgd_offline_melee_grouped():
+            key_of = {l.id: ('line', l.id) for l in kin_all}
+        else:
+            key_of = {l.id: self._lgd_offline_group_key(l) for l in kin_all}
 
         Line = self.env['sale.order.line']
         buckets = {}
@@ -402,8 +430,16 @@ class SaleOrder(models.Model):
         carats = sum(self._lgd_offline_carat(m) for m in members)
         size_line = line.rfq_size_line_id
         per_piece = float(size_line.carat_per_piece or 0.0) if size_line else 0.0
+        rfq = self._lgd_offline_melee_rfq(line)
+        per_carat = (float(rfq.lgd_pieces_per_carat
+                           or rfq._LGD_DEFAULT_PIECES_PER_CARAT)
+                     if rfq else 0.0)
         if per_piece > 0 and carats:
             pieces = max(1, int(round(carats / per_piece)))
+        elif per_carat > 0 and carats:
+            # The RFQ's own conversion, e.g. 1 ct = 22 pieces. Computed over
+            # the LIVE carats so a slice that dies shrinks the count too.
+            pieces = max(1, int(round(carats * per_carat)))
         else:
             pieces = sum(int(m.product_uom_qty or 1) for m in members) or 1
         final = margin = 0.0
@@ -440,6 +476,10 @@ class SaleOrder(models.Model):
         for _key, _head, members, kin in self._lgd_offline_groups():
             if len(kin) <= 1 or not members:
                 continue
+            # Pushed per stone (several kin hold their own id): every line
+            # reports itself, exactly as a certified stone does.
+            if len(kin.filtered('order_number')) > 1:
+                continue
             status = min((m.availability_status or '' for m in members),
                          key=lambda s: rank.get(s, -1))
             for l in kin:
@@ -461,7 +501,8 @@ class SaleOrder(models.Model):
         """
         if totals is None:
             carats = self._lgd_offline_carat(line)
-            pieces = int(line.product_uom_qty or 1)
+            pieces = (self._lgd_offline_line_pieces(line, carats)
+                      or int(line.product_uom_qty or 1))
         else:
             carats, pieces = totals['carats'], totals['pieces']
         rfq = self._lgd_offline_melee_rfq(line)
@@ -476,7 +517,8 @@ class SaleOrder(models.Model):
         template = line.product_template_id
         if totals is None:
             carats = self._lgd_offline_carat(line)
-            pieces = int(line.product_uom_qty or 1)
+            pieces = (self._lgd_offline_line_pieces(line, carats)
+                      or int(line.product_uom_qty or 1))
         else:
             carats, pieces = totals['carats'], totals['pieces']
         prices = self._lgd_offline_price_block(line)
@@ -816,7 +858,7 @@ class SaleOrder(models.Model):
         partner = self.partner_id
 
         orders = []
-        for key, head, members, kin in self._lgd_offline_groups():
+        for key, head, members, kin in self._lgd_offline_groups(for_payload=True):
             line = head if head in members else members[:1]
             line_type = self._lgd_offline_line_type(line)
             is_melee = line_type == 'MELEE'

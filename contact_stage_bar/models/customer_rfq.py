@@ -64,48 +64,34 @@ class CustomerRfqSizeLine(models.Model):
     sequence = fields.Integer(default=10)
     quantity = fields.Float(string='Quantity', required=True)
 
+    pieces_count = fields.Integer(
+        string='Pieces', compute='_compute_pieces_count',
+        help="How many stones this row holds. In Pieces mode it is the "
+             "quantity itself; in Carats mode it is quantity x the RFQ's "
+             "Pieces per Carat (e.g. 1 ct = 22 pieces), or quantity over "
+             "Carat/Piece when that is set instead.")
+
+    @api.depends('quantity', 'carat_per_piece', 'rfq_id.unit_type',
+                 'rfq_id.lgd_pieces_per_carat')
+    def _compute_pieces_count(self):
+        for line in self:
+            rfq = line.rfq_id
+            qty = line.quantity or 0.0
+            if (rfq.unit_type or 'carats') == 'pieces':
+                line.pieces_count = int(qty)
+            elif line.carat_per_piece:
+                line.pieces_count = int(round(qty / line.carat_per_piece))
+            else:
+                factor = (rfq.lgd_pieces_per_carat
+                          or rfq._LGD_DEFAULT_PIECES_PER_CARAT)
+                line.pieces_count = int(round(qty * factor))
+
     carat_per_piece = fields.Float(
         string='Carat/Piece',
         help='Carat weight of one stone on this row. Used in Pieces mode to '
              'turn the piece count into a carat weight the Price/carat can '
              'be extended against.',
     )
-    pieces_per_carat = fields.Float(
-        string='Pieces/Carat',
-        compute='_compute_pieces_per_carat',
-        inverse='_inverse_pieces_per_carat',
-        help="How many stones make one carat on this row (e.g. 22). The "
-             "same fact as Carat/Piece seen from the other side: typing 22 "
-             "here stores Carat/Piece = 1/22, so every calculation built on "
-             "Carat/Piece keeps working.")
-    pieces = fields.Integer(
-        string='Pieces', compute='_compute_pieces',
-        help="Stones in this parcel row. In Carats mode: Quantity (ct) x "
-             "Pieces/Carat. In Pieces mode the Quantity already counts "
-             "stones, so it is the Quantity itself.")
-
-    @api.depends('carat_per_piece')
-    def _compute_pieces_per_carat(self):
-        for line in self:
-            cpp = line.carat_per_piece or 0.0
-            line.pieces_per_carat = (1.0 / cpp) if cpp else 0.0
-
-    def _inverse_pieces_per_carat(self):
-        for line in self:
-            ppc = line.pieces_per_carat or 0.0
-            line.carat_per_piece = (1.0 / ppc) if ppc else 0.0
-
-    @api.depends('quantity', 'carat_per_piece', 'rfq_id.unit_type')
-    def _compute_pieces(self):
-        for line in self:
-            qty = line.quantity or 0.0
-            if (line.rfq_id.unit_type or 'carats') == 'pieces':
-                line.pieces = int(qty)
-            elif line.carat_per_piece and qty:
-                line.pieces = int(round(qty / line.carat_per_piece))
-            else:
-                line.pieces = 0
-
     length_mm = fields.Float(string='Length (mm)')
     width_mm = fields.Float(string='Width (mm)')
     depth_mm = fields.Float(string='Depth (mm)')
@@ -420,6 +406,16 @@ class CustomerRfq(models.Model):
     # ── Carat range (Natural mode) ──────────────────────────────────────
     carat_min = fields.Float(string='Carat Min', tracking=True)
     carat_max = fields.Float(string='Carat Max', tracking=True)
+    # The business's standard conversion: 1 carat of melee = 22 stones.
+    # One place to change it if the standard ever moves.
+    _LGD_DEFAULT_PIECES_PER_CARAT = 22.0
+
+    lgd_pieces_per_carat = fields.Float(
+        string="Pieces per Carat", default=22.0,
+        help="How many stones make up one carat in this parcel. Drives the "
+             "Pieces column here and meleePricing.pieces on the website "
+             "push. 0 falls back to the standard 22.")
+
     unit_type = fields.Selection(
         [('carats', 'Carats'), ('pieces', 'Pieces')],
         string='Unit', default='carats', tracking=True,

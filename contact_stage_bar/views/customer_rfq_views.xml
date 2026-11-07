@@ -263,8 +263,7 @@
                                        readonly="not parent.different_prices"
                                        groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                                 <field name="quantity" string="Quantity (ct)"/>
-                                <field name="pieces_per_carat" string="Pieces/Carat"/>
-                                <field name="pieces"/>
+                                <field name="pieces_count"/>
                                 <field name="description"/>
                             </list>
                         </field>
@@ -290,8 +289,7 @@
                                        readonly="not parent.different_prices"
                                        groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager"/>
                                 <field name="quantity" string="Quantity (ct)" readonly="1"/>
-                                <field name="pieces_per_carat" string="Pieces/Carat" readonly="1"/>
-                                <field name="pieces"/>
+                                <field name="pieces_count"/>
                                 <field name="description" readonly="1"/>
                             </list>
                         </field>
