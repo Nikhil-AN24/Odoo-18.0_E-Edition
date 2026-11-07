@@ -110,6 +110,25 @@ class AugmontApiRetry(models.Model):
                 self.id, stored)
         return stored
 
+    def _lgd_adopt_replacement_response(self, response):
+        self.ensure_one()
+        line = self.order_line_id
+        if not (line and line.replaces_line_id and self.order_id):
+            return
+        if '/replace-product' not in (self.lgd_endpoint_url or ''):
+            return
+        try:
+            data = response.json()
+        except ValueError:
+            _logger.error(
+                "[CRON] Record %d: replacement accepted but the response was "
+                "not JSON, so line %s still has no website id.",
+                self.id, line.id)
+            return
+        order = self.order_id
+        if order._lgd_store_replacement_unique_id(line, data):
+            order._lgd_mark_replacement_pushed(line.replaces_line_id, line)
+
     def retry_api_call(self):
         _logger.info("=" * 60)
         _logger.info("[CRON] ▶ Starting Augmont API Retry Job")
@@ -231,6 +250,7 @@ class AugmontApiRetry(models.Model):
                     rec.updated_on = fields.Datetime.now()
                     processed += 1
                     _logger.info("[CRON] Record %d → SUCCESS ✅", rec.id)
+                    rec._lgd_adopt_replacement_response(response)
                     if rec.order_id:
                         rec.order_id.message_post(
                             body=Markup(

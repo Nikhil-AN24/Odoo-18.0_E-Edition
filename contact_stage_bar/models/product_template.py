@@ -897,6 +897,50 @@ class ProductTemplate(models.Model):
             'params': params,
         }
 
+    @api.model
+    def _lgd_platform_stone(self, number):
+        number = (number or '').strip()
+        base = (self.env['ir.config_parameter'].sudo()
+                .get_param('base_augmont_url') or '').rstrip('/')
+        if not (number and base):
+            return {}
+        url = "%s/api/v1/odoo/product?id=%s&country=IN" % (base, number)
+        headers = lgd_api_auth_headers(self.env, content_type=False)
+        try:
+            log_api(OUT, "GET %s" % url, None, headers=headers, env=self.env)
+            response = requests.get(url, headers=headers, timeout=10)
+            log_api(OUT, "GET %s" % url, None, env=self.env,
+                    response=getattr(response, "text", None),
+                    status=getattr(response, "status_code", None))
+        except requests.RequestException as error:
+            _logger.warning(
+                "[REPLACEMENT] Could not ask the website about certificate "
+                "%s (%s); treating the stone as new to it.", number, error)
+            return {}
+        if response.status_code != 200:
+            return {}
+        try:
+            body = response.json()
+        except ValueError:
+            return {}
+        record = (body.get('data') or {}) if body.get('success') else {}
+        # Only this exact certificate - never whatever the lookup returns for
+        # a near miss, which would attach the order to someone else's stone.
+        if not record.get('id') or \
+                (record.get('certNumber') or '').strip() != number:
+            return {}
+        _logger.info(
+            "[REPLACEMENT] Certificate %s is already listed on the website "
+            "(SKU %s / vendor SKU %s); adopting that identity.",
+            number, record.get('lgdStockNum'), record.get('stockNum'))
+        return {
+            'website_product_id': str(record['id']),
+            'stock_number': record.get('stockNum') or False,
+            'lgd_stock_number': record.get('lgdStockNum') or False,
+            'final_price': float(record.get('finalPrice') or 0.0),
+            'final_price_margin': float(record.get('finalPriceMargin') or 0.0),
+        }
+
     def action_fetch_certificate_data(self):
         """
         Fetch certificate/vendor product data from Augmont API and update record fields accordingly.
