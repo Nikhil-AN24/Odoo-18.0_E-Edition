@@ -86,11 +86,25 @@ class CustomerRfqSizeLine(models.Model):
                           or rfq._LGD_DEFAULT_PIECES_PER_CARAT)
                 line.pieces_count = int(round(qty * factor))
 
+    def _lgd_stone_carat(self):
+        """Weight of one stone on this row: its own Carat/Piece, else one
+        over the RFQ's Pieces per Carat (1 ct = 22 pieces -> 1/22 ct).
+
+        Kept unrounded: rounding one stone to 0.045 ct loses 0.45 ct over
+        a thousand pieces."""
+        self.ensure_one()
+        if self.carat_per_piece:
+            return self.carat_per_piece
+        rfq = self.rfq_id
+        factor = rfq.lgd_pieces_per_carat or rfq._LGD_DEFAULT_PIECES_PER_CARAT
+        return 1.0 / factor if factor else 0.0
+
     carat_per_piece = fields.Float(
         string='Carat/Piece',
         help='Carat weight of one stone on this row. Used in Pieces mode to '
              'turn the piece count into a carat weight the Price/carat can '
-             'be extended against.',
+             'be extended against. Left empty, one stone weighs 1/22 ct '
+             '(1 ct = 22 pieces).',
     )
     length_mm = fields.Float(string='Length (mm)')
     width_mm = fields.Float(string='Width (mm)')
@@ -680,7 +694,7 @@ class CustomerRfq(models.Model):
                  'quantity', 'unit_type',
                  'stone_type', 'stone_certification_type',
                  'size_line_ids', 'size_line_ids.quantity',
-                 'size_line_ids.carat_per_piece',
+                 'size_line_ids.carat_per_piece', 'lgd_pieces_per_carat',
                  'size_line_ids.costing')
     def _compute_pricing_totals(self):
         """Compute the full pricing breakdown for each RFQ record.
@@ -714,7 +728,7 @@ class CustomerRfq(models.Model):
                     # Summing the piece counts (as this used to) priced every
                     # stone as if it weighed exactly 1.00 ct.
                     effective_carat = sum(
-                        (sl.quantity or 0.0) * (sl.carat_per_piece or 0.0)
+                        (sl.quantity or 0.0) * sl._lgd_stone_carat()
                         for sl in rec.size_line_ids
                     )
                 else:
@@ -1405,13 +1419,17 @@ class CustomerRfq(models.Model):
 
                 row_vals = dict(base_vals)
                 if unit_is_pieces:
-                    stone_carat = size_line.carat_per_piece or 0.0
+                    stone_carat = size_line._lgd_stone_carat()
                 else:
                     # Carats mode: the row's weight split across the stones the rounding produced for that row.
                     stone_carat = (size_line.quantity or 0.0) / count
                 if stone_carat:
-
-                    row_vals['carat_weight'] = ('%.3f' % stone_carat).rstrip(
+                    # Five places for a 1/22 ct stone (0.04545): at three it
+                    # reads 0.045, and 22 of them add up to 0.99 ct.
+                    precision = (5 if unit_is_pieces
+                                 and not size_line.carat_per_piece else 3)
+                    row_vals['carat_weight'] = (
+                        '%.*f' % (precision, stone_carat)).rstrip(
                         '0').rstrip('.')
                     row_vals['price_unit'] = (
                         self.sale_rate_per_carat or 0.0) * stone_carat

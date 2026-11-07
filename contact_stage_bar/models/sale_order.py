@@ -3700,7 +3700,8 @@ class SaleOrderLine(models.Model):
         each figure only to the right audience."""
         self.ensure_one()
         original_price = self.price_unit  #never subtotal / total
-        replacement_price = self._replacement_customer_price(product, gross_total)
+        replacement_price = self.order_id.currency_id.round(
+            self._replacement_customer_price(product, gross_total))
         increase_pct = 0.0
         if original_price:
             increase_pct = (replacement_price - original_price) / original_price * 100.0
