@@ -203,6 +203,15 @@ class SaleOrder(models.Model):
             new_line.vendor_id.display_name or '(none)')
         return ''
 
+    def _lgd_replacement_shape(self, new_line):
+        Line = self.env['sale.order.line']
+        shape = new_line.product_template_id.shapes or ''
+        original = new_line.replaces_line_id.shapes or ''
+        canonical = Line._normalize_shape(shape)
+        if original and canonical == Line._normalize_shape(original):
+            return original
+        return canonical.title() if canonical else shape
+
     def _lgd_manual_stone_block(self, new_line):
         """The new stone, in the manualStone shape their contract defines."""
         template = new_line.product_template_id
@@ -233,7 +242,7 @@ class SaleOrder(models.Model):
             # replacement sourced from an IGI report has a certificate, and
             # without it the stone lands on the website uncertified.
             **cert,
-            'shape': template.shapes or '',
+            'shape': self._lgd_replacement_shape(new_line),
             'cut': template.cut or '',
             'color': template.color or '',
             'clarity': template.clarity or '',

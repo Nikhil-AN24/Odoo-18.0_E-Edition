@@ -3569,7 +3569,8 @@ class SaleOrderLine(models.Model):
             for field in ('certificate', 'certificate_type', 'labs',
                           'stock_number', 'lgd_stock_number', 'shapes',
                           'color', 'clarity', 'cut', 'polish', 'symmetry',
-                          'weight_carat', 'measurements', 'stone_type',
+                          'weight_carat', 'measurements', 'table_pct',
+                          'depth_pct', 'stone_type',
                           'website_product_id', 'final_price',
                           'final_price_margin'):
                 supplied = vals.get(field)
