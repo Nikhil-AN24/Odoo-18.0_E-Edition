@@ -160,10 +160,18 @@ class PurchaseOrderLine(models.Model):
         help="Procurement Price/carat less the vendor discount %. "
              "e.g. 100 - 1% = 99. Shown in the SO/RFQ currency.",
     )
-    # Numeric carat weight of the stone (parsed on the product), used to turn the
-    # per-carat discounted rate into the line's expected net.
     carat_value = fields.Float(
-        string='Carat', related='product_id.product_tmpl_id.carat_value')
+        string='Carat', digits=(16, 3), compute='_compute_carat_value')
+
+    @api.depends('product_id.product_tmpl_id.carat_value',
+                 'sale_line_id.carat_weight', 'sale_line_id.product_uom_qty',
+                 'sale_line_id.melee_parcel_qty_carats',
+                 'sale_line_id.melee_parcel_quantity')
+    def _compute_carat_value(self):
+        for line in self:
+            line.carat_value = (line.sale_line_id.lgd_qty_carats
+                                or line.product_id.product_tmpl_id.carat_value
+                                or 0.0)
     expected_net = fields.Monetary(
         string='Expected Net', currency_field='inr_currency_id',
         compute='_compute_expected_net', store=True, readonly=True,

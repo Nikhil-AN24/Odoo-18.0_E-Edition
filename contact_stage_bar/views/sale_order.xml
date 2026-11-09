@@ -465,6 +465,8 @@
                              Non-Cert. Reads from the product, so it follows
                              the stone rather than being typed per line. -->
                         <field name="lgd_lab_display" optional="show" readonly="1"/>
+                        <field name="lgd_qty_carats" optional="show"/>
+                        <field name="lgd_pieces" optional="show"/>
                         <field name="stone_list_name" optional="show"/>
                         <field name="stone_certification_type" optional="hide"
                                readonly="not lgd_can_edit_stone_classification"/>
@@ -550,6 +552,8 @@
                 <field name="stone_type" optional="show"
                        readonly="not lgd_can_edit_stone_classification"/>
                 <field name="lgd_lab_display" optional="show" readonly="1"/>
+                <field name="lgd_qty_carats" optional="show"/>
+                <field name="lgd_pieces" optional="show"/>
                 <field name="stone_list_name" optional="show"/>
                 <field name="stone_certification_type" optional="hide"
                        readonly="not lgd_can_edit_stone_classification"/>
