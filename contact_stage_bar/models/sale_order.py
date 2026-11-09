@@ -2281,6 +2281,18 @@ class SaleOrder(models.Model):
         fresh = []
         for item in entries:
             line = item['line']
+            # Once replace-product has given the new stone its website id,
+            # the website has already closed the original - as Cancelled,
+            # which nothing moves out of - and a "Replaced" for it is refused
+            # along with everything batched beside it.
+            if (item['final_status'] == 'Replaced'
+                    and line.replaced_by_line_id.order_number):
+                _logger.info(
+                    "🔕 [UNCHANGED] Order %s: %s was replaced by %s on the "
+                    "website, which closed it already; not sending Replaced.",
+                    self.name, item['order_number'],
+                    line.replaced_by_line_id.order_number)
+                continue
             if line.lgd_last_pushed_status \
                     and line.lgd_last_pushed_status == item['final_status']:
                 _logger.info(
