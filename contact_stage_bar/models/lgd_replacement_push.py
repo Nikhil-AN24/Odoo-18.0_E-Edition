@@ -240,7 +240,8 @@ class SaleOrder(models.Model):
         per_carat = self._lgd_replacement_price_per_carat(new_line)
         price = round(float(new_line.price_unit or 0.0), 2)
         return {
-            'vendor': new_line.vendor_id.name or '',
+            'vendor': self._lgd_offline_seller_partner(
+                new_line.vendor_id).name or '',
             # Not in their published manualStone sample, but asked for: a
             # replacement sourced from an IGI report has a certificate, and
             # without it the stone lands on the website uncertified.
@@ -259,6 +260,10 @@ class SaleOrder(models.Model):
             'pricePerCaratMargin': round(price / carat, 2) if carat else price,
             'finalPrice': round(per_carat * carat, 2),
             'finalPriceMargin': price,
+            # The same two figures under the names their response and the
+            # offline order's line use (vendor price / price to the buyer).
+            'productPrice': round(per_carat * carat, 2),
+            'invoiceAmount': price,
             'length': length,
             'width': width,
             'height': height,
@@ -315,6 +320,22 @@ class SaleOrder(models.Model):
         row for the existing cron, exactly like the offline push.
         """
         self.ensure_one()
+        if not (original.order_number or '').strip():
+            # The order itself never reached the website, so there is no
+            # line there to replace; replace-product would be refused for
+            # an empty orderUniqueId on every retry. The offline push leaves
+            # replaced stones out and sends this one, so the order carries
+            # the replacement when it does go.
+            _logger.info(
+                "[REPLACEMENT PUSH] %s: not sent - the original stone has no "
+                "website id because the order has not reached the website. "
+                "The replacement goes with the offline order.",
+                self.sdk_augmont_number or self.name)
+            self.message_post(body=_(
+                "Replacement not sent to the website separately: this order "
+                "has not reached the website yet. The new stone will be "
+                "included when the order is sent."))
+            return False
         url = self._lgd_replacement_push_url()
         if not url:
             _logger.warning(

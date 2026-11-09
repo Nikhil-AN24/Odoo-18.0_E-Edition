@@ -19,7 +19,8 @@ _logger = logging.getLogger(__name__)
 from .lgd_api_auth import lgd_api_auth_headers
 
 from .lgd_inventory_sale_line import (
-    LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT, lgd_group_slip_rows)
+    LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT, lgd_carat_value,
+    lgd_group_slip_rows)
 
 LGD_REPLACEABLE_STATUSES = ('not_available', 'qc_fail')
 # Which line types Replace Stone is offered on. Single stones only.
@@ -2598,13 +2599,8 @@ class SaleOrder(models.Model):
                             "🔄 [RETRY CREATED] ID: %s | Line: %s",
                             retry_rec.id, item['order_number'])
 
-                    self.message_post(
-                        body=Markup(
-                            "<p style='color:red;'><b>Augmont API FAILED</b> "
-                            "for %s line(s)</p><p>Error: %s</p>") % (
-                            len(entries), response.text),
-                        subject="Augmont API Failure"
-                    )
+                    self._lgd_post_status_failure(
+                        entries, response.status_code, response.text)
         except Exception as e:
             _logger.error(
                 "💥 [API EXCEPTION] Order: %s | Error: %s",
@@ -2649,6 +2645,37 @@ class SaleOrder(models.Model):
                     len(pending), old_status or 'None', new_status, str(e)),
                 subject="Augmont API Connection Error"
             )
+
+    def _lgd_post_status_failure(self, entries, status_code, error):
+        """The website's refusal, in its own words, with the stones it was about."""
+        self.ensure_one()
+        headline, fields_hit, hint = self._lgd_explain_push_error(
+            error, status_code)
+        stones = Markup('').join(
+            Markup("<li>%s → %s</li>") % (
+                item['order_number'] or item['line'].display_name,
+                item['final_status'])
+            for item in entries)
+        body = Markup(
+            "<p style='color:#A8322B;'><b>%s</b></p><p>%s</p>"
+            "<p>%s</p><ul>%s</ul>") % (
+            _("The website refused this status update (HTTP %s)") % status_code,
+            headline or error or _("No message returned."),
+            _("Stones in the refused update:"), stones)
+        if fields_hit:
+            body += Markup("<p>%s</p><ul>%s</ul>") % (
+                _("Fields the website refused:"),
+                Markup('').join(Markup("<li>%s</li>") % f for f in fields_hit))
+        if self.env['augmont.api.retry']._is_permanent_failure(
+                error, str(status_code or '')):
+            tail = _("Nothing changed on the website for these stones, and "
+                     "this will not be retried: fix the cause and change the "
+                     "status again.")
+        else:
+            tail = _("Nothing changed on the website for these stones yet. "
+                     "The retry job will send it again.")
+        body += Markup("<p style='color:#76838F;font-size:90%%;'>%s</p>") % tail
+        self.message_post(body=body, subject=_("Website status update refused"))
 
     def action_retry_augmont_failed(self):
         for order in self:
@@ -4208,7 +4235,61 @@ class SaleOrderLine(models.Model):
     # Added for the Order Lines CSV export (Procurement > Orders)
     # These already existed on product.template but were not yet related onto the order line, so they're added here.
     labs = fields.Char(string="Lab", related='product_template_id.labs', readonly=False)
-    measurements = fields.Char(string="Measurement", related='product_template_id.measurements', readonly=False)
+    lgd_certificate_display = fields.Char(
+        string="Certificate Number", compute='_compute_lgd_cert_display')
+    lgd_lab_display = fields.Char(
+        string="Lab", compute='_compute_lgd_cert_display')
+
+    def _lgd_prints_non_certified(self):
+        self.ensure_one()
+        return (self.line_type == 'melee'
+                or self.stone_certification_type == 'non_certified')
+
+    @api.depends('certificate', 'labs', 'line_type', 'stone_certification_type')
+    def _compute_lgd_cert_display(self):
+        for line in self:
+            if line._lgd_prints_non_certified():
+                line.lgd_certificate_display = _("Non-Certified")
+                line.lgd_lab_display = _("Non-Certified")
+            else:
+                line.lgd_certificate_display = line.certificate or False
+                line.lgd_lab_display = line.labs or False
+
+    lgd_qty_carats = fields.Float(
+        string="Quantity (ct)", digits=(16, 3),
+        compute='_compute_lgd_qty_pieces')
+    lgd_pieces = fields.Integer(
+        string="Pieces", compute='_compute_lgd_qty_pieces')
+
+    @api.depends('display_type', 'carat_weight', 'product_uom_qty',
+                 'line_type', 'stone_certification_type',
+                 'product_template_id.carat_value',
+                 'melee_parcel_qty_carats', 'melee_parcel_quantity',
+                 'melee_parcel_avg_carat')
+    def _compute_lgd_qty_pieces(self):
+        for line in self:
+            if line.display_type:
+                line.lgd_qty_carats = 0.0
+                line.lgd_pieces = 0
+                continue
+            if line.melee_parcel_qty_carats or line.melee_parcel_quantity:
+                carats = line.melee_parcel_qty_carats
+                pieces = int(round(line.melee_parcel_quantity or 0.0))
+                if not pieces and carats and line.melee_parcel_avg_carat:
+                    pieces = int(round(carats / line.melee_parcel_avg_carat))
+                if not carats and pieces and line.melee_parcel_avg_carat:
+                    carats = pieces * line.melee_parcel_avg_carat
+            else:
+                qty = line.product_uom_qty or 0.0
+                carats = (lgd_carat_value(line.carat_weight)
+                          or line.product_template_id.carat_value or 0.0) * qty
+                pieces = 0
+                if line._lgd_prints_non_certified():
+                    pieces = line.order_id._lgd_offline_line_pieces(line, carats)
+                pieces = pieces or int(round(qty))
+            line.lgd_qty_carats = carats
+            line.lgd_pieces = pieces
+    measurements =fields.Char(string="Measurement", related='product_template_id.measurements', readonly=False)
     luster = fields.Char(string="Luster", related='product_template_id.luster', readonly=False)
     shade = fields.Char(string="Shade", related='product_template_id.shade', readonly=False)
     lgd_can_edit_product_specs = fields.Boolean(

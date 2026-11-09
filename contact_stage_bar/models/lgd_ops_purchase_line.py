@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from .lgd_ops_mixin import lgd_notify, lgd_responsible_user
@@ -12,6 +13,8 @@ GROUP_QUALITY = 'contact_stage_bar.group_lgd_quality'
 GROUP_INVENTORY = 'contact_stage_bar.group_lgd_inventory'
 GROUP_PROCUREMENT = 'contact_stage_bar.group_lgd_procurement'
 GROUP_SYSTEM = 'base.group_system'
+
+LGD_NOT_YET_CONFIRMED = ('diamond_booked',)
 
 _LGD_STAGE_ACTOR = {
     'received': ('lgd_received_by', 'lgd_received_at'),
@@ -519,6 +522,9 @@ class PurchaseOrderLine(models.Model):
                 yield _("this line is zero; there is nothing to receive.")
             if not line.sale_line_id:
                 yield _("not linked to an order line. Ask Procurement to link it.")
+            elif line.sale_line_id.availability_status in LGD_NOT_YET_CONFIRMED:
+                yield _("its order line is not Confirmed yet. Confirm the "
+                        "stone's Availability on the sale order first.")
             if line.order_id.state == 'cancel':
                 yield _("its RFQ is cancelled.")
             missing = line._lgd_missing_checks('logistics')
@@ -829,6 +835,8 @@ class PurchaseOrderLine(models.Model):
 
     def _lgd_action_fail(self, reason, note=None):
         self._lgd_guard(('in_qc',))
+        for line in self:
+            line._lgd_post_qc_fail(reason, note)
 
         # Same split as the pass path: a failed memo return must NOT raise a
         # vendor return or cancel a PO, because the stone is ours and that
@@ -892,6 +900,27 @@ class PurchaseOrderLine(models.Model):
                 line.sale_line_id.order_id,
                 _('Replace stone: failed QC'), note_body, responsible)
         return True
+
+    def _lgd_post_qc_fail(self, reason, note):
+        """Put the QC verdict in the order's chatter.
+
+        The activity above is a to-do that disappears once marked done; the
+        reason and the QC note have to stay on the record."""
+        self.ensure_one()
+        order = self.sale_line_id.order_id
+        if not order:
+            return
+        body = Markup(
+            "<p><b>%s</b></p><ul><li>%s: %s</li><li>%s: %s</li>"
+            "<li>%s: %s</li></ul>") % (
+            _("Stone failed QC"),
+            _("Stone"), self._lgd_stone_description(),
+            _("Reason"), reason.name if reason else _("not given"),
+            _("Note"), note or _("none"),
+        )
+        order.sudo().message_post(
+            body=body, message_type='comment',
+            subtype_xmlid='mail.mt_note')
 
     def _lgd_set_members(self):
         """Every stone sharing this invoice number and set label."""

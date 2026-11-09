@@ -218,8 +218,8 @@
                                         <th style="width:9.90%;  text-align:center;">COLOR</th>
                                         <th style="width:10.00%; text-align:center;">CLARITY</th>
                                         <th style="width:15.30%; text-align:center;">HSN/SAC</th>
-                                        <th style="width:7.10%;  text-align:right;">QTY</th>
-                                        <th style="width:8.42%;  text-align:right;">CTS</th>
+                                        <th style="width:7.10%;  text-align:right;">PIECES</th>
+                                        <th style="width:8.42%;  text-align:right;">QTY (CT)</th>
                                         <th style="width:8.43%;  text-align:right;">PER. CT RATE</th>
                                         <th style="width:16.85%; text-align:right;">AMOUNT</th>
                                     </tr>
@@ -245,7 +245,7 @@
                                              though it mattered less than the rest. The
                                              "c" class is kept - it only centres. -->
                                         <td class="c"><span t-esc="hsn_by_kind.get(row['stone_type']) or row['product'].l10n_in_hsn_code or ''"/></td>
-                                        <td class="r"><span t-esc="'%.2f' % row['qty']"/></td>
+                                        <td class="r"><span t-esc="row['pieces']"/></td>
                                         <td class="r" style="font-weight:500;"><span t-esc="row['carats_text']"/></td>
                                         <td class="r"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(round(row['rate'] * fx, 2))"/></td>
                                         <td class="r" style="font-weight:500;"><span t-esc="sym"/><span t-esc="'{:,.2f}'.format(round(row['amount'] * fx, 2))"/></td>
@@ -306,42 +306,8 @@
                         <div class="aug-bottom">
                             <div class="rule"/>
 
-                            <!-- ══ DECLARATION ═════════════════════════════ -->
-                            <!-- Full width, not a narrow right-hand column:
-                                 six paragraphs of statutory text in a 47%
-                                 column would have run to twice the page
-                                 depth and pushed the signatory off the
-                                 sheet.
-                                 The old "Diamond Authenticity & Compliance"
-                                 blurb that sat under Bank Details is gone -
-                                 it said these words in summary, and it said
-                                 "Laboratory Grown Diamond" as a hard-coded
-                                 string, so it was flatly wrong on a natural
-                                 invoice. The old four-line Declaration is
-                                 gone with it; Mumbai Jurisdiction is the
-                                 only part of it that survives, and it is
-                                 the last paragraph below. -->
-                            <div class="lbl-sec" style="margin-top:26pt;">Declaration</div>
-                            <div class="rule" style="margin-top:6pt; width:56pt;"/>
-                            <div class="prose" style="margin-top:10pt; text-align:justify;">
-                                <div>The diamonds herein invoiced have been purchased from legitimate sources not involved in funding conflict, in compliance with the United Nations resolutions and corresponding national laws. The seller hereby guarantees that these diamonds are conflict free and confirms adherence to the WDC SoW guidelines.</div>
-                                <div style="margin-top:7pt;">To the best of our knowledge and/or written assurances from our suppliers, we state that diamonds herein invoiced have not been obtained in violation of applicable National Laws and/or sanctions by the U.S. Department of Treasury's Office of Foreign Assets Control (OFAC) and have not originated from the Marange Resources of Zimbabwe.</div>
-                                <!-- The origin statement, which is the ONLY
-                                     paragraph that differs between natural
-                                     and lab grown. A slip carrying both
-                                     kinds prints both sentences: neither one
-                                     alone would be true of the whole
-                                     invoice, and statutory wording is not
-                                     ours to merge. -->
-                                <div t-foreach="origin_declarations" t-as="sentence"
-                                     style="margin-top:7pt;" t-esc="sentence"/>
-                                <div style="margin-top:7pt;">The acceptance of goods herein invoiced will be as per WFDB guidelines.</div>
-                                <div style="margin-top:7pt;">No E-Way Bill is required to be generated as the goods covered under this invoice are exempted as per Sr. No. 4/5 to the Annexure to Rule 138(14) of the CGST Rules, 2017.</div>
-                                <div style="margin-top:7pt;">Subject to Mumbai Jurisdiction.</div>
-                            </div>
-
                             <!-- ══ BANK / SIGNATORY ════════════════════════ -->
-                            <table style="margin-top:22pt;">
+                            <table style="margin-top:26pt;">
                                 <tr>
                                     <td style="width:46.67%;">
                                         <div class="lbl-sec">Bank Details</div>
@@ -422,6 +388,26 @@
                                     </td>
                                 </tr>
                             </table>
+
+                            <!-- ══ DECLARATION ═════════════════════════════ -->
+                            <div class="lbl-sec" style="margin-top:22pt;">Declaration</div>
+                            <div class="rule" style="margin-top:6pt; width:56pt;"/>
+                            <div class="prose" style="margin-top:10pt; text-align:justify;">
+                                <div>The diamonds herein invoiced have been purchased from legitimate sources not involved in funding conflict, in compliance with the United Nations resolutions and corresponding national laws. The seller hereby guarantees that these diamonds are conflict free and confirms adherence to the WDC SoW guidelines.</div>
+                                <div style="margin-top:7pt;">To the best of our knowledge and/or written assurances from our suppliers, we state that diamonds herein invoiced have not been obtained in violation of applicable National Laws and/or sanctions by the U.S. Department of Treasury's Office of Foreign Assets Control (OFAC) and have not originated from the Marange Resources of Zimbabwe.</div>
+                                <!-- The origin statement, which is the ONLY
+                                     paragraph that differs between natural
+                                     and lab grown. A slip carrying both
+                                     kinds prints both sentences: neither one
+                                     alone would be true of the whole
+                                     invoice, and statutory wording is not
+                                     ours to merge. -->
+                                <div t-foreach="origin_declarations" t-as="sentence"
+                                     style="margin-top:7pt;" t-esc="sentence"/>
+                                <div style="margin-top:7pt;">The acceptance of goods herein invoiced will be as per WFDB guidelines.</div>
+                                <div style="margin-top:7pt;">No E-Way Bill is required to be generated as the goods covered under this invoice are exempted as per Sr. No. 4/5 to the Annexure to Rule 138(14) of the CGST Rules, 2017.</div>
+                                <div style="margin-top:7pt;">Subject to Mumbai Jurisdiction.</div>
+                            </div>
 
                         </div>
                     </div>

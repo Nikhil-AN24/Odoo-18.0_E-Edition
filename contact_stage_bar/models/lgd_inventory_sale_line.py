@@ -45,6 +45,13 @@ def lgd_carat_value(raw):
         return 0.0
 
 
+def lgd_carat_text(carats):
+    """Two decimals, a third only when it carries weight: 3.00, 1.25, but
+    0.006 for a melee stone that two decimals would round to 0.01."""
+    text = '{:,.3f}'.format(carats or 0.0)
+    return text[:-1] if text.endswith('0') else text
+
+
 def lgd_group_slip_rows(lines):
     if not lines:
         return []
@@ -75,6 +82,22 @@ def lgd_group_slip_rows(lines):
             row['stone_type'], row['product'].l10n_in_hsn_code or '',
             carat_text, round(rate, 4),
         )
+        sale_line = (line if line._name == 'sale.order.line'
+                     else line.sale_line_ids[:1])
+        if sale_line and sale_line._lgd_prints_non_certified():
+            row['certificate'] = _("Non-Certified")
+        if sale_line:
+
+            share = 1.0
+            if line._name != 'sale.order.line' and sale_line.product_uom_qty:
+                share = (line.quantity or 0.0) / sale_line.product_uom_qty
+            row['carats'] = sale_line.lgd_qty_carats * share
+            row['pieces'] = int(round(sale_line.lgd_pieces * share))
+            if abs(lgd_carat_value(carat_text) * row['qty']
+                   - row['carats']) > 0.0005:
+                row['carats_text'] = lgd_carat_text(row['carats'])
+        else:
+            row['pieces'] = int(round(row['qty']))
         first = seen.get(key) if key is not None else None
         if first is None:
             if key is not None:
@@ -82,12 +105,11 @@ def lgd_group_slip_rows(lines):
             rows.append(row)
             continue
         first['qty'] += row['qty']
+        first['pieces'] += row['pieces']
         first['carats'] += row['carats']
         first['amount'] += row['amount']
         first['count'] += 1
-        # Several stones share the row now, so one stone's own text no
-        # longer describes it.
-        first['carats_text'] = '{:,.2f}'.format(first['carats'])
+        first['carats_text'] = lgd_carat_text(first['carats'])
     return rows
 
 
