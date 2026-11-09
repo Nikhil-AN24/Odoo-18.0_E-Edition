@@ -75,6 +75,10 @@ def lgd_group_slip_rows(lines):
             row['stone_type'], row['product'].l10n_in_hsn_code or '',
             carat_text, round(rate, 4),
         )
+        sale_line = (line if line._name == 'sale.order.line'
+                     else line.sale_line_ids[:1])
+        if sale_line and sale_line._lgd_prints_non_certified():
+            row['certificate'] = _("Non-Certified")
         first = seen.get(key) if key is not None else None
         if first is None:
             if key is not None:

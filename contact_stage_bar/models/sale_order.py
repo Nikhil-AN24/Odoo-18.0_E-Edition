@@ -4234,7 +4234,26 @@ class SaleOrderLine(models.Model):
     # Added for the Order Lines CSV export (Procurement > Orders)
     # These already existed on product.template but were not yet related onto the order line, so they're added here.
     labs = fields.Char(string="Lab", related='product_template_id.labs', readonly=False)
-    measurements = fields.Char(string="Measurement", related='product_template_id.measurements', readonly=False)
+    lgd_certificate_display = fields.Char(
+        string="Certificate Number", compute='_compute_lgd_cert_display')
+    lgd_lab_display = fields.Char(
+        string="Lab", compute='_compute_lgd_cert_display')
+
+    def _lgd_prints_non_certified(self):
+        self.ensure_one()
+        return (self.line_type == 'melee'
+                or self.stone_certification_type == 'non_certified')
+
+    @api.depends('certificate', 'labs', 'line_type', 'stone_certification_type')
+    def _compute_lgd_cert_display(self):
+        for line in self:
+            if line._lgd_prints_non_certified():
+                line.lgd_certificate_display = _("Non-Certified")
+                line.lgd_lab_display = _("Non-Certified")
+            else:
+                line.lgd_certificate_display = line.certificate or False
+                line.lgd_lab_display = line.labs or False
+    measurements =fields.Char(string="Measurement", related='product_template_id.measurements', readonly=False)
     luster = fields.Char(string="Luster", related='product_template_id.luster', readonly=False)
     shade = fields.Char(string="Shade", related='product_template_id.shade', readonly=False)
     lgd_can_edit_product_specs = fields.Boolean(

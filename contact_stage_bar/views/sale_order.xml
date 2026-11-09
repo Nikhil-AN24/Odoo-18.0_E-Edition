@@ -359,7 +359,7 @@
                         max-width: 300px !important;
                     }
                     th[data-name="vendor_id"],
-                    th[data-name="certificate"],
+                    th[data-name="lgd_certificate_display"],
                     th[data-name="order_number"] {
                         width: 150px !important;
                         max-width: 300px !important;
@@ -447,7 +447,7 @@
                                 icon="fa-exchange" title="Replace Stone"
                                 invisible="line_type != 'lgd' or availability_status not in ('not_available', 'qc_fail')"
                                 groups="base.group_system,contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_procurement_manager,contact_stage_bar.group_lgd_superadmin"/>
-                        <field name="certificate" readonly="1"/>
+                        <field name="lgd_certificate_display" readonly="1"/>
                         <field name="lgd_ship_address_id" string="Deliver to"
                                optional="hide"
                                domain="[('id', 'child_of', parent.partner_id)]"/>
@@ -464,7 +464,7 @@
                         <!-- Which lab graded the stone (IGI, GIA, ...), or
                              Non-Cert. Reads from the product, so it follows
                              the stone rather than being typed per line. -->
-                        <field name="labs" string="Lab" optional="show" readonly="1"/>
+                        <field name="lgd_lab_display" optional="show" readonly="1"/>
                         <field name="stone_list_name" optional="show"/>
                         <field name="stone_certification_type" optional="hide"
                                readonly="not lgd_can_edit_stone_classification"/>
@@ -531,7 +531,7 @@
                         string="Reject" class="btn-link text-danger"
                         invisible="not replacement_pending_sales or availability_status in ('cancelled', 'replaced', 'not_available', 'qc_fail')"
                         groups="contact_stage_bar.group_lgd_sales,base.group_system"/>
-                <field name="certificate" readonly="1"/>
+                <field name="lgd_certificate_display" readonly="1"/>
                 <field name="lgd_ship_address_id" string="Deliver to"
                        optional="hide"
                        domain="[('id', 'child_of', parent.partner_id)]"/>
@@ -549,7 +549,7 @@
                 <field name="lgd_can_edit_stone_classification" column_invisible="True"/>
                 <field name="stone_type" optional="show"
                        readonly="not lgd_can_edit_stone_classification"/>
-                <field name="labs" string="Lab" optional="show" readonly="1"/>
+                <field name="lgd_lab_display" optional="show" readonly="1"/>
                 <field name="stone_list_name" optional="show"/>
                 <field name="stone_certification_type" optional="hide"
                        readonly="not lgd_can_edit_stone_classification"/>
