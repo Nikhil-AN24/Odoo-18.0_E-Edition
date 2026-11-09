@@ -564,6 +564,9 @@ class PartnerSyncController(http.Controller):
                         melee_carats_val = melee_qty_val or None
                     if melee_pieces_val is None and melee_unit_val == 'PIECE':
                         melee_pieces_val = melee_qty_val or None
+
+                    melee_vendor_ppc = (_melee_num('pricePerCaratOriginal')
+                                        or _melee_num('pricePerCarat') or 0.0)
                     melee_order_qty = float(order.get('quantity') or 1)
                     order_number    = order.get('orderUniqueId')
 
@@ -661,6 +664,7 @@ class PartnerSyncController(http.Controller):
                                 'name': summary_title,
                                 'order_number': str(order_number) if order_number else request_number,
                                 'vendor_id': melee_vendor.id if melee_vendor else False,
+                                'procurement_price_per_carat': melee_vendor_ppc,
                                 'tax_id': [(6, 0, self._website_line_taxes(sale_order, melee_product, company).ids)],
                                 # The platform just told us its own status for this
                                 # line, so that IS what it holds. Recording it stops
