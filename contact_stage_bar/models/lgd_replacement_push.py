@@ -236,20 +236,29 @@ class SaleOrder(models.Model):
         if not (cert.get('certNumber') or '').strip():
             cert.pop('lab', None)
 
+        carat = float(template.carat_value or 0.0)
+        per_carat = self._lgd_replacement_price_per_carat(new_line)
+        price = round(float(new_line.price_unit or 0.0), 2)
         return {
             'vendor': new_line.vendor_id.name or '',
             # Not in their published manualStone sample, but asked for: a
             # replacement sourced from an IGI report has a certificate, and
             # without it the stone lands on the website uncertified.
             **cert,
+
+            'stockNum': new_line.lgd_stock_number or '',
+            'lgdStockNum': new_line.lgd_stock_number or '',
             'shape': self._lgd_replacement_shape(new_line),
             'cut': template.cut or '',
             'color': template.color or '',
             'clarity': template.clarity or '',
-            'carat': float(template.carat_value or 0.0),
+            'carat': carat,
             'polish': template.polish or '',
             'symmetry': template.symmetry or '',
-            'pricePerCarat': self._lgd_replacement_price_per_carat(new_line),
+            'pricePerCarat': per_carat,
+            'pricePerCaratMargin': round(price / carat, 2) if carat else price,
+            'finalPrice': round(per_carat * carat, 2),
+            'finalPriceMargin': price,
             'length': length,
             'width': width,
             'height': height,
@@ -415,6 +424,10 @@ class SaleOrder(models.Model):
                              (new_line, 'Diamond Booked')):
             if line.order_number:
                 seen.add((self.id, str(line.order_number), status))
+                self.env.cr.execute(
+                    "UPDATE sale_order_line SET lgd_last_pushed_status = %s "
+                    "WHERE id = %s", (status, line.id))
+        (original | new_line).invalidate_recordset(['lgd_last_pushed_status'])
         _logger.info(
             "[REPLACEMENT PUSH] %s: the website has applied the swap itself, "
             "so '%s → Replaced' and '%s → Diamond Booked' will not be sent "
@@ -476,6 +489,7 @@ class SaleOrder(models.Model):
             "[REPLACEMENT PUSH] %s: replacement line %s is orderUniqueId %s "
             "on the website.",
             self.sdk_augmont_number or self.name, new_line.id, unique_id)
+        self._lgd_adopt_replacement_listing(new_line, new_order)
 
         # Their price for the new line, recorded but NOT applied. Odoo has
         # already decided what the customer pays - holding the original
@@ -492,6 +506,38 @@ class SaleOrder(models.Model):
                 self.sdk_augmont_number or self.name,
                 their_price, new_line.price_unit)
         return True
+
+    def _lgd_adopt_replacement_listing(self, new_line, new_order):
+        template = new_line.product_template_id.sudo()
+        sku = (new_order.get('lgdStockNum') or '').strip()
+        vendor_sku = (new_order.get('stockNum') or '').strip()
+        vals = {}
+        if sku and sku != template.lgd_stock_number:
+            holder = template.with_context(active_test=False).search(
+                [('lgd_stock_number', '=', sku), ('id', '!=', template.id)],
+                limit=1)
+            if holder:
+                _logger.error(
+                    "[REPLACEMENT PUSH] %s: the website listed the "
+                    "replacement as SKU %s, but product %s already holds it "
+                    "in Odoo. SKU not adopted.",
+                    self.sdk_augmont_number or self.name, sku, holder.id)
+            else:
+                vals['lgd_stock_number'] = sku
+        if vendor_sku and vendor_sku != template.stock_number:
+            vals['stock_number'] = vendor_sku
+        if new_order.get('productId') and not template.website_product_id:
+            vals['website_product_id'] = new_order['productId']
+        if not vals:
+            return
+        template.write(vals)
+        if 'lgd_stock_number' in vals and new_line.lgd_own_stock_number:
+            new_line.sudo().write({'lgd_own_stock_number': sku})
+        _logger.info(
+            "[REPLACEMENT PUSH] %s: replacement line %s now carries the "
+            "website's SKUs: %s.",
+            self.sdk_augmont_number or self.name, new_line.id,
+            ', '.join('%s=%s' % kv for kv in sorted(vals.items())))
 
     # ------------------------------------------------------------------
     # Failure
