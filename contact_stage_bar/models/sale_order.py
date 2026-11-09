@@ -2598,13 +2598,8 @@ class SaleOrder(models.Model):
                             "🔄 [RETRY CREATED] ID: %s | Line: %s",
                             retry_rec.id, item['order_number'])
 
-                    self.message_post(
-                        body=Markup(
-                            "<p style='color:red;'><b>Augmont API FAILED</b> "
-                            "for %s line(s)</p><p>Error: %s</p>") % (
-                            len(entries), response.text),
-                        subject="Augmont API Failure"
-                    )
+                    self._lgd_post_status_failure(
+                        entries, response.status_code, response.text)
         except Exception as e:
             _logger.error(
                 "💥 [API EXCEPTION] Order: %s | Error: %s",
@@ -2649,6 +2644,37 @@ class SaleOrder(models.Model):
                     len(pending), old_status or 'None', new_status, str(e)),
                 subject="Augmont API Connection Error"
             )
+
+    def _lgd_post_status_failure(self, entries, status_code, error):
+        """The website's refusal, in its own words, with the stones it was about."""
+        self.ensure_one()
+        headline, fields_hit, hint = self._lgd_explain_push_error(
+            error, status_code)
+        stones = Markup('').join(
+            Markup("<li>%s → %s</li>") % (
+                item['order_number'] or item['line'].display_name,
+                item['final_status'])
+            for item in entries)
+        body = Markup(
+            "<p style='color:#A8322B;'><b>%s</b></p><p>%s</p>"
+            "<p>%s</p><ul>%s</ul>") % (
+            _("The website refused this status update (HTTP %s)") % status_code,
+            headline or error or _("No message returned."),
+            _("Stones in the refused update:"), stones)
+        if fields_hit:
+            body += Markup("<p>%s</p><ul>%s</ul>") % (
+                _("Fields the website refused:"),
+                Markup('').join(Markup("<li>%s</li>") % f for f in fields_hit))
+        if self.env['augmont.api.retry']._is_permanent_failure(
+                error, str(status_code or '')):
+            tail = _("Nothing changed on the website for these stones, and "
+                     "this will not be retried: fix the cause and change the "
+                     "status again.")
+        else:
+            tail = _("Nothing changed on the website for these stones yet. "
+                     "The retry job will send it again.")
+        body += Markup("<p style='color:#76838F;font-size:90%%;'>%s</p>") % tail
+        self.message_post(body=body, subject=_("Website status update refused"))
 
     def action_retry_augmont_failed(self):
         for order in self:

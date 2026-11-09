@@ -97,7 +97,10 @@ class SaleOrder(models.Model):
 
     def _lgd_offline_address(self, partner):
         """One address block in the website's shape."""
-        first, last = self._lgd_offline_name_parts(partner)
+        person = (partner.parent_id
+                  if partner.parent_id and partner.type != 'contact'
+                  else partner)
+        first, last = self._lgd_offline_name_parts(person)
         fallback = partner.parent_id
         return {
             # Shown as "Company Name" on the website's Order Details page.
@@ -146,6 +149,8 @@ class SaleOrder(models.Model):
                              or fallback.mobile or fallback.phone or ''),
             'countryIsoCode': country,
             'companyName': (partner.commercial_company_name
+                            or partner.company_name or ''),
+            'tradingName': (partner.commercial_company_name
                             or partner.company_name or ''),
             'addressLine1': partner.street or '',
             'addressLine2': partner.street2 or '',
@@ -316,12 +321,15 @@ class SaleOrder(models.Model):
         }
 
     def _lgd_offline_added_note(self, line):
-
-        if line.customer_reference_note:
-            return line.customer_reference_note
-        if 'rfq_size_line_id' in line._fields and line.rfq_size_line_id:
-            return line.rfq_size_line_id.description or ''
-        return ''
+        note = line.customer_reference_note or ''
+        if not note and 'rfq_size_line_id' in line._fields and line.rfq_size_line_id:
+            note = line.rfq_size_line_id.description or ''
+        parts = [note, line.order_specific or '', line.popup_item_notes or '']
+        seen = []
+        for part in (p.strip() for p in parts):
+            if part and part not in seen:
+                seen.append(part)
+        return ' | '.join(seen)
 
     def _lgd_offline_qc_requirements(self, line):
         return line.popup_default_qc_requirements or ''
@@ -605,8 +613,15 @@ class SaleOrder(models.Model):
             'diamondVideo360': template.video_360 or '',
         }
 
+    @staticmethod
+    def _lgd_offline_seller_partner(vendor):
+        if vendor and vendor.parent_id and (
+                vendor.type != 'contact' or not vendor.email):
+            return vendor.commercial_partner_id
+        return vendor
+
     def _lgd_offline_seller_block(self, line):
-        vendor = line.vendor_id
+        vendor = self._lgd_offline_seller_partner(line.vendor_id)
         first, last = self._lgd_offline_name_parts(vendor) if vendor else ('', '')
         if not vendor:
             _logger.warning(
@@ -644,7 +659,9 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
         problems = []
-        for vendor in self._lgd_offline_lines().mapped('vendor_id'):
+        vendors = self._lgd_offline_lines().mapped('vendor_id')
+        for vendor in vendors.browse(
+                {self._lgd_offline_seller_partner(v).id for v in vendors}):
             email = (vendor.email or '').strip()
             if not email:
                 problems.append(_("%s has no email") % vendor.display_name)
@@ -886,8 +903,6 @@ class SaleOrder(models.Model):
                 'quantity': 1 if is_melee else int(line.product_uom_qty or 1),
                 'productPrice': float((totals or prices)['finalPrice']),
                 'invoiceAmount': float((totals or prices)['finalPriceMargin']),
-                'orderNote': line.order_specific or '',
-                'generalNotes': line.popup_item_notes or '',
                 'customerReference': self._lgd_offline_added_note(line),
                 'defaultQcRequirements': self._lgd_offline_qc_requirements(line),
                 'seller': self._lgd_offline_seller_block(line),
@@ -902,6 +917,9 @@ class SaleOrder(models.Model):
             # noise the spec asks us to stop making.
             if is_melee:
                 entry.update(self._lgd_offline_melee_block(line, totals=totals))
+            if line_type == 'NATURAL':
+                # "Not needed for natural stones" in the website's spec.
+                entry['product'].pop('lgdStockNum', None)
             orders.append(entry)
 
         payload = {
@@ -926,12 +944,12 @@ class SaleOrder(models.Model):
 
         rate = self._lgd_offline_inr_rate()
         if rate:
-            priced_at = self.date_order or fields.Datetime.now()
-            payload.update({
-                'conversionRate': float(rate),
-                'conversionRateCurrency': 'INR',
-                'conversionRateAt': priced_at.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
-            })
+            payload['conversionRate'] = float(rate)
+        else:
+            _logger.warning(
+                "Offline push %s: no USD->INR rate, so conversionRate is not "
+                "sent. The website requires it and may refuse the order.",
+                self.sdk_augmont_number or self.name)
         return payload
 
     # ------------------------------------------------------------------
