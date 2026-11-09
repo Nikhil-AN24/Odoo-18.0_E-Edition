@@ -1129,6 +1129,12 @@ class PurchaseOrderLine(models.Model):
         receipt_move = self.move_ids.filtered(
             lambda m: m.picking_code == 'incoming'
             and m.state not in ('done', 'cancel'))[:1]
+        if not receipt_move and self.product_id.type == 'service':
+
+            _logger.info(
+                "Accept %s: %s is not stock-tracked, so there is no receipt "
+                "to validate.", self.order_id.name, self._lgd_label())
+            return
         if not receipt_move:
             raise UserError(
                 _("No receipt found for %s. Has the PO been confirmed?")
