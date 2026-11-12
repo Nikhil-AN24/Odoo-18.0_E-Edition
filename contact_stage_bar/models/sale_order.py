@@ -3631,12 +3631,18 @@ class SaleOrderLine(models.Model):
 
     @api.model
     def _replacement_check_duplicate(self, certificate, exclude_line=None):
-        """Refuse a certificate already on another open order line
-        (any status except cancelled / not_available), across all orders."""
         if not certificate:
             return
+        bare = certificate.strip()
+        if bare[:2].upper() == 'LG':
+            bare = bare[2:].strip()
+        if not bare:
+            return
+        pattern = bare.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
         domain = [
-            ('certificate', '=', certificate),
+            '|',
+            ('certificate', '=ilike', pattern),
+            ('certificate', '=ilike', 'LG' + pattern),
             ('availability_status', 'not in', ('cancelled', 'not_available', 'replaced')),
         ]
         if exclude_line:
@@ -4256,7 +4262,7 @@ class SaleOrderLine(models.Model):
                 line.lgd_lab_display = line.labs or False
 
     lgd_qty_carats = fields.Float(
-        string="Quantity (ct)", digits=(16, 3),
+        string="Size", digits=(16, 3),
         compute='_compute_lgd_qty_pieces')
     lgd_pieces = fields.Integer(
         string="Pieces", compute='_compute_lgd_qty_pieces')

@@ -25,9 +25,6 @@
             <xpath expr="//field[@name='street'][1]" position="attributes">
                 <attribute name="required">1</attribute>
             </xpath>
-            <xpath expr="//field[@name='street2'][1]" position="attributes">
-                <attribute name="required">1</attribute>
-            </xpath>
             <xpath expr="//field[@name='city'][1]" position="attributes">
                 <attribute name="required">1</attribute>
             </xpath>

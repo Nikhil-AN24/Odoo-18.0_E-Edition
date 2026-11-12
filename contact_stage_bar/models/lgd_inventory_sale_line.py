@@ -429,7 +429,8 @@ class SaleOrderLine(models.Model):
     # ── Handed to Dispatch ─────────────────────────────────────────
     def action_lgd_hand_to_dispatch(self):
         self._lgd_check_group(GROUP_INVENTORY)
-        return self._lgd_action_hand_to_dispatch()
+        return self.with_context(
+            lgd_proc_action=True)._lgd_action_hand_to_dispatch()
 
     def _lgd_action_hand_to_dispatch(self):
         def problems(line):

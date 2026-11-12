@@ -16,7 +16,7 @@ prevents the download.
 
 import logging
 
-from odoo import _
+from odoo import _, http
 from odoo.exceptions import AccessError
 from odoo.http import request
 from odoo.addons.web.controllers.export import CSVExport, ExcelExport
@@ -38,6 +38,7 @@ def _assert_export_allowed(endpoint):
 
 class LgdCSVExport(CSVExport):
 
+    @http.route()
     def web_export_csv(self, data):
         _assert_export_allowed('/web/export/csv')
         return super().web_export_csv(data)
@@ -45,6 +46,7 @@ class LgdCSVExport(CSVExport):
 
 class LgdExcelExport(ExcelExport):
 
+    @http.route()
     def web_export_xlsx(self, data):
         _assert_export_allowed('/web/export/xlsx')
         return super().web_export_xlsx(data)

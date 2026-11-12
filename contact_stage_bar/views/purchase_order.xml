@@ -16,6 +16,7 @@
                 <field name="bank_rate" string="Bank Rate"
                        invisible="currency_name != 'USD'"
                        readonly="state not in ('draft', 'sent')"/>
+                <field name="lgd_bill_name"/>
                 <field name="location" readonly="state != 'draft'"/>
             </xpath>
 
