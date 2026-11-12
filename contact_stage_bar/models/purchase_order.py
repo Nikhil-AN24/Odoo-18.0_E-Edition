@@ -318,6 +318,7 @@ class PurchaseOrder(models.Model):
     currency_name = fields.Char(related='currency_id.name')
     bank_rate = fields.Float(string="Bank Rate", digits=(16, 2), tracking=True,
                              groups='contact_stage_bar.group_lgd_procurement,contact_stage_bar.group_lgd_accounting,base.group_system')
+    lgd_bill_name = fields.Char(string="Bill Name", tracking=True)
 
     # Header mirror of the line-level flag. The Products grid (order_line) stays
     # editable ONLY for the privileged roles (Admin / LGD Procurement Manager /

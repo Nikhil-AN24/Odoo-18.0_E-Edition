@@ -488,7 +488,6 @@ class ResPartner(models.Model):
     _LGD_ACCOUNT_REQUIRED_FIELDS = (
         ('name',                "Name"),
         ('street',              "Street"),
-        ('street2',             "Street2"),
         ('city',                "City"),
         ('zip',                 "Zip"),
         ('state_id',            "State"),
