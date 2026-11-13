@@ -304,6 +304,10 @@
                         </div>
 
                         <div class="aug-bottom">
+                          <!-- Bank Details, Diamond Authenticity and the
+                               signatory stay together and follow the totals
+                               on the same page; only the Declaration below may flow on to the next page. -->
+                          <div class="aug-keep">
                             <div class="rule"/>
 
                             <!-- ══ BANK / SIGNATORY ════════════════════════ -->
@@ -388,6 +392,8 @@
                                     </td>
                                 </tr>
                             </table>
+
+                          </div>
 
                             <!-- ══ DECLARATION ═════════════════════════════ -->
                             <div class="lbl-sec" style="margin-top:22pt;">Declaration</div>

@@ -79,12 +79,6 @@
                                  Colour alone separates label from value -
                                  no bold, no letter-spacing - so the buyer
                                  line stays the only emphasis on the box. -->
-                            <t t-if="doc.ship_label">
-                                <div style="color:#CD942B;font-size:9pt;line-height:1.5;
-                                            margin-top:3mm;">DESTINATION:</div>
-                                <div style="font-size:9pt;line-height:1.5;"
-                                     t-esc="doc.ship_label"/>
-                            </t>
                             <!-- Both numbers, because they are different
                                  people: ship_phone is whatever the delivery
                                  ADDRESS carries, and a child delivery address
@@ -106,17 +100,10 @@
                             </t>
                         </div>
 
-                        <!-- ══ Pcs / Parcel ═══════════════════════════ -->
+                        <!-- ══ Parcel ═════════════════════════════════ -->
                         <table style="width:100%;border-collapse:separate;
                                       border-spacing:2mm 0;margin:2mm -2mm 0 -2mm;">
                             <tr>
-                                <td style="width:38%;background-color:#F4F6FB;
-                                           padding:3mm;vertical-align:top;">
-                                    <div style="color:#CD942B;font-size:6pt;font-weight:bold;
-                                                letter-spacing:1.1pt;">PCS</div>
-                                    <div style="color:#1B2A4A;font-size:11pt;font-weight:bold;
-                                                margin-top:1mm;" t-esc="doc.stone_count"/>
-                                </td>
                                 <td style="background-color:#F4F6FB;padding:3mm;
                                            vertical-align:top;">
                                     <div style="color:#CD942B;font-size:6pt;font-weight:bold;
@@ -150,7 +137,7 @@
                         <!-- ══ Footer ═════════════════════════════════ -->
                         <div style="margin-top:4mm;text-align:right;
                                     color:#5F5E5E;font-size:7pt;">
-                            <span t-esc="doc.name"/> &#8226; <span t-esc="doc.stone_count"/> PCS
+                            <span t-esc="doc.name"/>
                         </div>
                     </div>
                 </t>

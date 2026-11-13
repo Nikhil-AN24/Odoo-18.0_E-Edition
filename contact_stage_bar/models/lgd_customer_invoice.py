@@ -2,6 +2,8 @@
 import logging
 import re
 
+from urllib.parse import urlencode
+
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, UserError
 from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, lgd_group_slip_rows
@@ -185,6 +187,35 @@ class ResCompany(models.Model):
     def lgd_bank_account(self):
         self.ensure_one()
         return self.partner_id.bank_ids[:1]
+
+    # The login page is shown before anyone logs in, so Odoo would take the
+    # logo of its internal system user's company - an old test company with
+    # no logo. Instead the login page shows the logo of the company last
+    # active in this browser (Odoo keeps it in the "cids" cookie, set by the company switcher).
+    _LGD_LOGIN_LOGO_COMPANY = 'ANIRATH OVERSEAS LIMITED'
+    _LGD_LOGIN_LOGO_EXCLUDED = 'AUGMONT ENTERPRISES%'  # old test company
+
+    @api.model
+    def lgd_login_logo_url(self, cids=None):
+        """URL of the login-page logo, or None to keep Odoo's default.
+
+        `cids` is the raw "cids" cookie, e.g. "4" or "4-8": the first id is
+        the company the browser last worked in."""
+        Company = self.sudo()
+        company = Company.browse()
+        first = (cids or '').replace(',', '-').split('-')[0].strip()
+        if first.isdigit():
+            company = Company.browse(int(first)).exists()
+            if company and (not company.logo_web or company.name.upper()
+                            .startswith(self._LGD_LOGIN_LOGO_EXCLUDED[:-1])):
+                company = Company.browse()
+        if not company:
+            company = Company.search(
+                [('name', '=ilike', self._LGD_LOGIN_LOGO_COMPANY)], limit=1)
+        if not company.logo_web:
+            return None
+        return '/web/binary/company_logo?%s' % urlencode({
+            'dbname': self.env.cr.dbname, 'company': company.id})
 
 class ResCurrency(models.Model):
     _inherit = 'res.currency'

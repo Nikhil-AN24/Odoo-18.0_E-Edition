@@ -117,14 +117,35 @@ class LgdSalespersonMixin(models.AbstractModel):
         return {'name': user.name or '', 'email': user.email or user.login or ''}
 
 
+def _lgd_clear_salesperson_error_on_manual_set(records, vals):
+    """A salesperson picked in Odoo answers the sync error, so drop it.
+    Website-driven writes (lgd_from_website) are skipped: that path
+    records its own result right after."""
+    if vals.get('user_id') and not records.env.context.get('lgd_from_website'):
+        stale = records.filtered('lgd_salesperson_error')
+        if stale:
+            stale.sudo().with_context(lgd_from_website=True).write(
+                {'lgd_salesperson_error': False})
+
+
 class ResPartner(models.Model):
     _name = 'res.partner'
     _inherit = ['res.partner', 'lgd.salesperson.mixin']
+
+    def write(self, vals):
+        res = super().write(vals)
+        _lgd_clear_salesperson_error_on_manual_set(self, vals)
+        return res
 
 
 class SaleOrder(models.Model):
     _name = 'sale.order'
     _inherit = ['sale.order', 'lgd.salesperson.mixin']
+
+    def write(self, vals):
+        res = super().write(vals)
+        _lgd_clear_salesperson_error_on_manual_set(self, vals)
+        return res
 
     def _lgd_offline_payload(self):
         payload = super()._lgd_offline_payload()
