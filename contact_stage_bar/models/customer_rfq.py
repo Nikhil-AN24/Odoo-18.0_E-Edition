@@ -246,12 +246,17 @@ class CustomerRfq(models.Model):
         company's own currency happens to be.
         """
         usd = self.env.ref('base.USD', raise_if_not_found=False)
+        inr = self.env.ref('base.INR', raise_if_not_found=False)
         for rec in self:
-            rec.lgd_show_usd_rate = bool(usd and rec.currency_id == usd)
+            # A rupee quote shows it too: it is the input its Current ₹ Rate
+            # is calculated from, and the rate the website converts with.
+            rec.lgd_show_usd_rate = bool(
+                rec.currency_id and rec.currency_id in (usd | inr))
 
     @api.depends('currency_id')
     def _compute_lgd_usd_rate(self):
         usd = self.env.ref('base.USD', raise_if_not_found=False)
+        inr = self.env.ref('base.INR', raise_if_not_found=False)
         company = self.env.company
         target = company.currency_id
         today = fields.Date.context_today(self)
@@ -260,8 +265,12 @@ class CustomerRfq(models.Model):
             # zero on a visible field is what action_create_offline_order
             # refuses, so the two conditions being out of step would block the
             # button on a quote that never needed a rate at all.
-            if not (usd and rec.currency_id == usd):
+            if not (usd and rec.currency_id
+                    and rec.currency_id in (usd | inr)):
                 rec.lgd_usd_rate = 0.0
+                continue
+
+            if rec.lgd_usd_rate:
                 continue
 
             if not target or target == usd:
@@ -279,6 +288,30 @@ class CustomerRfq(models.Model):
             ])
             rec.lgd_usd_rate = usd.sudo()._convert(
                 1.0, target, company, today, round=False) if has_rate else 0.0
+
+    # ── Current ₹ Rate ────────────────────────────────────────────────────────
+    lgd_inr_rate = fields.Float(
+        string="Current ₹ Rate", digits=(16, 10),
+        compute='_compute_lgd_inr_rate', store=True, readonly=True,
+        help="Value of ₹1 in US dollars: 1 ÷ Current $ Rate. Calculated "
+             "automatically when the Currency is ₹, and carried onto the "
+             "Offline Order.")
+    lgd_show_inr_rate = fields.Boolean(compute='_compute_lgd_show_inr_rate')
+
+    @api.depends('currency_id')
+    def _compute_lgd_show_inr_rate(self):
+        inr = self.env.ref('base.INR', raise_if_not_found=False)
+        for rec in self:
+            rec.lgd_show_inr_rate = bool(inr and rec.currency_id == inr)
+
+    @api.depends('currency_id', 'lgd_usd_rate')
+    def _compute_lgd_inr_rate(self):
+        inr = self.env.ref('base.INR', raise_if_not_found=False)
+        for rec in self:
+            rec.lgd_inr_rate = (
+                1.0 / rec.lgd_usd_rate
+                if inr and rec.currency_id == inr and rec.lgd_usd_rate
+                else 0.0)
 
     lgd_payment_terms = fields.Selection(
         LGD_PAYMENT_TERMS, string="Payment Terms",
@@ -1321,6 +1354,18 @@ class CustomerRfq(models.Model):
                 "priced."
             ))
 
+        if self.lgd_show_inr_rate and not self.lgd_inr_rate:
+            raise UserError(_(
+                "Current ₹ Rate is empty, so this RFQ cannot be turned into "
+                "an Offline Order.\n\n"
+                "The Currency is ₹, and a rupee order must carry its Current "
+                "₹ Rate. It is calculated automatically from Current $ Rate: "
+                "enter the USD rate agreed with the customer in Current $ "
+                "Rate, save, and create the Offline Order again.\n\n"
+                "Both rates are locked once the Offline Order exists, so they "
+                "are worth getting right now."
+            ))
+
         if self.lgd_show_usd_rate and not self.lgd_usd_rate:
             raise UserError(_(
                 "Current $ Rate is 0.0000, so this RFQ cannot be turned into "
@@ -1390,6 +1435,13 @@ class CustomerRfq(models.Model):
     def _apply_rfq_usd_rate(self, order):
         self.ensure_one()
         sale_order = order.sale_order_id
+        if sale_order and self.lgd_show_inr_rate:
+            if self.lgd_inr_rate:
+                sale_order.sudo().write({'lgd_inr_rate': self.lgd_inr_rate})
+                _logger.info(
+                    "[RFQ RATE] %s: Current ₹ Rate %.8f carried onto %s.",
+                    self.name, self.lgd_inr_rate, sale_order.name)
+            return bool(self.lgd_inr_rate)
         if not sale_order:
             _logger.warning(
                 "[RFQ RATE] %s: the offline order has no Sale Order yet, so "

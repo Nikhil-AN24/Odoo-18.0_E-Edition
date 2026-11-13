@@ -108,9 +108,10 @@
         </record>
 
         <record id="lgd_customer_rfq_all_rule" model="ir.rule">
-            <field name="name">Customer RFQ: managers and admins see all</field>
+            <field name="name">Customer RFQ: managers see their team, admins see all</field>
             <field name="model_id" ref="model_customer_rfq"/>
-            <field name="domain_force">[(1, '=', 1)]</field>
+            <!-- Team scope: see security/lgd_sales_team_rules.xml. -->
+            <field name="domain_force">['|', '|', ('owner_id', '=', False), ('owner_id', '=', user.id), ('owner_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [(1, '=', 1)]</field>
             <field name="groups" eval="[(6, 0, [
                 ref('contact_stage_bar.group_lgd_sales_manager'),
                 ref('contact_stage_bar.group_lgd_superadmin'),

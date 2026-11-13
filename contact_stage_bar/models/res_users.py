@@ -33,10 +33,65 @@ class ResGroups(models.Model):
         return super().get_application_groups(domain)
 
 
+# Odoo's own "see all" sales rules, narrowed for team-scoped LGD Sales
+# Managers (see lgd_sales_team_scoped). Written by
+# _lgd_apply_sales_team_rules on every module update: these rules are
+# noupdate in their own modules, so an XML <record> override is skipped.
+LGD_SALES_TEAM_RULE_DOMAINS = {
+    'sale.sale_order_see_all':
+        "['|', '|', ('user_id', '=', False), ('user_id', '=', user.id), ('user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else ['|', ('user_id', '=', False), ('user_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]",
+    'sale.sale_order_line_see_all':
+        "['|', '|', ('salesman_id', '=', False), ('salesman_id', '=', user.id), ('salesman_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else ['|', ('salesman_id', '=', False), ('salesman_id.login', 'not in', ['ankit.mehta@augmont.com', 'aarav.bafna@augmont.com'])]",
+    'sale.sale_order_report_see_all':
+        "['|', '|', ('user_id', '=', False), ('user_id', '=', user.id), ('user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [(1, '=', 1)]",
+    'sale.account_invoice_rule_see_all':
+        "[('move_type', 'in', ('out_invoice', 'out_refund'))] + (['|', '|', ('invoice_user_id', '=', False), ('invoice_user_id', '=', user.id), ('invoice_user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [])",
+    'sale.account_invoice_line_rule_see_all':
+        "[('move_id.move_type', 'in', ('out_invoice', 'out_refund'))] + (['|', '|', ('move_id.invoice_user_id', '=', False), ('move_id.invoice_user_id', '=', user.id), ('move_id.invoice_user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [])",
+    'sale.account_invoice_report_rule_see_all':
+        "['|', '|', ('invoice_user_id', '=', False), ('invoice_user_id', '=', user.id), ('invoice_user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [(1, '=', 1)]",
+    'crm.crm_rule_all_lead':
+        "['|', '|', ('user_id', '=', False), ('user_id', '=', user.id), ('user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [(1, '=', 1)]",
+    'crm.crm_activity_report_rule_all_activities':
+        "['|', '|', ('user_id', '=', False), ('user_id', '=', user.id), ('user_id.crm_team_member_ids.crm_team_id.user_id', '=', user.id)] if user.lgd_sales_team_scoped else [(1, '=', 1)]",
+}
+
+
 class ResUsers(models.Model):
     _inherit = "res.users"
 
     location = fields.Selection([('mumbai', 'India'), ('surat', 'USA')], string='Location')
+
+    # True for an LGD Sales Manager who sees only their Sales Team(s): the
+    # record rules in security/lgd_sales_team_rules.xml read it. Regional
+    # Sales Heads, SuperAdmins and administrators see everything, so they
+    # are never scoped.
+    lgd_sales_team_scoped = fields.Boolean(
+        compute='_compute_lgd_sales_team_scoped')
+
+    _LGD_SALES_SEE_ALL_GROUPS = (
+        'contact_stage_bar.group_lgd_regional_sales_head',
+        'contact_stage_bar.group_lgd_superadmin',
+        'base.group_system',
+        'base.group_erp_manager',
+    )
+
+    @api.model
+    def _lgd_apply_sales_team_rules(self):
+        Rule = self.env['ir.rule'].sudo()
+        for xmlid, domain in LGD_SALES_TEAM_RULE_DOMAINS.items():
+            rule = self.env.ref(xmlid, raise_if_not_found=False)
+            if rule and rule.domain_force != domain:
+                Rule.browse(rule.id).write({'domain_force': domain})
+                _logger.info("Sales team scope applied to rule %s.", xmlid)
+
+    @api.depends('groups_id')
+    def _compute_lgd_sales_team_scoped(self):
+        for user in self:
+            user.lgd_sales_team_scoped = (
+                user.has_group('contact_stage_bar.group_lgd_sales_manager')
+                and not any(user.has_group(g)
+                            for g in self._LGD_SALES_SEE_ALL_GROUPS))
 
     # Drives the visibility of the stone-access checkboxes on the user form;
     # recomputed live while LGD roles are ticked, before saving.

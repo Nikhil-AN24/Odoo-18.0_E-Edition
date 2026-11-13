@@ -1206,6 +1206,8 @@ class SaleOrder(models.Model):
              "the chatter. Zero means no rate is configured for this "
              "company yet: type the rate in.")
     lgd_show_usd_rate = fields.Boolean(compute='_compute_lgd_show_usd_rate')
+    lgd_inr_rate = fields.Float(
+        string="Current ₹ Rate", digits=(16, 10), readonly=True, copy=False)
 
     @api.depends('company_id', 'currency_id')
     def _compute_lgd_show_usd_rate(self):

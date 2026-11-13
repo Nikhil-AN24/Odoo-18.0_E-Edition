@@ -672,7 +672,9 @@ class ResPartner(models.Model):
         # Capture which records are already in a gated stage BEFORE the write,
         # so an edit to an existing Registered account is not mistaken for a move into one.
         gate_candidates = self.browse()
-        if 'stage_id' in vals:
+        # A move made because an order was placed skips the gate (lgd_buyer_converted.py).
+        if 'stage_id' in vals \
+                and not self.env.context.get('lgd_order_conversion'):
             gated = self._lgd_gated_stage_ids()
             if gated and vals['stage_id'] in gated:
                 gate_candidates = self.filtered(
