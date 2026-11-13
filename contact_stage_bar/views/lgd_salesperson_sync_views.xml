@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Salesperson sync with the LGD website (lgd_salesperson_sync.py):
+         the reason a salesperson could not be taken or sent, and a filter
+         to find every record that needs one. -->
+    <record id="view_partner_form_lgd_salesperson_error" model="ir.ui.view">
+        <field name="name">res.partner.form.lgd.salesperson.error</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="contact_stage_bar.view_partner_form_inherit_stage"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='lgd_website_sync_state']" position="before">
+                <field name="lgd_salesperson_error" invisible="not lgd_salesperson_error"
+                       decoration-danger="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_partner_filter_lgd_salesperson" model="ir.ui.view">
+        <field name="name">res.partner.search.lgd.salesperson</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[1]" position="before">
+                <filter name="lgd_salesperson_missing" string="Salesperson missing"
+                        domain="['|', ('lgd_salesperson_error', '!=', False), '&amp;', ('partner_kind', '=', 'buyer'), ('user_id', '=', False)]"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_form_lgd_salesperson_error" model="ir.ui.view">
+        <field name="name">sale.order.form.lgd.salesperson.error</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='sales_person']/field[@name='user_id']" position="after">
+                <field name="lgd_salesperson_error" invisible="not lgd_salesperson_error"
+                       decoration-danger="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_sales_order_filter_lgd_salesperson" model="ir.ui.view">
+        <field name="name">sale.order.search.lgd.salesperson</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[1]" position="before">
+                <filter name="lgd_salesperson_missing" string="Salesperson missing"
+                        domain="['|', ('lgd_salesperson_error', '!=', False), ('user_id', '=', False)]"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

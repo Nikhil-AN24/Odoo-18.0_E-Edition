@@ -1,0 +1,13 @@
+<odoo>
+    <data>
+        <record id="ir_cron_lgd_push_buyers" model="ir.cron">
+            <field name="name">LGD: retry buyers not yet sent to the website</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_lgd_push_buyers()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="active">True</field>
+        </record>
+    </data>
+</odoo>

@@ -65,7 +65,10 @@ class StockMove(models.Model):
                 'contact_stage_bar.view_product_popup_info_only').id, 'form')],
             'target': 'new',
             'context': dict(self.env.context,
-                            lgd_row_stock_number=self.lgd_stock_number or ''),
+                            lgd_row_stock_number=self.lgd_stock_number or '',
+                            **(self.sale_line_id
+                               or self.purchase_line_id.sale_line_id)
+                            ._lgd_info_popup_context()),
         }
 
     # ---------------------------------------------------------

@@ -75,6 +75,19 @@ ALLOWED_AUGMONT_STATUS_TRANSITIONS = {
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+
+    # Which carat columns the Order Lines list shows: "Quantity (ct)" when
+    # the order has single stones, "Size" when it has melee parcels.
+    lgd_has_single_lines = fields.Boolean(compute='_compute_lgd_line_kinds')
+    lgd_has_melee_lines = fields.Boolean(compute='_compute_lgd_line_kinds')
+
+    @api.depends('order_line.line_type', 'order_line.display_type')
+    def _compute_lgd_line_kinds(self):
+        for order in self:
+            kinds = set(order.order_line.filtered(
+                lambda l: not l.display_type).mapped('line_type'))
+            order.lgd_has_melee_lines = 'melee' in kinds
+            order.lgd_has_single_lines = bool(kinds - {'melee'})
     email = fields.Char(related='partner_id.email', string="Email")
 
     # Count of certified lines currently Not available drives the Replace Stone banner.
@@ -4261,7 +4274,24 @@ class SaleOrderLine(models.Model):
                 line.lgd_certificate_display = line.certificate or False
                 line.lgd_lab_display = line.labs or False
 
+    # One carat figure, shown under two headings: "Quantity (ct)" for a
+    # single stone, "Size" for a melee parcel. A list column has one header
+    # for every row, so each heading is its own column, filled only on its
+    # own kind of line (see views/sale_order.xml).
+    def _lgd_info_popup_context(self):
+        """Context keys for the General Information popup opened for this
+        stone: its own carats and pieces, for a non-certified or melee line
+        whose template is shared and so cannot hold them."""
+        line = self[:1]
+        if not line or not line._lgd_prints_non_certified():
+            return {}
+        return {'lgd_row_carats': line.lgd_qty_carats,
+                'lgd_row_pieces': line.lgd_pieces}
+
     lgd_qty_carats = fields.Float(
+        string="Quantity (ct)", digits=(16, 3),
+        compute='_compute_lgd_qty_pieces')
+    lgd_melee_size = fields.Float(
         string="Size", digits=(16, 3),
         compute='_compute_lgd_qty_pieces')
     lgd_pieces = fields.Integer(
@@ -4276,6 +4306,7 @@ class SaleOrderLine(models.Model):
         for line in self:
             if line.display_type:
                 line.lgd_qty_carats = 0.0
+                line.lgd_melee_size = 0.0
                 line.lgd_pieces = 0
                 continue
             if line.melee_parcel_qty_carats or line.melee_parcel_quantity:
@@ -4294,6 +4325,7 @@ class SaleOrderLine(models.Model):
                     pieces = line.order_id._lgd_offline_line_pieces(line, carats)
                 pieces = pieces or int(round(qty))
             line.lgd_qty_carats = carats
+            line.lgd_melee_size = carats if line.line_type == 'melee' else 0.0
             line.lgd_pieces = pieces
     measurements =fields.Char(string="Measurement", related='product_template_id.measurements', readonly=False)
     luster = fields.Char(string="Luster", related='product_template_id.luster', readonly=False)

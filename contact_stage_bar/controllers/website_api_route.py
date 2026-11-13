@@ -12,6 +12,7 @@ from odoo import models, fields, api, _
 from odoo.tools import float_compare
 from ..models.lgd_ship_address import GROUP_SALES
 from ..models.lgd_inventory_sale_line import LINE_STATUS_TO_AUGMONT
+from ..models.lgd_salesperson_sync import lgd_salesperson_info
 
 _logger = logging.getLogger(__name__)
 
@@ -410,6 +411,10 @@ class PartnerSyncController(http.Controller):
             if not partner:
                 return {'status': 'error',
                         'message': "Could not create the buyer for this order."}
+            # The buyer's own salesperson, when the website sends one.
+            buyer_salesperson = lgd_salesperson_info(buyer)
+            if buyer_salesperson:
+                partner._lgd_apply_website_salesperson(buyer_salesperson)
 
             website_rate = self._website_conversion_rate(data, company)
 
@@ -1041,6 +1046,13 @@ class PartnerSyncController(http.Controller):
                         order_number, lgd_avail_status or '(blank)',
                     )
 
+            # The order's salesperson: sent on the order (top level or the
+            # first order), else the buyer's. Never refuses the order; a gap is recorded on it and returned below.
+            order_salesperson = (lgd_salesperson_info(data)
+                                 or lgd_salesperson_info(orders[0]))
+            salesperson_error = sale_order._lgd_apply_website_salesperson(
+                order_salesperson, fallback=partner.user_id)
+
             _logger.info("=" * 80)
             _logger.info(f"✅ CART_ADD SUCCESS")
             _logger.info(f"   Invoice: {sale_order.name} ({order_invoice_number})")
@@ -1069,6 +1081,9 @@ class PartnerSyncController(http.Controller):
                     'currency': sale_order.currency_id.name or '',
                     'conversion_rate': stored_rate,
                     'conversion_rate_source': rate_source,
+                    'salesperson': sale_order._lgd_salesperson_block(
+                        sale_order.user_id),
+                    'salesperson_error': salesperson_error,
                 }
             }
 
