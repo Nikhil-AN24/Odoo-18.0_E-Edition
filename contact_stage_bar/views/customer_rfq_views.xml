@@ -613,8 +613,10 @@ action = action_vals
         </field>
     </record>
 
+    <!-- SuperAdmin added for Sales Teams only; Shapes and Cancellation
+         Reasons below keep their own admin-only groups. -->
     <menuitem id="menu_customer_rfq_config" name="Configuration" parent="menu_sales_3"
-              sequence="90" groups="base.group_system"/>
+              sequence="90" groups="base.group_system,contact_stage_bar.group_lgd_superadmin"/>
     <menuitem id="menu_customer_rfq_shape" name="Shapes" parent="menu_customer_rfq_config"
               action="action_customer_rfq_shape" sequence="10"
               groups="base.group_system"/>
@@ -625,6 +627,6 @@ action = action_vals
     <menuitem id="menu_lgd_sales_teams" name="Sales Teams"
               parent="menu_customer_rfq_config"
               action="sales_team.crm_team_action_config" sequence="5"
-              groups="base.group_system"/>
+              groups="base.group_system,contact_stage_bar.group_lgd_superadmin"/>
 
 </odoo>
