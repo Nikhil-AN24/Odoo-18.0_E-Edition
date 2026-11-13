@@ -621,5 +621,10 @@ action = action_vals
     <menuitem id="menu_customer_rfq_cancel_reason" name="Cancellation Reasons"
               parent="menu_customer_rfq_config" action="action_customer_rfq_cancel_reason"
               sequence="20" groups="base.group_system"/>
+    <!-- The team hierarchy: Team Leader = Sales Manager, Members = their salespeople. Drives what a manager sees (lgd_sales_team_rules.xml). -->
+    <menuitem id="menu_lgd_sales_teams" name="Sales Teams"
+              parent="menu_customer_rfq_config"
+              action="sales_team.crm_team_action_config" sequence="5"
+              groups="base.group_system"/>
 
 </odoo>

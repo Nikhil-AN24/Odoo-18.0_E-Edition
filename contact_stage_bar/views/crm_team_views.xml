@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sales Teams are used here only as the manager -> salespeople
+         hierarchy (lgd_sales_team_rules.xml). The CRM options that came
+         with the form - Pipeline / Leads, the email alias and the monthly
+         invoicing target - are not used, so they are hidden. Priority 99 so
+         this applies after the crm and sale extensions that add them. -->
+    <record id="lgd_crm_team_view_form" model="ir.ui.view">
+        <field name="name">crm.team.form.lgd.hierarchy</field>
+        <field name="model">crm.team</field>
+        <field name="inherit_id" ref="sales_team.crm_team_view_form"/>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='options_active']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//label[@for='alias_name']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//div[@name='alias_def']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='alias_contact']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//label[@for='invoiced_target']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//div[@id='invoiced_target']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

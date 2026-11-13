@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sales Team hierarchy.
+
+         Odoo's sales access has two levels: a salesperson sees their own
+         records, a manager sees all of them. An LGD Sales Manager now sees
+         only their team: records whose salesperson is themselves, a member
+         of a Sales Team they lead (Sales > Configuration > Sales Teams), or
+         nobody. A salesperson in two teams is visible to both leaders.
+         Regional Sales Heads, SuperAdmins and administrators see everything
+         (res.users.lgd_sales_team_scoped).
+
+         Odoo's own "see all" rules for sale orders, order lines, invoices,
+         leads and their reports are narrowed by
+         res.users._lgd_apply_sales_team_rules (domains in
+         models/res_users.py). Those rules are noupdate in sale and crm, so
+         they are written directly rather than with <record> overrides.
+         Buyers and Customer RFQs are scoped in res_groups.xml and
+         sale_visibility_rules.xml. Loaded after sale_visibility_rules.xml. -->
+    <data noupdate="0">
+        <function model="res.users" name="_lgd_apply_sales_team_rules"/>
+    </data>
+</odoo>
