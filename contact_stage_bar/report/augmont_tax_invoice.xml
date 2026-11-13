@@ -147,11 +147,12 @@
                            second page - so if that happens, this is the
                            number to lower. */
                         .aug-top { min-height: 330pt; }
-                        /* Declaration, Bank Details, Diamond Authenticity &amp;
-                           Compliance and the signatory print as one block on
-                           one page: when they do not fit under the totals the
-                           whole block moves to the next page together. */
-                        .aug-bottom { page-break-inside: avoid; }
+                        /* Bank Details, Diamond Authenticity &amp; Compliance
+                           and the signatory are kept together, straight
+                           after the totals. The Declaration is NOT in that
+                           block: keeping it in pushed the whole lot, bank
+                           details and signature included, on to page 2. */
+                        .aug-keep { page-break-inside: avoid; }
 
                         /* Every rule in the design: #E2E8F0, exactly 1px. */
                         .rule { border-top: 1pt solid #E2E8F0; font-size: 0; line-height: 0; }
@@ -706,6 +707,9 @@
                         </div>
 
                         <div class="aug-bottom">
+                          <!-- Bank Details, Diamond Authenticity and the signatory stay together and follow the totals
+                               on the same page; only the Declaration below may flow on to the next page. -->
+                          <div class="aug-keep">
                             <div class="rule"/>
 
                             <!-- ══ BANK / SIGNATORY ════════════════════════ -->
@@ -790,6 +794,7 @@
                                     </td>
                                 </tr>
                             </table>
+                          </div>
 
                             <!-- ══ DECLARATION ═════════════════════════════ -->
                             <div class="lbl-sec" style="margin-top:22pt;">Declaration</div>

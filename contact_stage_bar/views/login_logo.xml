@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Login page logo: the logo of the company last active in this
+         browser, else ANIRATH OVERSEAS LIMITED's (see
+         res.company.lgd_login_logo_url). Replaces whatever <img> the card
+         header holds - Odoo's own, or the placeholder link that was
+         hand-edited into web.login_layout - so it works either way. -->
+    <template id="lgd_login_layout_logo" inherit_id="web.login_layout">
+        <xpath expr="//div[hasclass('card-body')]/div[hasclass('text-center')]/img" position="replace">
+            <t t-set="lgd_logo_url"
+               t-value="request and request.db and request.env['res.company'].sudo().lgd_login_logo_url(request.httprequest.cookies.get('cids'))"/>
+            <img t-att-src="lgd_logo_url or ('/web/binary/company_logo' + ('?dbname=' + db if db else ''))"
+                 alt="Logo" style="max-height:120px; max-width: 100%; width:auto"/>
+        </xpath>
+    </template>
+</odoo>
