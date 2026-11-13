@@ -153,6 +153,25 @@ class ProductTemplate(models.Model):
         for tmpl in self:
             tmpl.lgd_display_stock_number = from_row or tmpl.lgd_stock_number
 
+    lgd_display_melee_carats = fields.Float(
+        string="Melee Carats", digits=(16, 3),
+        compute='_compute_lgd_display_melee_qty')
+    lgd_display_melee_pieces = fields.Float(
+        string="Melee Pieces", digits=(16, 0),
+        compute='_compute_lgd_display_melee_qty')
+
+    @api.depends('melee_carats', 'melee_pieces')
+    @api.depends_context('lgd_row_carats', 'lgd_row_pieces')
+    def _compute_lgd_display_melee_qty(self):
+        ctx = self.env.context
+        for tmpl in self:
+            tmpl.lgd_display_melee_carats = (
+                ctx['lgd_row_carats'] if 'lgd_row_carats' in ctx
+                else tmpl.melee_carats)
+            tmpl.lgd_display_melee_pieces = (
+                ctx['lgd_row_pieces'] if 'lgd_row_pieces' in ctx
+                else tmpl.melee_pieces)
+
 
     length = fields.Float(string="Length")
     width = fields.Float(string="Width")

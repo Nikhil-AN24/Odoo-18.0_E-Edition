@@ -20,7 +20,6 @@ class ResPartner(models.Model):
     gst_stages = fields.Selection([
         ('pending', 'Pending'),
         ('verified', 'Verified'),       
-        ('not_verified', 'Not Verified'),
         ('manual_verified', 'Manual Verified'),
         ('failed', 'Failed')
     ], string='GST Status', tracking=True)
@@ -28,7 +27,6 @@ class ResPartner(models.Model):
     ein_status = fields.Selection([
         ('pending', 'Pending'),
         ('verified', 'Verified'),       
-        ('not_verified', 'Not Verified'),
         ('manual_verified', 'Manual Verified'),
         ('failed', 'Failed')
     ], string='EIN Status', tracking=True)
@@ -305,6 +303,19 @@ class ResPartner(models.Model):
 
         gst_value = data.get("kyc", {}).get('gstinStatus')
         ein_value = data.get("kyc", {}).get('einStatus')
+        # Only the statuses the fields hold. Anything else would make the
+        # write raise and take the whole cart_add / upsert down with it, so
+        # it is logged and left out - the stored status stays as it was.
+        known = dict(self._fields['gst_stages'].selection)
+        for label, value in (('gstinStatus', gst_value),
+                             ('einStatus', ein_value)):
+            if value and value not in known:
+                _logger.warning(
+                    "Buyer %s: %s=%r is not a status Odoo keeps (%s); "
+                    "ignored.", data.get('email'), label, value,
+                    ', '.join(known))
+        gst_value = gst_value if gst_value in known else None
+        ein_value = ein_value if ein_value in known else None
         _logger.info(
             "KYC status from the platform for %s: gstinStatus=%r einStatus=%r",
             data.get('email'), gst_value, ein_value)
@@ -336,8 +347,11 @@ class ResPartner(models.Model):
             ship_state = self._lgd_find_state(
                 (ship.get('state') or {}).get('name'), ship_country)
 
+        website_buyer_id = str(data.get('websiteBuyerId') or '').strip()
         mapping = { 
             'name': data.get('companyName'),
+            # The website's own id for the account; the key both sides match on once set (see lgd_buyer_sync.py).
+            'lgd_website_buyer_id': website_buyer_id,
             'partner_kind': partner_kind,
             # The menus also require a top-level company record.
             'is_company': True,
@@ -378,6 +392,11 @@ class ResPartner(models.Model):
         for field_name, value in mapping.items():
             if value:
                 vals[field_name] = value
+        # The website already holds this account, so Odoo must not send it
+        # back - including an Odoo buyer still waiting in the push queue.
+        if website_buyer_id:
+            vals['lgd_website_sync_state'] = 'synced'
+            vals['lgd_website_sync_error'] = False
 
         # A verification already granted is not undone by a later order.
         # The platform sends the buyer's whole KYC block with every cart_add,
@@ -388,7 +407,7 @@ class ResPartner(models.Model):
         # traffic rather than as anything anyone decided.
         #
         # Only the slide back to the initial `pending` is refused. A real
-        # downgrade - not_verified, failed - is somebody's decision and still
+        # downgrade - to failed - is somebody's decision and still
         # comes through.
         if partner:
             for field_name in ('gst_stages', 'ein_status'):
@@ -406,7 +425,9 @@ class ResPartner(models.Model):
 
         if partner:
             _logger.info(f"Writing values to partner {partner.id}: {vals}")
-            partner.write(vals)
+            # lgd_from_website: this change came from the website, so it is
+            # not pushed back there (lgd_buyer_sync.py).
+            partner.with_context(lgd_from_website=True).write(vals)
             # Was `partner.stage_id = 15`, a hardcoded id no database holds -
             # this one has only 1-4 - so EVERY repeat sync of an existing
             # account died with MissingError and rolled the update back. A
@@ -455,7 +476,10 @@ class ResPartner(models.Model):
             if open_stage:
                 vals.setdefault('stage_id', open_stage.id)
             _logger.info(f"Creating new partner with vals: {vals}")
-            new_partner = self.env['res.partner'].sudo().create(vals)
+            # lgd_from_website: created by the website, so it is not queued
+            # to be sent back there (lgd_buyer_sync.py).
+            new_partner = self.env['res.partner'].sudo().with_context(
+                lgd_from_website=True).create(vals)
             _logger.info(f"Created new partner {new_partner.id} with vals: {vals}")
             # A payload complete on arrival need not wait in Open.
             new_partner._lgd_try_advance_stage()
@@ -510,6 +534,9 @@ class ResPartner(models.Model):
         missing, else None."""
         self.ensure_one()
         if self.country_id.code == self._LGD_INDIA_COUNTRY_CODE:
+            # An Unregistered Business has no GSTIN to give.
+            if self.l10n_in_gst_treatment == 'unregistered':
+                return None
             return None if self.vat else "Tax ID (GSTIN)"
         return None if self.ein_number else "EIN Number"
 

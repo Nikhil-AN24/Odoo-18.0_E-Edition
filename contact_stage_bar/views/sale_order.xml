@@ -465,7 +465,12 @@
                              Non-Cert. Reads from the product, so it follows
                              the stone rather than being typed per line. -->
                         <field name="lgd_lab_display" optional="show" readonly="1"/>
-                        <field name="lgd_qty_carats" optional="show"/>
+                        <field name="lgd_qty_carats" optional="show"
+                               column_invisible="not parent.lgd_has_single_lines"
+                               invisible="line_type == 'melee'"/>
+                        <field name="lgd_melee_size" optional="show"
+                               column_invisible="not parent.lgd_has_melee_lines"
+                               invisible="line_type != 'melee'"/>
                         <field name="lgd_pieces" optional="show"/>
                         <field name="stone_list_name" optional="show"/>
                         <field name="stone_certification_type" optional="hide"
@@ -552,7 +557,12 @@
                 <field name="stone_type" optional="show"
                        readonly="not lgd_can_edit_stone_classification"/>
                 <field name="lgd_lab_display" optional="show" readonly="1"/>
-                <field name="lgd_qty_carats" optional="show"/>
+                <field name="lgd_qty_carats" optional="show"
+                       column_invisible="not parent.lgd_has_single_lines"
+                       invisible="line_type == 'melee'"/>
+                <field name="lgd_melee_size" optional="show"
+                       column_invisible="not parent.lgd_has_melee_lines"
+                       invisible="line_type != 'melee'"/>
                 <field name="lgd_pieces" optional="show"/>
                 <field name="stone_list_name" optional="show"/>
                 <field name="stone_certification_type" optional="hide"
@@ -741,6 +751,8 @@
                 <!-- lgd_has_printable_lines hides the button outright once
                      every stone is dead. -->
                 <field name="lgd_has_printable_lines" invisible="1"/>
+                <field name="lgd_has_single_lines" invisible="1"/>
+                <field name="lgd_has_melee_lines" invisible="1"/>
                 <button
                     name="action_print_the_invoice"
                     string="Print an Order Slip"

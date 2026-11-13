@@ -15,21 +15,12 @@ from .lgd_inventory_sale_line import LGD_DEAD_STATUSES, LINE_STATUS_TO_AUGMONT
 _logger = logging.getLogger(__name__)
 
 LGD_OFFLINE_PUSH_TIMEOUT = 20
-# Separate CONNECT timeout, deliberately short. A hostname resolves to several
-# Cloudflare addresses and socket.create_connection tries each one with the
-# full connect timeout, so a single unreachable tunnel cost 55s of a confirm -
-# the sales team watching a spinner while the website is down is exactly what
-# this push is designed never to do. Five seconds is far longer than a healthy
-# connect (20ms observed) and bounds the worst case to a few seconds.
 LGD_OFFLINE_PUSH_CONNECT_TIMEOUT = 5
 
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
-    # The last push failure as the website worded it. Kept so the retry cron
-    # can tell a NEW problem from the one already in the chatter: without it
-    # every sweep would post the same paragraph again. Cleared on success.
     lgd_offline_pushed = fields.Boolean(
         string="Pushed to the website", copy=False,
         help="Set when /odoo/order/offline accepted this order. Durable on "
@@ -128,8 +119,7 @@ class SaleOrder(models.Model):
     def _lgd_offline_registration_status(self, partner):
         """verified or pending - the only two the website stores.
 
-        Odoo keeps five (pending, verified, not_verified, manual_verified,
-        failed). Manually verified counts as verified; anything else, blank
+        Odoo keeps four (pending, verified, manual_verified, failed). Manually verified counts as verified; anything else, blank
         included, is pending, which is the website's own default.
         """
         statuses = (partner.gst_stages, partner.ein_status)
@@ -164,9 +154,13 @@ class SaleOrder(models.Model):
             'shippingState': partner.shipping_state_id.name or '',
             'shippingCity': partner.shipping_city or '',
             'shippingPincode': partner.shipping_zip or '',
-            'registrationNumber': (self.vat or partner.vat
-                                   or self.ein_number or partner.ein_number
-                                   or ''),
+            # Empty for an Unregistered Business: it has no GSTIN, and any
+            # number typed on the contact is not one the website should hold.
+            'registrationNumber': '' if (
+                partner.commercial_partner_id.l10n_in_gst_treatment
+                == 'unregistered') else (
+                self.vat or partner.vat
+                or self.ein_number or partner.ein_number or ''),
             'registrationStatus': self._lgd_offline_registration_status(partner),
         }
 
@@ -917,9 +911,6 @@ class SaleOrder(models.Model):
             # noise the spec asks us to stop making.
             if is_melee:
                 entry.update(self._lgd_offline_melee_block(line, totals=totals))
-            if line_type == 'NATURAL':
-                # "Not needed for natural stones" in the website's spec.
-                entry['product'].pop('lgdStockNum', None)
             orders.append(entry)
 
         payload = {

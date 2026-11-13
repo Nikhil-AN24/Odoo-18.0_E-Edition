@@ -403,8 +403,8 @@
                                      again - which is why these were missing
                                      from the (i) dialog on an order line. -->
                                 <field name="melee_unit"/>
-                                <field name="melee_pieces"/>
-                                <field name="melee_carats"/>
+                                <field name="lgd_display_melee_pieces"/>
+                                <field name="lgd_display_melee_carats"/>
                                 <field name="sieve_size"/>
                                 <field name="shapes"/>
                                 <field name="weight_carat"/>
@@ -483,8 +483,8 @@
                                      view is built from scratch, so the melee
                                      numbers have to be named here as well. -->
                                 <field name="melee_unit"/>
-                                <field name="melee_pieces"/>
-                                <field name="melee_carats"/>
+                                <field name="lgd_display_melee_pieces"/>
+                                <field name="lgd_display_melee_carats"/>
                                 <field name="sieve_size"/>
                                 <field name="shapes"/>
                                 <field name="weight_carat"/>
