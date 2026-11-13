@@ -226,6 +226,11 @@
                                    invisible="not lgd_show_usd_rate"
                                    readonly="state in ('offline_order_created', 'cancel')"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_regional_sales_head,contact_stage_bar.group_lgd_superadmin,base.group_system"/>
+                            <field name="lgd_show_inr_rate" invisible="1"/>
+                            <field name="lgd_inr_rate" string="Current ₹ Rate"
+                                   invisible="not lgd_show_inr_rate"
+                                   options="{'digits': [16, 6]}"
+                                   groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_regional_sales_head,contact_stage_bar.group_lgd_superadmin,base.group_system"/>
                             <field name="lgd_payment_terms"
                                    readonly="state in ('offline_order_created', 'cancel')"
                                    groups="contact_stage_bar.group_lgd_sales,contact_stage_bar.group_lgd_sales_manager,contact_stage_bar.group_lgd_regional_sales_head,contact_stage_bar.group_lgd_superadmin,base.group_system"/>

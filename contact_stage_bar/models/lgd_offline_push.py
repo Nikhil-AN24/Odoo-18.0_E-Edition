@@ -210,28 +210,37 @@ class SaleOrder(models.Model):
 
     def _lgd_offline_inr_rate(self):
         inr = self.env.ref('base.INR', raise_if_not_found=False)
-        if not inr or not self.currency_id or self.currency_id == inr:
+        usd = self.env.ref('base.USD', raise_if_not_found=False)
+        if not inr or not self.currency_id:
             return 1.0
         company = self.company_id or self.env.company
         date = self.date_order or fields.Date.context_today(self)
 
-        if (self.lgd_show_usd_rate and self.lgd_usd_rate
-                and company.currency_id == inr):
+        if self.currency_id == inr:
+            if self.lgd_inr_rate:
+                return round(1.0 / self.lgd_inr_rate, 4)
+            if not usd:
+                return None
+            source = usd
+        else:
+            source = self.currency_id
+
+        if (source == self.currency_id and self.lgd_show_usd_rate
+                and self.lgd_usd_rate and company.currency_id == inr):
             return float(self.lgd_usd_rate)
 
-        rate = self.currency_id._convert(1.0, inr, company, date, round=False)
+        rate = source._convert(1.0, inr, company, date, round=False)
         if rate != 1.0:
             return rate
 
         for other in self._lgd_offline_rate_companies(company):
-            rate = self.currency_id._convert(1.0, inr, other, date,
-                                             round=False)
+            rate = source._convert(1.0, inr, other, date, round=False)
             if rate != 1.0:
                 _logger.info(
                     "Offline push %s: %s has no %s->INR rate, using %s's "
                     "rate of %s.",
                     self.sdk_augmont_number or self.name,
-                    company.display_name, self.currency_id.name,
+                    company.display_name, source.name,
                     other.display_name, rate)
                 return rate
 
@@ -241,7 +250,7 @@ class SaleOrder(models.Model):
             "\"Current $ Rate\" on the order, or set the rate under "
             "Accounting > Currencies.",
             self.sdk_augmont_number or self.name,
-            self.currency_id.name, company.display_name)
+            source.name, company.display_name)
         return None
 
     def _lgd_offline_rate_companies(self, company):
