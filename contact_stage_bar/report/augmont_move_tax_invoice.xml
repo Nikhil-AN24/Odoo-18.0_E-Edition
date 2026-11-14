@@ -67,10 +67,9 @@
                 <t t-set="tax_src"
                    t-value="tax_src if abs(tax_src - doc.amount_tax) &lt;= 0.01 * len(lines) + 0.005 else doc.amount_tax"/>
 
-                <!-- Rounded in the invoice currency first, converted after -
-                     the website's order, and the Order Slip's. -->
                 <t t-set="amt_untaxed" t-value="round(base * fx, 2)"/>
-                <t t-set="amt_tax" t-value="round(tax_src * fx, 2)"/>
+                <t t-set="pct_ok" t-value="bool(tax_pct) and abs(round(base * tax_pct / 100.0, 2) - doc.amount_tax) &lt;= 0.01 * len(lines) + 0.005"/>
+                <t t-set="amt_tax" t-value="round(amt_untaxed * tax_pct / 100.0, 2) if pct_ok else round(tax_src * fx, 2)"/>
                 <t t-set="amt_total" t-value="amt_untaxed + amt_tax"/>
                 <t t-set="cgst" t-value="round(amt_tax / 2.0, 2) if intra else 0.0"/>
                 <t t-set="sgst" t-value="(amt_tax - cgst) if intra else 0.0"/>
