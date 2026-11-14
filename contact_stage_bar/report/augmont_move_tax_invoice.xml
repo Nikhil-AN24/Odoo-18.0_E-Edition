@@ -137,8 +137,9 @@
                                                 <span class="lab">Contact: </span><span class="val" t-field="customer.name"/>
                                             </div>
 
-                                            <div t-if="shipping.lgd_address_label or (shipping.id != commercial.id and shipping.name)">
-                                                <span class="val" t-esc="shipping.lgd_address_label or shipping.name"/>
+                                            <t t-set="ship_title" t-value="shipping.lgd_address_label or (shipping.id != commercial.id and shipping.name)"/>
+                                            <div t-if="ship_title and not (shipping.street and shipping.street.strip(' ,').lower() in ship_title.lower())">
+                                                <span class="val" t-esc="ship_title"/>
                                             </div>
                                             <div class="addr" t-if="shipping.street or shipping.city or shipping.zip">
                                                 <div t-if="shipping.street"><span t-field="shipping.street"/></div>

@@ -61,7 +61,7 @@
 
                             <div style="font-size:9pt;line-height:1.5;margin-top:2mm;">
                                 <div t-esc="(doc.lgd_buyer_name or doc.ship_name or '').upper()"/>
-                                <div t-if="doc.ship_name and doc.ship_name != doc.lgd_buyer_name"
+                                <div t-if="doc.ship_name and doc.ship_name != doc.lgd_buyer_name and not (doc.ship_street and doc.ship_street.strip(' ,').lower() in doc.ship_name.lower())"
                                      t-esc="doc.ship_name"/>
                                 <div t-if="doc.ship_street" t-esc="doc.ship_street"/>
                                 <div t-if="doc.ship_street2" t-esc="doc.ship_street2"/>
